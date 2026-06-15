@@ -1,2 +1,12 @@
-@import "tailwindcss";
+/* Emit this module's UTILITIES into the `kubuno-module` cascade layer so its
+ * re-generated base utilities (e.g. `.fixed`) never clobber the host shell's
+ * responsive utilities (e.g. `.lg:relative`) when this bundle's CSS is injected
+ * at runtime after the host stylesheet. The host pre-declares the layer order
+ * (kubuno-module sits below `utilities`, above `base`). The `@tailwindcss/vite`
+ * plugin ignores `layer()` on the `@import "tailwindcss"` shorthand, so we use
+ * the granular imports and assign the layer to utilities explicitly. */
+@layer theme, base, components, kubuno-module;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(kubuno-module) source("../");
 @import "./theme.css";

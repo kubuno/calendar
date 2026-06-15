@@ -60,8 +60,14 @@ bash build_deb.sh                # → dist/kubuno-calendar_*.deb
 ```
 
 > Shared dependencies come from Kubuno:
-> - **Rust** — `kubuno-seccomp` via a tagged git dependency on `kubuno/core`.
-> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from npm (`@kubuno` scope).
+> - **Rust** — `kubuno-seccomp` via a tagged git dependency on `kubuno/core` (resolved automatically by Cargo).
+> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive`.
+>
+> **Interim note:** the `@kubuno/*` frontend libraries are not yet published to npm.
+> For now, check out [`kubuno/core`](https://github.com/kubuno/core) next to this
+> repository (`../kubuno-core`) so the frontend build can resolve them from source;
+> the build expects `node_modules` (symlink to a Kubuno frontend install is fine).
+> Once the packages are published, install them from the `@kubuno` npm scope instead.
 
 ## ⚙️ Configuration
 
