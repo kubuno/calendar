@@ -59,15 +59,9 @@ cd frontend && npm ci && npm run build   # → dist/{entry.js, entry.css, chunks
 bash build_deb.sh                # → dist/kubuno-calendar_*.deb
 ```
 
-> Shared dependencies come from Kubuno:
-> - **Rust** — `kubuno-seccomp` via a tagged git dependency on `kubuno/core` (resolved automatically by Cargo).
-> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive`.
->
-> **Interim note:** the `@kubuno/*` frontend libraries are not yet published to npm.
-> For now, check out [`kubuno/core`](https://github.com/kubuno/core) next to this
-> repository (`../kubuno-core`) so the frontend build can resolve them from source;
-> the build expects `node_modules` (symlink to a Kubuno frontend install is fine).
-> Once the packages are published, install them from the `@kubuno` npm scope instead.
+> Shared dependencies come from Kubuno — no `kubuno/core` checkout required:
+> - **Rust** — `kubuno-seccomp` via a tagged git dependency on `kubuno/core` (fetched automatically by Cargo).
+> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from npm (`@kubuno` scope), pulled in by `npm ci`. They are `external` at runtime (the host provides the singletons via its import map); the npm packages supply the build-time type surface.
 
 ## ⚙️ Configuration
 
