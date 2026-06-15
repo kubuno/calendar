@@ -24,21 +24,14 @@ const SHARED = new Set([
 const isExternal = (s: string) =>
   SHARED.has(s) || s.startsWith('@ui/') || s.startsWith('@kubuno/sdk/') || s.startsWith('@kubuno/drive/')
 
-// LOCAL : alias vers les sources du dépôt kubuno/core voisin (résolution de types
-// uniquement ; `external` empêche tout bundling). À LA PUBLICATION : ces specifiers
-// seront fournis par les paquets npm @kubuno/sdk, @kubuno/ui, @kubuno/drive.
-const CORE = '../../kubuno-core/frontend/src'
-
+// Les specifiers partagés ci-dessus sont `external` : jamais bundlés, résolus au
+// runtime par l'import map du host. Les TYPES viennent des paquets npm
+// @kubuno/sdk / @kubuno/ui / @kubuno/drive (cf. tsconfig.json `paths` pour `@ui`,
+// dont le specifier diffère du nom de paquet). Plus aucun alias vers un checkout
+// kubuno-core voisin n'est nécessaire.
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      '@ui': fileURLToPath(new URL(`${CORE}/ui`, import.meta.url)),
-      '@kubuno/sdk': fileURLToPath(new URL(`${CORE}/sdk/index.ts`, import.meta.url)),
-      '@kubuno/drive': fileURLToPath(new URL(`${CORE}/drive/index.ts`, import.meta.url)),
-    },
-  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
