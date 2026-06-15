@@ -1,0 +1,26 @@
+/* Accent du module calendar : violet du logo (#4D38DB) au lieu du bleu primaire
+ * global. Scoppé via l'attribut [data-module="calendar"] posé par le host autour
+ * du contenu/toolbar (ModuleArea) et de la barre latérale (AppSidebar) : seules les
+ * surfaces du calendar sont recolorées, les autres modules gardent le bleu.
+ * Tailwind v4 génère `bg-primary` → var(--color-primary), donc surcharger la
+ * variable sur ce sous-arbre recolore toutes les utilitaires *-primary. */
+[data-module="calendar"] {
+  --color-primary:       #4D38DB;
+  --color-primary-hover: #3B2BA9;
+  --color-primary-light: #E7E3FB;
+}
+
+/* Vue Année — panneau de détails du jour sélectionné (inspiré du pen peanav/DmZEEp).
+ * Le panneau apparaît en fondu/glissé, et chaque événement entre avec un léger
+ * décalage (stagger via --i). La flèche glisse horizontalement (transition left). */
+@keyframes calDetailsIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes calEventIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cal-details { animation: calDetailsIn .22s ease both; }
+.cal-details .cal-arrow { transition: left .3s cubic-bezier(.4,0,.2,1); }
+.cal-event { animation: calEventIn .3s ease both; animation-delay: calc(var(--i, 0) * 45ms); }

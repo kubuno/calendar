@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@ui": ["../../kubuno-core/frontend/src/ui/index.ts"],
+      "@ui/*": ["../../kubuno-core/frontend/src/ui/*"],
+      "@kubuno/sdk": ["../../kubuno-core/frontend/src/sdk/index.ts"],
+      "@kubuno/drive": ["../../kubuno-core/frontend/src/drive/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

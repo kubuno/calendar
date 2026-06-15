@@ -1,0 +1,49 @@
+[module]
+id           = "calendar"
+display_name = "Calendar"
+version      = "0.1.0"
+description  = "Calendriers, événements, CalDAV, planification collaborative"
+author       = "Kubuno Contributors"
+license      = "AGPL-3.0"
+runtime      = "rust"
+settings_path = "/calendar/settings"
+
+[process]
+entrypoint = "kubuno-calendar"
+args       = []
+
+[server]
+host = "127.0.0.1"
+port = 3102
+
+[routes]
+patterns = [
+    { method = "*", path = "/*" },
+]
+
+[[sidebar_items]]
+id       = "calendar"
+label    = "Calendar"
+icon     = "Calendar"
+path     = "/calendar"
+position = 20
+section  = "main"
+
+[[sidebar_items]]
+id       = "calendar-new-event"
+label    = "Planification"
+icon     = "Users"
+path     = "/calendar/scheduling"
+position = 21
+section  = "main"
+
+[events]
+subscribed = [
+    "UserDeleted",
+    "ContactUpdated",
+]
+publishes = [
+    "EventCreated",
+    "EventUpdated",
+    "EventDeleted",
+]
