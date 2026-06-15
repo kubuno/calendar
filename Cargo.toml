@@ -45,7 +45,10 @@ rrule      = "0.12"
 icalendar  = "0.16"
 chrono-tz  = { version = "0.10", features = ["serde"] }
 
-# Crate partagée du core. En LOCAL : chemin vers le dépôt kubuno/core voisin.
-# À LA PUBLICATION : remplacer par une dépendance git taguée, ex.
-#   kubuno-seccomp = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.0", package = "kubuno-seccomp" }
-kubuno-seccomp = { path = "../kubuno-core/crates/kubuno-seccomp" }
+# Crate partagée du core, consommée via une dépendance git taguée sur kubuno/core.
+# (Dev local hors-ligne possible via `[patch]` ci-dessous, décommenté au besoin.)
+kubuno-seccomp = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.0", package = "kubuno-seccomp" }
+
+# Pour développer hors-ligne avec un checkout voisin de kubuno/core, décommenter :
+# [patch."https://github.com/kubuno/core"]
+# kubuno-seccomp = { path = "../kubuno-core/crates/kubuno-seccomp" }
