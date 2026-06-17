@@ -8,7 +8,7 @@ import {
   Clock, MapPin, Search, Plus, Edit2, Copy, Trash2, Bell,
   Mail, Share2, AlignLeft, Check, User as UserIcon,
   MoreVertical, Printer, Link2, Lock, Globe,
-  Repeat, Users, Briefcase, ChevronDown, Pipette,
+  Repeat, Users, Briefcase, ChevronDown, Pipette, Video,
 } from 'lucide-react'
 import { useAuthStore } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
@@ -26,8 +26,16 @@ import {
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder,
 } from './api'
-import { ExtensionRegistry } from '@kubuno/sdk'
+import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
 import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
+
+// Contract for a video-meeting provider published by another module (e.g. chat).
+// Calendar discovers it dynamically — no hard dependency on any specific module.
+type MeetingProvider = (title: string, attendeeIds?: string[]) => Promise<{ link: string; roomId: string }>
+const MEETING_LINK_RE = /\/chat\/meet\/[\w-]+/
+function getMeetingProvider(): MeetingProvider | undefined {
+  return ModuleServiceRegistry.get<MeetingProvider>('chat', 'createMeeting')
+}
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 
 const EVENT_SWATCHES = ['#4D38DB', '#1e8e3e', '#d93025', '#f9ab00', '#9334e6', '#e8710a', '#12b5cb', '#5f6368']
@@ -524,7 +532,10 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   const [endTime,    setEndTime]    = useState(ev ? parseTime(ev.ends_at) : '10:00')
   const [allDay,     setAllDay]     = useState(ev?.all_day ?? false)
   const [location,   setLocation]   = useState(ev?.location ?? '')
+  const [addingMeeting, setAddingMeeting] = useState(false)
   const [desc,       setDesc]       = useState(ev?.description ?? '')
+  const meetingProvider = getMeetingProvider()
+  const hasMeeting = MEETING_LINK_RE.test(location)
   const [reminders,  setReminders]  = useState<EventReminder[]>(ev?.reminders ?? [])
   const [color,      setColor]      = useState<string | null>(ev?.color ?? null)
   const [recur,      setRecur]      = useState(mode === 'edit' ? presetFromRrule(ev?.rrule) : 'none')
@@ -554,7 +565,9 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
         description: desc.trim() || undefined, location: location.trim() || undefined,
         starts_at: startsAt, ends_at: endsAt, all_day: allDay,
         reminders: reminders.length ? reminders : undefined,
-        busy, visibility, timezone: tz,
+        // « Visibilité par défaut » (UI) = visibilité par défaut du backend = 'public'.
+        // Le backend n'accepte que public/private/confidential (contrainte CHECK).
+        busy, visibility: visibility === 'default' ? 'public' : visibility, timezone: tz,
       }
       if (mode === 'create') {
         return calendarApi.createEvent({ ...base,
@@ -622,7 +635,25 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
         {tab === 'details' ? (
           <div className="px-16 py-6 flex gap-12 max-h-[55vh] overflow-y-auto">
             <div className="space-y-5 min-w-0 flex-1">
-              {row(<MapPin size={18} />, <Input placeholder={t('add_location', { defaultValue: 'Ajouter un lieu' })} value={location} onChange={e => setLocation(e.target.value)} className="w-full" />)}
+              {!hasMeeting && row(<MapPin size={18} />, <Input placeholder={t('add_location', { defaultValue: 'Ajouter un lieu' })} value={location} onChange={e => setLocation(e.target.value)} className="w-full" />)}
+              {/* Réunion vidéo — fournie dynamiquement par un module (ex: chat) */}
+              {(meetingProvider || hasMeeting) && row(<Video size={18} />, hasMeeting ? (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-primary font-medium">{t('video_meeting_added', { defaultValue: 'Réunion vidéo Kubuno' })}</span>
+                  <button type="button" onClick={() => setLocation('')} className="text-xs text-danger hover:underline">{t('detail_remove', { defaultValue: 'Retirer' })}</button>
+                </div>
+              ) : (
+                <button type="button" disabled={addingMeeting}
+                  onClick={async () => {
+                    if (!meetingProvider) return
+                    setAddingMeeting(true)
+                    try { const r = await meetingProvider(title.trim() || t('event_title'), []); setLocation(r.link) }
+                    catch { /* ignore */ } finally { setAddingMeeting(false) }
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors">
+                  <Video size={15} /> {addingMeeting ? '…' : t('add_video_meeting', { defaultValue: 'Ajouter une réunion vidéo' })}
+                </button>
+              ))}
               <RemindersSection reminders={reminders} onChange={setReminders} />
               {row(<CalendarIcon size={18} />, (
                 <div className="flex items-center gap-2">
@@ -704,7 +735,9 @@ function EventDetail({
 }) {
   const { t, i18n } = useTranslation('calendar')
   const qc   = useQueryClient()
+  const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
+  const meetingLink = event.location ? event.location.match(MEETING_LINK_RE)?.[0] ?? null : null
   const cal  = calendars.find(c => c.id === event.calendar_id)
   const color = event.color ?? cal?.color ?? '#4D38DB'
   const loc   = getDateLocale(i18n.language)
@@ -838,8 +871,19 @@ function EventDetail({
             : t('detail_invite_link', { defaultValue: 'Inviter avec un lien' })}
         </button>
 
+        {/* Réunion vidéo — bouton de jointure (lien fourni par le module chat) */}
+        {meetingLink && (
+          <button
+            type="button"
+            onClick={() => { onClose(); navigate(meetingLink) }}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+          >
+            <Video size={16} /> {t('join_video_meeting', { defaultValue: 'Rejoindre la réunion vidéo' })}
+          </button>
+        )}
+
         {/* Lieu */}
-        {event.location && (
+        {event.location && !meetingLink && (
           <div className="flex items-start gap-3 mt-4">
             <MapPin size={18} className="shrink-0 text-text-tertiary mt-0.5" />
             <div className="text-sm text-text-primary break-words">{event.location}</div>
