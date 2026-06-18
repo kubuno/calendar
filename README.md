@@ -46,7 +46,7 @@ core (kubuno/core)  ──proxy──►  kubuno-calendar (this repo, :3102)
 
 ## 🛠️ Build
 
-**Requirements:** Rust ≥ 1.82, Node.js ≥ 20, PostgreSQL 16, and the [kubuno/core](https://github.com/kubuno/core) repo.
+**Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16, and the [kubuno/core](https://github.com/kubuno/core) repo.
 
 ```bash
 # Backend
