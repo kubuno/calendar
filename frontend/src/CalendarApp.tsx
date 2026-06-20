@@ -459,6 +459,7 @@ function GuestsPanel({ eventId }: { eventId: string }) {
 // ── Onglet « Rechercher un horaire » ──────────────────────────────────────────
 function ScheduleTab({ eventId }: { eventId?: string }) {
   const { t } = useTranslation('calendar')
+  const isMobile = useIsMobile()
   const { data } = useQuery({
     queryKey: ['event-attendees', eventId],
     queryFn:  () => calendarApi.listAttendees(eventId!).then(r => r.attendees),
@@ -466,7 +467,7 @@ function ScheduleTab({ eventId }: { eventId?: string }) {
   })
   const attendees = data ?? []
   return (
-    <div className="px-16 py-10 max-h-[55vh] overflow-y-auto">
+    <div className={`${isMobile ? 'px-4' : 'px-16'} py-10 max-h-[55vh] overflow-y-auto`}>
       {attendees.length === 0 ? (
         <div className="text-center text-text-tertiary py-10">
           <Users size={28} className="mx-auto mb-3 opacity-40" />
@@ -493,10 +494,27 @@ function ScheduleTab({ eventId }: { eventId?: string }) {
 }
 
 // ── Éditeur d'événement (création + édition) façon Google Agenda ──────────────
+// Pilotage responsive en JS : les variantes `sm:`/`lg:` d'un MODULE qui annulent
+// une classe de base (px-4, flex-col, w-full…) sont écrasées par l'utilitaire de
+// base du host (couche utilities > kubuno-module). On utilise donc matchMedia.
+function useIsMobile(): boolean {
+  const [m, setM] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const on = () => setM(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return m
+}
+
 function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   mode: 'create' | 'edit'; event?: EventInstance; initialDate?: Date | null; calendars: Calendar[]; onClose: () => void
 }) {
   const { t } = useTranslation('calendar')
+  const isMobile = useIsMobile()
+  const PX = isMobile ? 'px-4' : 'px-16'
   const qc = useQueryClient()
   const ev = event
 
@@ -610,7 +628,7 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
         </div>
 
         {/* Date / heure / fuseau */}
-        <div className="px-16 pb-1 flex flex-wrap items-center gap-2">
+        <div className={`${PX} pb-1 flex flex-wrap items-center gap-2`}>
           <div className="w-40"><DatePicker mode="date" value={date} onChange={v => setDate(v ?? '')} /></div>
           {!allDay && <>
             <DatePicker mode="time" value={startTime} onChange={v => setStartTime(v ?? '')} />
@@ -620,20 +638,20 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
           <div className="w-40"><DatePicker mode="date" value={endDate} onChange={v => setEndDate(v ?? '')} /></div>
           <span className="text-text-tertiary text-xs ml-1">{tzName}</span>
         </div>
-        <div className="px-16 pb-3 flex items-center gap-4">
+        <div className={`${PX} pb-3 flex items-center gap-4`}>
           <Checkbox label={t('all_day')} checked={allDay} onChange={setAllDay} />
           <div className="w-72"><RecurrenceField preset={recur} onChange={setRecur} start={new Date(`${date}T${allDay ? '00:00' : startTime}:00`)} /></div>
         </div>
 
         {/* Onglets */}
-        <div className="px-16 border-b border-border flex gap-6">
+        <div className={`${PX} border-b border-border flex gap-6`}>
           <TabButton active={tab === 'details'} onClick={() => setTab('details')}>{t('tab_details', { defaultValue: "Détails de l'événement" })}</TabButton>
           <TabButton active={tab === 'schedule'} onClick={() => setTab('schedule')}>{t('tab_schedule', { defaultValue: 'Rechercher un horaire' })}</TabButton>
         </div>
 
         {/* Corps */}
         {tab === 'details' ? (
-          <div className="px-16 py-6 flex gap-12 max-h-[55vh] overflow-y-auto">
+          <div className={`${PX} py-6 flex ${isMobile ? 'flex-col gap-6' : 'flex-row gap-12'} max-h-[55vh] overflow-y-auto`}>
             <div className="space-y-5 min-w-0 flex-1">
               {!hasMeeting && row(<MapPin size={18} />, <Input placeholder={t('add_location', { defaultValue: 'Ajouter un lieu' })} value={location} onChange={e => setLocation(e.target.value)} className="w-full" />)}
               {/* Réunion vidéo — fournie dynamiquement par un module (ex: chat) */}
@@ -675,7 +693,7 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
               ))}
               {row(<AlignLeft size={18} />, <RichText value={desc} onChange={setDesc} placeholder={t('add_description', { defaultValue: 'Ajouter une description' })} minHeight={140} className="w-full" />)}
             </div>
-            <div className="w-[320px] shrink-0">
+            <div className={`${isMobile ? 'w-full' : 'w-[320px]'} shrink-0`}>
               <h3 className="text-sm font-medium text-text-primary border-b-2 border-primary inline-block pb-2 mb-4">{t('guests', { defaultValue: 'Invités' })}</h3>
               {mode === 'edit' && ev ? (
                 <GuestsPanel eventId={ev.event_id} />
@@ -689,7 +707,7 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
         )}
 
         {(error || calendars.length === 0) && (
-          <div className="px-16 pb-4">
+          <div className={`${PX} pb-4`}>
             {error && <p className="text-xs text-danger">{error.message}</p>}
             {calendars.length === 0 && <p className="text-xs text-warning">{t('no_calendar_available')}</p>}
           </div>
@@ -1387,6 +1405,11 @@ function MonthView({ month, events, calendars, onDayClick, onEventClick, onEvent
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Titre du mois — visible UNIQUEMENT à l'impression (la barre d'outils,
+          qui porte le titre à l'écran, est masquée en impression). */}
+      <div className="print-only mb-2 text-center text-xl font-bold text-black">
+        {format(month, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+      </div>
       {/* En-têtes jours de la semaine */}
       <div className="grid grid-cols-7 border-b border-border">
         {weekdaysShort.map((d, i) => (
@@ -1413,7 +1436,7 @@ function MonthView({ month, events, calendars, onDayClick, onEventClick, onEvent
               onDragOver={e => e.preventDefault()}
               onDrop={e => { const id = e.dataTransfer.getData('text/plain'); const found = events.find(x => x.id === id); if (found) { const os = parseISO(found.starts_at); const ns = new Date(day); ns.setHours(os.getHours(), os.getMinutes(), 0, 0); onEventDrop(found, ns) } }}
               className={`border-r border-b border-border p-1 cursor-pointer min-h-0 overflow-hidden
-                          transition-colors hover:bg-primary/5
+                          transition-colors hover:bg-primary/5 print:min-h-[96px] print:break-inside-avoid
                           ${!inMonth ? 'bg-surface-2' : weekend ? 'bg-surface-1/60' : ''}`}>
               <div className="flex items-center justify-between mb-0.5">
                 <span className={`w-7 h-7 flex items-center justify-center text-sm rounded-full font-medium
