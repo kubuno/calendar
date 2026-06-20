@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useIsFetching } from '@tanstack/react-query'
@@ -26,6 +26,18 @@ export default function CalendarToolbar() {
 
   const isFetching = useIsFetching({ queryKey: ['calendar-events'] }) > 0
 
+  // Piloté en JS (pas via variantes `sm:`) car les utilitaires responsives du
+  // module sont écrasés par les utilitaires de base du host (couche utilities >
+  // kubuno-module). Sur mobile : titre pleine ligne, sélecteur de vue en dessous.
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const on = () => setIsMobile(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+
   const prev = () => {
     if (viewMode === 'day')        setCurrentDate(addDays(currentDate, -1))
     else if (viewMode === 'week')  setCurrentDate(addDays(currentDate, -7))
@@ -50,9 +62,12 @@ export default function CalendarToolbar() {
   }, [viewMode, currentDate, t, i18n.language])
 
   return (
-    <div className="flex items-center justify-between h-14 px-4 gap-2 flex-wrap">
-      {/* Gauche — navigation */}
-      <div className="flex items-center gap-1">
+    // min-h (pas h fixe) : sur mobile le titre + le sélecteur de vue passent à la
+    // ligne (flex-wrap) sans se chevaucher. gap-y réserve l'espace vertical.
+    <div className={`flex items-center justify-between min-h-14 px-4 gap-x-2 gap-y-2 py-2 no-print ${isMobile ? 'flex-wrap' : 'flex-nowrap'}`}>
+      {/* Gauche — navigation. Pleine ligne sur mobile → le titre a la place ;
+          le sélecteur de vue passe à la ligne en dessous. */}
+      <div className={`flex items-center gap-1 min-w-0 ${isMobile ? 'w-full' : 'w-auto'}`}>
         <Button
           variant="secondary"
           size="sm"
@@ -62,28 +77,28 @@ export default function CalendarToolbar() {
         </Button>
         <button
           onClick={prev}
-          className="w-8 h-8 flex items-center justify-center rounded-full
+          className="w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0
                      hover:bg-surface-2 text-text-secondary transition-colors"
         >
           <ChevronLeft size={18} />
         </button>
         <button
           onClick={next}
-          className="w-8 h-8 flex items-center justify-center rounded-full
+          className="w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0
                      hover:bg-surface-2 text-text-secondary transition-colors"
         >
           <ChevronRight size={18} />
         </button>
-        <h1 className="text-[22px] font-normal text-text-primary ml-2 capitalize tracking-tight">
+        <h1 className={`${isMobile ? 'text-lg' : 'text-[22px]'} font-normal text-text-primary ml-2 capitalize tracking-tight truncate min-w-0`}>
           {title}
         </h1>
         {isFetching && (
-          <Spinner size="xs" className="ml-1" />
+          <Spinner size="xs" className="ml-1 flex-shrink-0" />
         )}
       </div>
 
       {/* Droite — sélecteur vue + bouton création */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <div className="flex border border-border rounded overflow-hidden">
           {(['day', 'week', 'month', 'year'] as ViewMode[]).map((v) => (
             <button
