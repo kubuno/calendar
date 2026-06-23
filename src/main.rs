@@ -218,6 +218,68 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         .map(|e| e.subscribed.clone())
         .unwrap_or_else(|| vec!["UserDeleted".into(), "ContactUpdated".into()]);
 
+    // Outils MCP exposés à l'assistant via la passerelle du core. Les noms
+    // utilisent des underscores (certains LLM rejettent les points). Le champ
+    // `annotations` distingue les outils backend (exécutés côté serveur) des
+    // outils UI (`kubuno_ui` : dispatchés dans le client de l'utilisateur).
+    let mcp_tools = json!([
+        {
+            "name": "calendar_list_events",
+            "description": "Liste les événements de l'agenda de l'utilisateur sur une période. Sans dates, renvoie les 30 prochains jours.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "from":  { "type": "string", "format": "date-time", "description": "Début de la période (ISO 8601)." },
+                    "until": { "type": "string", "format": "date-time", "description": "Fin de la période (ISO 8601)." }
+                }
+            },
+            "route": "/mcp/list-events", "method": "GET"
+        },
+        {
+            "name": "calendar_create_event",
+            "description": "Crée un événement dans l'agenda par défaut de l'utilisateur.",
+            "input_schema": {
+                "type": "object",
+                "required": ["title", "starts_at", "ends_at"],
+                "properties": {
+                    "title":       { "type": "string", "description": "Titre de l'événement." },
+                    "starts_at":   { "type": "string", "format": "date-time", "description": "Début (ISO 8601)." },
+                    "ends_at":     { "type": "string", "format": "date-time", "description": "Fin (ISO 8601), doit être ≥ au début." },
+                    "all_day":     { "type": "boolean", "description": "Journée entière." },
+                    "description": { "type": "string" },
+                    "location":    { "type": "string" }
+                }
+            },
+            "route": "/mcp/create-event", "method": "POST"
+        },
+        {
+            "name": "calendar_delete_event",
+            "description": "Supprime un événement de l'agenda par son identifiant.",
+            "input_schema": {
+                "type": "object",
+                "required": ["event_id"],
+                "properties": {
+                    "event_id": { "type": "string", "description": "Identifiant (UUID) de l'événement à supprimer." }
+                }
+            },
+            "route": "/mcp/delete-event", "method": "POST",
+            "annotations": { "confirm": true, "destructiveHint": true }
+        },
+        {
+            "name": "calendar_open_date",
+            "description": "Ouvre l'agenda de l'utilisateur sur une date donnée (action d'interface, n'effectue aucune modification).",
+            "input_schema": {
+                "type": "object",
+                "required": ["date"],
+                "properties": {
+                    "date": { "type": "string", "format": "date", "description": "Date à afficher (AAAA-MM-JJ)." }
+                }
+            },
+            "route": "/mcp/noop", "method": "POST",
+            "annotations": { "kubuno_ui": { "service": "calendar", "method": "openDate" } }
+        }
+    ]);
+
     let payload = json!({
         "module_id":         "calendar",
         "display_name":      display_name,
@@ -228,6 +290,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         "routes":            [{ "method": "*", "path": "/*" }],
         "sidebar_items":     sidebar_items,
         "subscribed_events": subscribed_events,
+        "mcp_tools":         mcp_tools,
     });
 
     for attempt in 1u32.. {

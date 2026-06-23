@@ -7,8 +7,8 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
     handlers::{
-        analytics, attendees, caldav, calendars, events, health, import_export, public, scheduling,
-        time_blocks, weather,
+        analytics, attendees, caldav, calendars, events, health, import_export, mcp, public,
+        scheduling, time_blocks, weather,
     },
     middleware::require_auth,
     state::AppState,
@@ -23,6 +23,10 @@ pub fn build(state: AppState) -> Router {
         .route("/calendars/:id/share",      post(calendars::share))
         .route("/calendars/:id/share/:uid", delete(calendars::unshare))
         .route("/calendars/:id/export",     get(calendars::export))
+        // Outils MCP (appelés par la passerelle du core au nom de l'utilisateur)
+        .route("/mcp/list-events",          get(mcp::list_events))
+        .route("/mcp/create-event",         post(mcp::create_event))
+        .route("/mcp/delete-event",         post(mcp::delete_event))
         // Événements
         .route("/events",                   get(events::list).post(events::create))
         .route("/events/:id",               get(events::get).patch(events::update).delete(events::delete))
