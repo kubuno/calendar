@@ -1,15 +1,180 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@kubuno/sdk'
-import { Calendar, Save, ChevronLeft, ExternalLink, MapPin, Plus, Trash2, Star, Search } from 'lucide-react'
+import { api, useAuthStore } from '@kubuno/sdk'
+import { Calendar, Save, ArrowLeft, ExternalLink, MapPin, Plus, Trash2, Star, Search, Check } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Button, Tabs, Input, Spinner, Dropdown } from '@ui'
+import { Button, Input, Spinner, Dropdown, Toggle, Radio } from '@ui'
 import CalendarCalDavSettings from './CalendarCalDavSettings'
 import { weatherApi, type GeocodingResult } from './api'
-import { useCalendarStore } from './store'
+import { useCalendarStore, type ViewMode } from './store'
+import { useModulePrefs } from './userPrefs'
 
-type Tab = 'general' | 'caldav' | 'weather' | 'about'
+// ── Per-user preferences (backend, cross-device via core users.preferences) ─────
+
+interface CalendarPrefs {
+  defaultView:     string   // 'month' | 'week' | 'day' | 'year'
+  weekStart:       string   // 'monday' | 'sunday' | 'saturday'
+  time24h:         boolean
+  defaultDuration: string   // minutes: '15' | '30' | '60' | '120'
+  dayStartHour:    string   // hour of day the calendar scrolls to: '0'..'12'
+}
+
+const DEFAULT_PREFS: CalendarPrefs = {
+  defaultView: 'month', weekStart: 'monday', time24h: true,
+  defaultDuration: '60', dayStartHour: '8',
+}
+
+// ── Mail-style layout helpers ───────────────────────────────────────────────────
+
+function SettingsRow({ label, description, children }: {
+  label: string; description?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-8 py-4 border-b border-[#e8eaed] last:border-0">
+      <div className="w-60 flex-shrink-0">
+        <p className="text-sm text-[#202124] font-normal">{label}</p>
+        {description && <p className="text-xs text-text-tertiary mt-0.5 leading-relaxed">{description}</p>}
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  )
+}
+
+function RadioGroup({ options, value, onChange }: {
+  options: { value: string; label: string }[]; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {options.map(opt => (
+        <Radio key={opt.value} checked={value === opt.value} onChange={() => onChange(opt.value)} label={opt.label} />
+      ))}
+    </div>
+  )
+}
+
+// ── Préférences tab (per-user) ──────────────────────────────────────────────────
+
+function PreferencesTab() {
+  const { t } = useTranslation('calendar')
+  const { prefs: saved, update } = useModulePrefs<CalendarPrefs>('calendar', DEFAULT_PREFS)
+  const setViewMode = useCalendarStore(s => s.setViewMode)
+  const [prefs, setPrefs] = useState<CalendarPrefs>(saved)
+  const [savedFlag, setSavedFlag] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const set = <K extends keyof CalendarPrefs>(key: K, value: CalendarPrefs[K]) =>
+    setPrefs(p => ({ ...p, [key]: value }))
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await update(prefs)
+      // Apply the default view immediately to the live store (cheap, non-invasive).
+      setViewMode(prefs.defaultView as ViewMode)
+      setSavedFlag(true)
+      setTimeout(() => setSavedFlag(false), 2500)
+    } finally { setBusy(false) }
+  }
+
+  // Hours of day offered for the day/week view scroll anchor.
+  const HOUR_OPTIONS = ['0', '6', '7', '8', '9', '10', '12']
+
+  return (
+    <div>
+      <SettingsRow
+        label={t('calendar_pref_default_view', { defaultValue: 'Vue par défaut' })}
+        description={t('calendar_pref_default_view_desc', { defaultValue: 'Affichage utilisé à l\'ouverture de l\'agenda.' })}
+      >
+        <RadioGroup
+          value={prefs.defaultView}
+          onChange={v => set('defaultView', v)}
+          options={[
+            { value: 'month', label: t('calendar_pref_view_month', { defaultValue: 'Mois' }) },
+            { value: 'week',  label: t('calendar_pref_view_week',  { defaultValue: 'Semaine' }) },
+            { value: 'day',   label: t('calendar_pref_view_day',   { defaultValue: 'Jour' }) },
+            { value: 'year',  label: t('calendar_pref_view_year',  { defaultValue: 'Année' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('calendar_pref_week_start', { defaultValue: 'Premier jour de la semaine' })}
+        description={t('calendar_pref_week_start_desc', { defaultValue: 'Jour affiché en première colonne des vues Mois et Semaine.' })}
+      >
+        <RadioGroup
+          value={prefs.weekStart}
+          onChange={v => set('weekStart', v)}
+          options={[
+            { value: 'monday',   label: t('settings_day_monday',   { defaultValue: 'Lundi' }) },
+            { value: 'sunday',   label: t('settings_day_sunday',   { defaultValue: 'Dimanche' }) },
+            { value: 'saturday', label: t('settings_day_saturday', { defaultValue: 'Samedi' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('calendar_pref_time_format', { defaultValue: 'Format de l\'heure' })}
+        description={t('calendar_pref_time_format_desc', { defaultValue: 'Affichage des heures sur 24 h ou avec AM/PM.' })}
+      >
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <Toggle checked={prefs.time24h} onChange={() => set('time24h', !prefs.time24h)} />
+          <span className="text-sm text-text-primary">
+            {prefs.time24h
+              ? t('calendar_pref_time_24h_on',  { defaultValue: 'Format 24 h (14:30)' })
+              : t('calendar_pref_time_24h_off', { defaultValue: 'Format 12 h (2:30 PM)' })}
+          </span>
+        </label>
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('calendar_pref_default_duration', { defaultValue: 'Durée d\'événement par défaut' })}
+        description={t('calendar_pref_default_duration_desc', { defaultValue: 'Durée appliquée à un nouvel événement.' })}
+      >
+        <RadioGroup
+          value={prefs.defaultDuration}
+          onChange={v => set('defaultDuration', v)}
+          options={[
+            { value: '15',  label: t('settings_duration_15min', { defaultValue: '15 minutes' }) },
+            { value: '30',  label: t('settings_duration_30min', { defaultValue: '30 minutes' }) },
+            { value: '60',  label: t('settings_duration_1h',    { defaultValue: '1 heure' }) },
+            { value: '120', label: t('settings_duration_2h',    { defaultValue: '2 heures' }) },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label={t('calendar_pref_day_start', { defaultValue: 'Heure de début de journée' })}
+        description={t('calendar_pref_day_start_desc', { defaultValue: 'Heure sur laquelle les vues Jour et Semaine se positionnent à l\'ouverture.' })}
+      >
+        <div className="max-w-[180px]">
+          <Dropdown
+            value={prefs.dayStartHour}
+            onChange={v => set('dayStartHour', v)}
+            options={HOUR_OPTIONS.map(h => ({
+              value: h,
+              label: prefs.time24h ? `${h.padStart(2, '0')}:00` : `${(Number(h) % 12) || 12}:00 ${Number(h) < 12 ? 'AM' : 'PM'}`,
+            }))}
+            className="w-full"
+          />
+        </div>
+      </SettingsRow>
+
+      <div className="pt-5 flex items-center gap-3">
+        <Button onClick={save} loading={busy}>
+          {savedFlag
+            ? <><Check size={14} className="mr-1.5 inline" />{t('calendar_settings_saved', { defaultValue: 'Enregistré' })}</>
+            : t('calendar_settings_save_changes', { defaultValue: 'Enregistrer les modifications' })}
+        </Button>
+        <Button variant="ghost" onClick={() => setPrefs(saved)}>
+          {t('common_cancel', { defaultValue: 'Annuler' })}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin-only global settings (instance, via /admin/settings) ──────────────────
 
 interface CalendarSettings {
   'calendar.default_timezone': string
@@ -29,7 +194,7 @@ const TIME_FORMAT_OPTIONS = [
   { value: '12h', labelKey: 'settings_time_12h', example: '2:30 PM' },
 ]
 
-// Fuseaux proposés pour la colonne secondaire de la vue Jour ('' = désactivé).
+// Timezones offered for the secondary column of the Day view ('' = disabled).
 const SECONDARY_TZ_OPTIONS = [
   '',
   'Europe/Paris', 'Europe/London', 'Europe/Berlin', 'Europe/Moscow',
@@ -66,7 +231,7 @@ function GeneralTab() {
   const [weekStart, setWeekStart]   = useState<string | null>(null)
   const [timeFormat, setTimeFormat] = useState<string | null>(null)
   const [duration, setDuration]     = useState<number | null>(null)
-  // Fuseau secondaire = préférence perso (vue Jour), appliquée immédiatement.
+  // Secondary timezone = personal preference (Day view), applied immediately.
   const { secondaryTimezone, setSecondaryTimezone } = useCalendarStore()
 
   const currentTimezone   = timezone   ?? (settings?.['calendar.default_timezone']           ?? 'Europe/Paris')
@@ -98,6 +263,9 @@ function GeneralTab() {
 
   return (
     <div>
+      <p className="text-xs text-text-tertiary mb-4">
+        {t('calendar_settings_admin_hint', { defaultValue: 'Réglages appliqués à toute l\'instance (administrateurs).' })}
+      </p>
       <div className="bg-white rounded-xl border border-border divide-y divide-border">
         {/* Timezone */}
         <div className="p-5">
@@ -438,8 +606,8 @@ function AboutTab() {
           <div className="px-5 py-4">
             <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-3">{t('about_technologies')}</p>
             <div className="flex flex-wrap gap-2">
-              {['Rust', 'Axum 0.7', 'SQLx 0.8', 'PostgreSQL 16', 'CalDAV/RFC 4791', 'Open-Meteo API'].map(t => (
-                <span key={t} className="text-xs px-2 py-1 rounded-lg bg-surface-2 text-text-secondary font-mono">{t}</span>
+              {['Rust', 'Axum 0.7', 'SQLx 0.8', 'PostgreSQL 16', 'CalDAV/RFC 4791', 'Open-Meteo API'].map(tech => (
+                <span key={tech} className="text-xs px-2 py-1 rounded-lg bg-surface-2 text-text-secondary font-mono">{tech}</span>
               ))}
             </div>
           </div>
@@ -478,40 +646,61 @@ function AboutTab() {
   )
 }
 
+// ── Main page (mail-style breadcrumb + tab bar) ─────────────────────────────────
+
+type Tab = 'preferences' | 'caldav' | 'weather' | 'general' | 'about'
+
 export default function CalendarSettingsPage() {
   const { t } = useTranslation('calendar')
-  const [tab, setTab] = useState<Tab>('general')
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
+  const [tab, setTab] = useState<Tab>('preferences')
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'general', label: t('settings_tab_general') },
-    { id: 'caldav',  label: 'CalDAV' },
-    { id: 'weather', label: t('settings_tab_weather') },
-    { id: 'about',   label: t('settings_tab_about') },
+  // Admin-only tabs (instance-wide settings) are hidden for non-admins.
+  const tabs: { id: Tab; label: string; adminOnly?: boolean }[] = [
+    { id: 'preferences', label: t('calendar_tab_preferences', { defaultValue: 'Préférences' }) },
+    { id: 'caldav',      label: 'CalDAV' },
+    { id: 'weather',     label: t('settings_tab_weather', { defaultValue: 'Météo' }) },
+    { id: 'general',     label: t('calendar_tab_general', { defaultValue: 'Général' }), adminOnly: true },
+    { id: 'about',       label: t('settings_tab_about', { defaultValue: 'À propos' }) },
   ]
+  const visibleTabs = tabs.filter(tb => !tb.adminOnly || isAdmin)
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex items-center gap-3 mb-6">
-        <Link to="/admin?tab=modules" className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary hover:text-text-primary transition-colors">
-          <ChevronLeft size={18} />
+    <div className="flex flex-col h-full bg-white overflow-hidden">
+      {/* Breadcrumb header */}
+      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#e8eaed] flex-shrink-0" style={{ background: '#f8f9fa' }}>
+        <Link to="/calendar" className="flex items-center gap-1.5 text-sm text-[#1a73e8] hover:underline">
+          <ArrowLeft size={14} />
+          {t('calendar_settings_breadcrumb', { defaultValue: 'Agenda' })}
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-            <Calendar size={16} className="text-green-600" />
-          </div>
-          <div>
-            <h1 className="text-lg font-medium text-text-primary">{t('settings_title')}</h1>
-            <p className="text-xs text-text-tertiary">{t('settings_subtitle')}</p>
-          </div>
+        <span className="text-text-tertiary text-sm">/</span>
+        <div className="flex items-center gap-1.5">
+          <Calendar size={15} className="text-text-secondary" />
+          <span className="text-sm text-text-primary">{t('settings_title', { defaultValue: 'Réglages' })}</span>
         </div>
       </div>
 
-      <Tabs tabs={TABS} value={tab} onChange={setTab} className="mb-6" />
+      {/* Tab bar (Gmail-style) */}
+      <div className="flex items-end border-b border-[#e8eaed] px-4 flex-shrink-0 overflow-x-auto overflow-y-hidden" style={{ background: '#fff' }}>
+        {visibleTabs.map(tb => (
+          <button key={tb.id} onClick={() => setTab(tb.id)}
+            className={`px-4 py-3 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              tab === tb.id ? 'border-[#1a73e8] text-[#1a73e8] font-medium' : 'border-transparent text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4]'}`}>
+            {tb.label}
+          </button>
+        ))}
+      </div>
 
-      {tab === 'general' && <GeneralTab />}
-      {tab === 'caldav'  && <CalendarCalDavSettings />}
-      {tab === 'weather' && <WeatherTab />}
-      {tab === 'about'   && <AboutTab />}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-8 py-6">
+          {tab === 'preferences' && <PreferencesTab />}
+          {tab === 'caldav'      && <CalendarCalDavSettings />}
+          {tab === 'weather'     && <WeatherTab />}
+          {tab === 'general'     && isAdmin && <GeneralTab />}
+          {tab === 'about'       && <AboutTab />}
+        </div>
+      </div>
     </div>
   )
 }

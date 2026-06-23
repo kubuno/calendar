@@ -11,6 +11,8 @@ import { Calendar } from 'lucide-react'
 import {
   RouteRegistry,
   SlotRegistry,
+  ModuleSettingsRegistry,
+  NotificationRegistry,
   WidgetRegistry,
   WaffleAppRegistry,
   FaviconRegistry,
@@ -30,7 +32,6 @@ import CalendarSidebarBody from './CalendarSidebarBody'
 import CalendarToolbar from './CalendarToolbar'
 import CalendarMiniPanel from './CalendarMiniPanel'
 import CalendarFilterPanel from './CalendarFilterPanel'
-import CalendarCalDavSettings from './CalendarCalDavSettings'
 import CalendarEventsWidget from './CalendarEventsWidget'
 import CalendarWeatherWidget from './CalendarWeatherWidget'
 import CalendarNotificationWorker from './CalendarNotificationWorker'
@@ -53,10 +54,24 @@ export function register() {
     { id: 'calendar', label: 'Calendar', Icon: CalendarLogo, path: '/calendar' },
   ])
 
+  // The header gear button opens the per-user Calendar settings while in /calendar.
+  ModuleSettingsRegistry.register('calendar')
+
+  // Declare the notification activities shown in the core Settings → Notifications matrix.
+  NotificationRegistry.register({
+    moduleId: 'calendar',
+    title: 'Agenda',
+    order: 20,
+    activities: [
+      { id: 'event_invite', label: 'Invitation à un événement', emailDefault: true, pushDefault: true },
+      { id: 'event_reminder', label: "Rappel d'un événement", pushDefault: true },
+      { id: 'calendar_shared', label: 'Un agenda est partagé avec vous', emailDefault: true },
+      { id: 'event_changed', label: 'Un événement est modifié' },
+    ],
+  })
+
   // Notification worker mounted globally at shell level (runs on all routes)
   SlotRegistry.register('app-dialogs', 'calendar', CalendarNotificationWorker)
-
-  SlotRegistry.register('settings-sections', 'calendar', CalendarCalDavSettings)
 
   WidgetRegistry.register({ id: 'calendar-events',  moduleId: 'calendar', Component: CalendarEventsWidget,  size: 'medium', order: 10 })
   WidgetRegistry.register({ id: 'calendar-weather', moduleId: 'calendar', Component: CalendarWeatherWidget, size: 'large',  order: 11 })
