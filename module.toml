@@ -1,12 +1,14 @@
 [module]
 id           = "calendar"
 display_name = "Calendar"
-version      = "0.1.0"
+version      = "0.1.2"
 description  = "Calendriers, événements, CalDAV, planification collaborative"
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
 runtime      = "rust"
-settings_path = "/calendar/settings"
+# Per-user settings page (reached via the header gear). Instance-wide settings are
+# configured from the core admin console, not from a route inside the module.
+settings_path = "/calendar/user-settings"
 
 [process]
 entrypoint = "kubuno-calendar"
@@ -36,6 +38,85 @@ icon     = "Users"
 path     = "/calendar/scheduling"
 position = 21
 section  = "main"
+
+# ── Settings manifest ───────────────────────────────────────────────────────────
+# Declarative source of truth for the module's parameters. The core seeds the
+# instance-level rows (scope global|overridable) into core.settings and resolves the
+# effective value (user override ?? global default) per user.
+#   scope = "global"      → admin only, instance-wide
+#   scope = "user"        → per-user only
+#   scope = "overridable" → admin default, each user may override it
+
+[[settings]]
+key     = "default_timezone"
+scope   = "global"
+type    = "enum"
+default = "Europe/Paris"
+label   = "Fuseau horaire par défaut"
+description = "Fuseau appliqué aux nouveaux calendriers de l'instance."
+values  = ["Europe/Paris", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles", "Africa/Douala", "Asia/Dubai", "Asia/Tokyo", "UTC"]
+
+[[settings]]
+key     = "week_starts_on"
+scope   = "overridable"
+type    = "enum"
+default = "monday"
+label   = "Premier jour de la semaine"
+description = "Jour affiché en première colonne des vues Mois et Semaine."
+values  = [
+    { value = "monday",   label = "Lundi" },
+    { value = "sunday",   label = "Dimanche" },
+    { value = "saturday", label = "Samedi" },
+]
+
+[[settings]]
+key     = "time_format"
+scope   = "overridable"
+type    = "enum"
+default = "24h"
+label   = "Format de l'heure"
+description = "Affichage des heures sur 24 h ou avec AM/PM."
+values  = [
+    { value = "24h", label = "24 h (14:30)" },
+    { value = "12h", label = "12 h (2:30 PM)" },
+]
+
+[[settings]]
+key     = "default_event_duration_min"
+scope   = "overridable"
+type    = "enum"
+default = 60
+label   = "Durée d'événement par défaut"
+description = "Durée appliquée à un nouvel événement."
+values  = [
+    { value = 15,  label = "15 minutes" },
+    { value = 30,  label = "30 minutes" },
+    { value = 60,  label = "1 heure" },
+    { value = 120, label = "2 heures" },
+]
+
+[[settings]]
+key     = "default_view"
+scope   = "user"
+type    = "enum"
+default = "month"
+label   = "Vue par défaut"
+description = "Affichage utilisé à l'ouverture de l'agenda."
+values  = [
+    { value = "month", label = "Mois" },
+    { value = "week",  label = "Semaine" },
+    { value = "day",   label = "Jour" },
+    { value = "year",  label = "Année" },
+]
+
+[[settings]]
+key     = "day_start_hour"
+scope   = "user"
+type    = "enum"
+default = "8"
+label   = "Heure de début de journée"
+description = "Heure sur laquelle les vues Jour et Semaine se positionnent."
+values  = ["0", "6", "7", "8", "9", "10", "12"]
 
 [events]
 subscribed = [

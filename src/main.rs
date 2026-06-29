@@ -7,7 +7,7 @@ use kubuno_calendar::{
     state::AppState,
 };
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
@@ -21,6 +21,30 @@ struct Manifest {
     #[serde(default)]
     sidebar_items: Vec<SidebarItemRaw>,
     events:        Option<ManifestEvents>,
+    /// Declarative settings manifest pushed to the core at registration.
+    #[serde(default)]
+    settings:      Vec<SettingDefRaw>,
+}
+
+/// One `[[settings]]` entry from module.toml. Serialized verbatim into the
+/// registration payload (`type` is renamed to match the core's `SettingDef`).
+#[derive(Deserialize, Serialize)]
+struct SettingDefRaw {
+    key:         String,
+    scope:       String,
+    #[serde(rename = "type")]
+    value_type:  String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    values:      Option<Vec<Value>>,
+    default:     Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label:       Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    category:    Option<String>,
+    #[serde(default)]
+    public:      bool,
 }
 
 #[derive(Deserialize)]
@@ -217,6 +241,9 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         .and_then(|m| m.events.as_ref())
         .map(|e| e.subscribed.clone())
         .unwrap_or_else(|| vec!["UserDeleted".into(), "ContactUpdated".into()]);
+    let settings_schema: Value = manifest.as_ref()
+        .map(|m| serde_json::to_value(&m.settings).unwrap_or_else(|_| json!([])))
+        .unwrap_or_else(|| json!([]));
 
     // Outils MCP exposés à l'assistant via la passerelle du core. Les noms
     // utilisent des underscores (certains LLM rejettent les points). Le champ
@@ -291,6 +318,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         "sidebar_items":     sidebar_items,
         "subscribed_events": subscribed_events,
         "mcp_tools":         mcp_tools,
+        "settings_schema":   settings_schema,
     });
 
     for attempt in 1u32.. {

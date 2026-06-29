@@ -21,11 +21,22 @@ pub async fn import_ics(
     Json(dto): Json<ImportDto>,
 ) -> Result<Json<serde_json::Value>> {
     let parsed = ICalendarService::parse_ics(&dto.ics_content)?;
+    let total  = parsed.len();
 
     let mut imported = 0usize;
+    let mut updated  = 0usize;
+    let mut skipped  = 0usize;
     let mut errors   = Vec::<String>::new();
 
     for p in parsed {
+        // Preserve the event's iCalendar UID for idempotent re-imports; generate
+        // one only when the source event lacks it.
+        let ical_uid = if p.uid.trim().is_empty() {
+            format!("{}@kubuno.local", Uuid::new_v4())
+        } else {
+            p.uid.clone()
+        };
+
         let create_dto = CreateEventDto {
             calendar_id: dto.calendar_id,
             title:       p.summary,
@@ -34,7 +45,7 @@ pub async fn import_ics(
             url:         None,
             starts_at:   p.starts_at,
             ends_at:     p.ends_at,
-            all_day:     Some(false),
+            all_day:     Some(p.all_day),
             timezone:    Some("UTC".to_string()),
             color:       None,
             rrule:       p.rrule,
@@ -44,14 +55,19 @@ pub async fn import_ics(
             busy:        Some(true),
         };
 
-        match EventService::create(user.id, create_dto, &state.db).await {
-            Ok(_)  => imported += 1,
-            Err(e) => errors.push(e.to_string()),
+        match EventService::import_event(user.id, create_dto, &ical_uid, &state.db).await {
+            Ok(Some(true))  => imported += 1,
+            Ok(Some(false)) => updated  += 1,
+            Ok(None)        => skipped  += 1,
+            Err(e)          => errors.push(e.to_string()),
         }
     }
 
     Ok(Json(serde_json::json!({
+        "total":    total,
         "imported": imported,
+        "updated":  updated,
+        "skipped":  skipped,
         "errors":   errors,
     })))
 }

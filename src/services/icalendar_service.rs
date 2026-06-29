@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use icalendar::{Calendar as ICalCalendar, CalendarDateTime, Component, DatePerhapsTime, Event as ICalEvent, EventLike};
 
 use crate::{
@@ -98,12 +98,21 @@ impl ICalendarService {
                 let uid     = e.get_uid().unwrap_or("").to_string();
                 let summary = e.get_summary().unwrap_or("Sans titre").to_string();
 
-                let dtstart = e.get_start().and_then(|s| date_perhaps_time_to_utc(s));
-                let dtend   = e.get_end().and_then(|s| date_perhaps_time_to_utc(s));
+                let dtstart = e.get_start().and_then(date_perhaps_time_to_utc);
+                let dtend   = e.get_end().and_then(date_perhaps_time_to_utc);
 
-                let (starts_at, ends_at) = match (dtstart, dtend) {
-                    (Some(s), Some(e)) => (s, e),
-                    _ => continue, // ignorer les événements sans dates
+                // DTSTART is mandatory; events without a start are skipped.
+                let (starts_at, all_day) = match dtstart {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                // DTEND is optional in iCalendar. When absent, fall back to a
+                // sensible default: +1 day for all-day events, +1 hour otherwise.
+                let ends_at = match dtend {
+                    Some((end, _)) => end,
+                    None if all_day => starts_at + Duration::days(1),
+                    None => starts_at + Duration::hours(1),
                 };
 
                 let description = e.get_description().map(|s| s.to_string());
@@ -115,6 +124,7 @@ impl ICalendarService {
                     summary,
                     starts_at,
                     ends_at,
+                    all_day,
                     description,
                     location,
                     rrule,
@@ -132,23 +142,35 @@ pub struct ParsedIcsEvent {
     pub summary:     String,
     pub starts_at:   chrono::DateTime<Utc>,
     pub ends_at:     chrono::DateTime<Utc>,
+    pub all_day:     bool,
     pub description: Option<String>,
     pub location:    Option<String>,
     pub rrule:       Option<String>,
 }
 
-/// Convertit un DatePerhapsTime icalendar en DateTime<Utc>.
-fn date_perhaps_time_to_utc(dpt: DatePerhapsTime) -> Option<chrono::DateTime<Utc>> {
+/// Converts an icalendar `DatePerhapsTime` into a UTC instant, returning
+/// whether the source value was a date-only (all-day) value.
+fn date_perhaps_time_to_utc(dpt: DatePerhapsTime) -> Option<(chrono::DateTime<Utc>, bool)> {
     match dpt {
-        DatePerhapsTime::DateTime(cdt) => match cdt {
-            CalendarDateTime::Utc(dt) => Some(dt),
-            CalendarDateTime::Floating(naive) => Some(Utc.from_utc_datetime(&naive)),
-            CalendarDateTime::WithTimezone { date_time, .. } => {
-                Some(Utc.from_utc_datetime(&date_time))
-            }
-        },
+        DatePerhapsTime::DateTime(cdt) => {
+            let dt = match cdt {
+                CalendarDateTime::Utc(dt) => dt,
+                CalendarDateTime::Floating(naive) => Utc.from_utc_datetime(&naive),
+                CalendarDateTime::WithTimezone { date_time, tzid } => {
+                    // Resolve the named timezone (e.g. "Europe/Paris") to convert
+                    // the local wall-clock time to UTC; fall back to treating the
+                    // value as UTC when the TZID is unknown.
+                    tzid.parse::<chrono_tz::Tz>()
+                        .ok()
+                        .and_then(|tz| tz.from_local_datetime(&date_time).single())
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|| Utc.from_utc_datetime(&date_time))
+                }
+            };
+            Some((dt, false))
+        }
         DatePerhapsTime::Date(d) => {
-            Some(Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?))
+            Some((Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?), true))
         }
     }
 }

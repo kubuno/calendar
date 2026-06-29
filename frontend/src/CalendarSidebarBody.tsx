@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueries } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CloudSun, Settings2, CalendarDays } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CloudSun, Settings2, CalendarDays, Upload } from 'lucide-react'
 import { SidebarNavItem } from '@kubuno/sdk'
 import { Checkbox, Radio } from '@ui'
+import CalendarImportModal from './CalendarImportModal'
 import {
   format,
   startOfMonth, endOfMonth,
@@ -138,6 +139,7 @@ function MiniCalendar() {
 function CalendarList() {
   const { t } = useTranslation('calendar')
   const { hiddenCalendarIds, toggleCalendar } = useCalendarStore()
+  const [showImport, setShowImport] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['calendar-calendars'],
@@ -158,32 +160,42 @@ function CalendarList() {
     )
   }
 
-  if (calendars.length === 0) {
-    return (
-      <p className="px-3 text-xs text-text-tertiary italic">{t('no_calendars')}</p>
-    )
-  }
-
   return (
     <div className="space-y-0.5">
-      {calendars.map((cal) => {
-        const visible = !hiddenCalendarIds.includes(cal.id)
-        return (
-          <div
-            key={cal.id}
-            className="px-2 py-1 rounded-lg hover:bg-surface-2 transition-colors"
-          >
-            <Checkbox
-              checked={visible}
-              onChange={() => toggleCalendar(cal.id)}
-              color={cal.color}
-              label={cal.name}
-              className="w-full items-center"
-              labelClassName={`text-xs truncate ${visible ? 'text-text-primary' : 'text-text-tertiary'}`}
-            />
-          </div>
-        )
-      })}
+      {calendars.length === 0 ? (
+        <p className="px-3 text-xs text-text-tertiary italic">{t('no_calendars')}</p>
+      ) : (
+        calendars.map((cal) => {
+          const visible = !hiddenCalendarIds.includes(cal.id)
+          return (
+            <div
+              key={cal.id}
+              className="px-2 py-1 rounded-lg hover:bg-surface-2 transition-colors"
+            >
+              <Checkbox
+                checked={visible}
+                onChange={() => toggleCalendar(cal.id)}
+                color={cal.color}
+                label={cal.name}
+                className="w-full items-center"
+                labelClassName={`text-xs truncate ${visible ? 'text-text-primary' : 'text-text-tertiary'}`}
+              />
+            </div>
+          )
+        })
+      )}
+
+      {/* Import .ics */}
+      <button
+        onClick={() => setShowImport(true)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 mt-1 rounded-lg text-xs
+                   text-text-secondary hover:bg-surface-2 hover:text-primary transition-colors"
+      >
+        <Upload size={13} className="shrink-0" />
+        {t('import_sidebar_button', { defaultValue: 'Importer un fichier .ics' })}
+      </button>
+
+      {showImport && <CalendarImportModal onClose={() => setShowImport(false)} />}
     </div>
   )
 }
