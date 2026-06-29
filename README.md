@@ -44,6 +44,12 @@ core (kubuno/core)  ──proxy──►  kubuno-calendar (this repo, :3102)
 - **Backend** — `src/`: Axum + SQLx (PostgreSQL, schema `calendar`); migrations in `migrations/`.
 - **Frontend** — `frontend/`: a React bundle built to `entry.js`; consumes `@kubuno/sdk` and `@kubuno/ui` (provided by the host at runtime via the import map).
 
+## 🐳 Install
+
+This module ships in the **all-in-one [Kubuno](https://github.com/kubuno/core) Docker image** (`ghcr.io/kubuno/kubuno`) — the easiest way to self-host a full Kubuno instance (core + every module). See **[kubuno/docker](https://github.com/kubuno/docker)** for `docker compose` instructions.
+
+To build this module from source (Debian package), see below.
+
 ## 🛠️ Build
 
 **Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16, and the [kubuno/core](https://github.com/kubuno/core) repo.
