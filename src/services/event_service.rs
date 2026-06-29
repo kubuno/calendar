@@ -209,6 +209,90 @@ impl EventService {
         Ok(event)
     }
 
+    /// Imports an event coming from an `.ics` file, preserving its iCalendar
+    /// `UID` so re-importing the same file is idempotent (upsert on `ical_uid`).
+    ///
+    /// Returns `Some(true)` when a new event was inserted, `Some(false)` when an
+    /// existing one was updated, and `None` when the matching `ical_uid` belongs
+    /// to another owner (skipped, never overwritten).
+    pub async fn import_event(
+        user_id: Uuid,
+        dto: CreateEventDto,
+        ical_uid: &str,
+        db: &PgPool,
+    ) -> Result<Option<bool>> {
+        if let Some(ref rrule) = dto.rrule {
+            RecurrenceService::validate_rrule(rrule)?;
+        }
+
+        Self::check_calendar_write_access(dto.calendar_id, user_id, db).await?;
+
+        let all_day    = dto.all_day.unwrap_or(false);
+        let timezone   = dto.timezone.unwrap_or_else(|| "UTC".to_string());
+        let reminders  = dto.reminders.unwrap_or(serde_json::json!([]));
+        let status     = dto.status.unwrap_or_else(|| "confirmed".to_string());
+        let visibility = dto.visibility.unwrap_or_else(|| "public".to_string());
+        let busy       = dto.busy.unwrap_or(true);
+
+        // `xmax = 0` is true only for freshly inserted rows, letting us tell an
+        // insert apart from an update. The `WHERE owner_id = ...` guard keeps an
+        // import from overwriting another user's event that shares the same UID.
+        let inserted: Option<bool> = sqlx::query_scalar(
+            r#"
+            INSERT INTO calendar.events
+                (calendar_id, owner_id, title, description, location, url,
+                 starts_at, ends_at, all_day, timezone, rrule, reminders,
+                 ical_uid, status, visibility, busy, color)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                    $13, $14, $15, $16, $17)
+            ON CONFLICT (ical_uid) DO UPDATE SET
+                calendar_id = EXCLUDED.calendar_id,
+                title       = EXCLUDED.title,
+                description = EXCLUDED.description,
+                location    = EXCLUDED.location,
+                url         = EXCLUDED.url,
+                starts_at   = EXCLUDED.starts_at,
+                ends_at     = EXCLUDED.ends_at,
+                all_day     = EXCLUDED.all_day,
+                timezone    = EXCLUDED.timezone,
+                rrule       = EXCLUDED.rrule,
+                sequence    = calendar.events.sequence + 1,
+                etag        = md5(random()::text),
+                updated_at  = now()
+            WHERE calendar.events.owner_id = EXCLUDED.owner_id
+            RETURNING (xmax = 0)
+            "#,
+        )
+        .bind(dto.calendar_id)
+        .bind(user_id)
+        .bind(&dto.title)
+        .bind(&dto.description)
+        .bind(&dto.location)
+        .bind(&dto.url)
+        .bind(dto.starts_at)
+        .bind(dto.ends_at)
+        .bind(all_day)
+        .bind(&timezone)
+        .bind(&dto.rrule)
+        .bind(&reminders)
+        .bind(ical_uid)
+        .bind(&status)
+        .bind(&visibility)
+        .bind(busy)
+        .bind(&dto.color)
+        .fetch_optional(db)
+        .await?;
+
+        if inserted.is_some() {
+            sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
+                .bind(dto.calendar_id)
+                .execute(db)
+                .await?;
+        }
+
+        Ok(inserted)
+    }
+
     /// Met à jour un événement, avec gestion de la portée de récurrence.
     pub async fn update(
         id: Uuid,

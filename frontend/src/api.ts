@@ -64,6 +64,14 @@ export interface CreateEventDto {
   busy?: boolean
 }
 
+export interface ImportResult {
+  total:    number
+  imported: number
+  updated:  number
+  skipped:  number
+  errors:   string[]
+}
+
 export interface Attendee {
   id:           string
   event_id:     string
@@ -244,6 +252,15 @@ export const calendarApi = {
 
   deleteEvent: async (id: string, scope?: string): Promise<void> => {
     await apiClient.delete(`/calendar/events/${id}`, { params: scope ? { scope } : {} })
+  },
+
+  // ── Import iCalendar (.ics) ───────────────────────────────────────────────────
+  importIcs: async (calendarId: string, icsContent: string): Promise<ImportResult> => {
+    const { data } = await apiClient.post('/calendar/import', {
+      calendar_id: calendarId,
+      ics_content: icsContent,
+    })
+    return data
   },
 
   // ── Invités (attendees) ──────────────────────────────────────────────────────

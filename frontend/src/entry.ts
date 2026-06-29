@@ -11,6 +11,7 @@ import { Calendar } from 'lucide-react'
 import {
   RouteRegistry,
   SlotRegistry,
+  ModuleServiceRegistry,
   ModuleSettingsRegistry,
   NotificationRegistry,
   WidgetRegistry,
@@ -55,7 +56,9 @@ export function register() {
   ])
 
   // The header gear button opens the per-user Calendar settings while in /calendar.
-  ModuleSettingsRegistry.register('calendar')
+  // Instance-wide (admin) settings live at /calendar/settings, reached from the
+  // admin Modules panel and a link on the user page.
+  ModuleSettingsRegistry.register('calendar', '/calendar/user-settings')
 
   // Declare the notification activities shown in the core Settings → Notifications matrix.
   NotificationRegistry.register({
@@ -114,13 +117,31 @@ export function register() {
     openPath:       '/calendar',
   })
 
+  // Inter-module service: lets the assistant (jarvis) drive the calendar UI —
+  // e.g. open the agenda on a given date — without any hard dependency.
+  ModuleServiceRegistry.publish('calendar', {
+    openDate: (arg?: { date?: string } | string) => {
+      const dateStr = typeof arg === 'string' ? arg : arg?.date
+      const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
+      if (!Number.isNaN(d.getTime())) useCalendarStore.getState().setCurrentDate(d)
+      // Navigate into the calendar if we're elsewhere (react-router v6 listens
+      // to popstate, so pushState + a popstate event triggers the route change).
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/calendar')) {
+        window.history.pushState({}, '', '/calendar/day')
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    },
+  })
+
   // Routes
   const CalendarApp          = lazy(() => import('./CalendarApp'))
   const CalendarSettingsPage = lazy(() => import('./CalendarSettingsPage'))
 
-  RouteRegistry.register('calendar',            CalendarApp)
-  RouteRegistry.register('calendar/scheduling', CalendarApp)
-  RouteRegistry.register('calendar/settings',   CalendarSettingsPage)
+  RouteRegistry.register('calendar',               CalendarApp)
+  RouteRegistry.register('calendar/scheduling',    CalendarApp)
+  // Per-user settings live in the module (reached via the header gear). Instance-wide
+  // (admin) settings are configured from the core admin console, not here.
+  RouteRegistry.register('calendar/user-settings', CalendarSettingsPage)
   // Vue dans l'URL : /calendar/day, /calendar/week, /calendar/month, /calendar/year.
   // (les routes statiques ci-dessus priment sur ce param dynamique côté react-router)
   RouteRegistry.register('calendar/:view',      CalendarApp)

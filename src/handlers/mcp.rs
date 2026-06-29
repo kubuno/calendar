@@ -10,10 +10,37 @@ use axum::{
     extract::{Query, State},
     Extension, Json,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+/// Flexible date-time parser for tool arguments: LLMs frequently emit a *naive*
+/// ISO string without a timezone (e.g. `2026-06-28T16:00:00`). `DateTime<Utc>`'s
+/// default serde expects an offset and otherwise fails with the confusing
+/// "premature end of input". Accept RFC 3339 (with offset/Z) AND common naive
+/// forms, treating the latter as UTC.
+fn parse_flexible_dt(s: &str) -> Option<DateTime<Utc>> {
+    let s = s.trim();
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"] {
+        if let Ok(ndt) = NaiveDateTime::parse_from_str(s, fmt) {
+            return Some(DateTime::from_naive_utc_and_offset(ndt, Utc));
+        }
+    }
+    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(DateTime::from_naive_utc_and_offset(d.and_hms_opt(0, 0, 0)?, Utc));
+    }
+    None
+}
+
+fn de_flexible_dt<'de, D>(de: D) -> std::result::Result<DateTime<Utc>, D::Error>
+where D: serde::Deserializer<'de> {
+    let s = String::deserialize(de)?;
+    parse_flexible_dt(&s).ok_or_else(|| serde::de::Error::custom(format!("date-heure invalide: « {s} »")))
+}
 
 use crate::{
     errors::Result,
@@ -67,7 +94,9 @@ pub async fn list_events(
 #[derive(Deserialize)]
 pub struct CreateEventArgs {
     pub title:       String,
+    #[serde(deserialize_with = "de_flexible_dt")]
     pub starts_at:   DateTime<Utc>,
+    #[serde(deserialize_with = "de_flexible_dt")]
     pub ends_at:     DateTime<Utc>,
     #[serde(default)]
     pub all_day:     Option<bool>,
