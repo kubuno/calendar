@@ -1,3 +1,4 @@
+pub mod appointment;
 pub mod attendee;
 pub mod calendar;
 pub mod event;

@@ -21,6 +21,9 @@ export default function CalendarCreateMenu() {
     if (!pathname.startsWith('/calendar')) navigate('/calendar')
   }
 
+  // Appointment schedules are created on a full dedicated page, not a modal.
+  const openScheduleEditor = () => navigate('/calendar/booking/new')
+
   return (
     <>
       <DropdownMenu.Item onSelect={openCreateModal} className={ITEM_CLASS}>
@@ -33,7 +36,7 @@ export default function CalendarCreateMenu() {
         {t('task')}
       </DropdownMenu.Item>
 
-      <DropdownMenu.Item className={ITEM_CLASS}>
+      <DropdownMenu.Item onSelect={openScheduleEditor} className={ITEM_CLASS}>
         <Clock size={16} className="text-text-secondary" />
         {t('appointment_schedule')}
       </DropdownMenu.Item>

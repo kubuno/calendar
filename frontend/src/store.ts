@@ -2,12 +2,18 @@ import { create } from 'zustand'
 
 export type ViewMode = 'day' | 'week' | 'month' | 'year'
 
-// Fuseau horaire secondaire (vue Jour) — préférence perso persistée localement.
+// Secondary time zone (Day view) — personal preference persisted locally.
 const SECONDARY_TZ_KEY = 'kubuno:calendar:secondary-tz'
 function loadSecondaryTz(): string | null {
   if (typeof localStorage === 'undefined') return null
   const v = localStorage.getItem(SECONDARY_TZ_KEY)
   return v && v.length > 0 ? v : null
+}
+
+const MOON_KEY = 'kubuno:calendar:moon'
+function loadMoonEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return true
+  return localStorage.getItem(MOON_KEY) !== 'off'
 }
 
 export interface CalendarSearchFilters {
@@ -45,6 +51,9 @@ interface CalendarState {
   weatherEnabled:    boolean
   weatherLocationId: string | null   // selected location id (null = use default)
 
+  // Moon phases (markers on the day/week/month views)
+  moonEnabled: boolean
+
   // Vue Jour — fuseau horaire secondaire (null = colonne unique)
   secondaryTimezone: string | null
 
@@ -58,6 +67,7 @@ interface CalendarState {
   clearSearch:          () => void
   setWeatherEnabled:    (v: boolean) => void
   setWeatherLocationId: (id: string | null) => void
+  setMoonEnabled:       (v: boolean) => void
   setSecondaryTimezone: (tz: string | null) => void
 }
 
@@ -73,6 +83,8 @@ export const useCalendarStore = create<CalendarState>((set) => ({
 
   weatherEnabled:    true,
   weatherLocationId: null,
+
+  moonEnabled: loadMoonEnabled(),
 
   secondaryTimezone: loadSecondaryTz(),
 
@@ -102,6 +114,10 @@ export const useCalendarStore = create<CalendarState>((set) => ({
 
   setWeatherEnabled:    (weatherEnabled)    => set({ weatherEnabled }),
   setWeatherLocationId: (weatherLocationId) => set({ weatherLocationId }),
+  setMoonEnabled: (moonEnabled) => {
+    try { localStorage.setItem(MOON_KEY, moonEnabled ? 'on' : 'off') } catch { /* quota / SSR */ }
+    set({ moonEnabled })
+  },
   setSecondaryTimezone: (secondaryTimezone) => {
     try {
       if (secondaryTimezone) localStorage.setItem(SECONDARY_TZ_KEY, secondaryTimezone)

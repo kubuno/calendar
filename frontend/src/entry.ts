@@ -1,10 +1,10 @@
 /**
- * Point d'entrée du bundle MODULE calendar (chargé à l'exécution par le host).
+ * Entry point of the calendar MODULE bundle (loaded at runtime by the host).
  *
- * Buildé séparément via `vite.module.config.ts` : tous les specifiers partagés
- * (`@kubuno/sdk`, `@ui`, react…) sont `external` et résolus au runtime par
- * l'import map du host. Le host appelle `register()` après avoir importé ce
- * fichier ; `sdkVersion` permet de rejeter proprement une incompatibilité.
+ * Built separately via `vite.module.config.ts`: every shared specifier
+ * (`@kubuno/sdk`, `@ui`, react…) is `external` and resolved at runtime by the
+ * host's import map. The host calls `register()` after importing this file;
+ * `sdkVersion` lets it cleanly reject an incompatibility.
  */
 import { lazy } from 'react'
 import { Calendar } from 'lucide-react'
@@ -36,20 +36,14 @@ import CalendarFilterPanel from './CalendarFilterPanel'
 import CalendarEventsWidget from './CalendarEventsWidget'
 import CalendarWeatherWidget from './CalendarWeatherWidget'
 import CalendarNotificationWorker from './CalendarNotificationWorker'
+import EventDataCard from './EventDataCard'
+import EventPickerDialog, { pickEvent } from './EventPickerDialog'
+import { registerDataCardRenderer } from './kubunoData'
 
 export const sdkVersion = SDK_VERSION
 
 export function register() {
   FaviconRegistry.register('calendar', '/calendar-logo.svg')
-
-  // Police JetBrains Mono pour les libellés d'heures de la vue Jour (chargée une seule fois).
-  if (typeof document !== 'undefined' && !document.getElementById('kubuno-jetbrains-mono')) {
-    const link = document.createElement('link')
-    link.id = 'kubuno-jetbrains-mono'
-    link.rel = 'stylesheet'
-    link.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap'
-    document.head.appendChild(link)
-  }
 
   WaffleAppRegistry.register('calendar', 'Calendar', [
     { id: 'calendar', label: 'Calendar', Icon: CalendarLogo, path: '/calendar' },
@@ -75,6 +69,9 @@ export function register() {
 
   // Notification worker mounted globally at shell level (runs on all routes)
   SlotRegistry.register('app-dialogs', 'calendar', CalendarNotificationWorker)
+  // Event picker, likewise global: consumer modules (chat…) open it from anywhere
+  // through the `calendar.pickEvent` service below.
+  SlotRegistry.register('app-dialogs', 'calendar', EventPickerDialog)
 
   WidgetRegistry.register({ id: 'calendar-events',  moduleId: 'calendar', Component: CalendarEventsWidget,  size: 'medium', order: 10 })
   WidgetRegistry.register({ id: 'calendar-weather', moduleId: 'calendar', Component: CalendarWeatherWidget, size: 'large',  order: 11 })
@@ -117,9 +114,14 @@ export function register() {
     openPath:       '/calendar',
   })
 
-  // Inter-module service: lets the assistant (jarvis) drive the calendar UI —
-  // e.g. open the agenda on a given date — without any hard dependency.
+  // Inter-module services: let other modules drive the calendar UI without any
+  // hard dependency — the assistant (jarvis) opens the agenda on a given date,
+  // chat asks the user to pick an event to insert into a conversation.
   ModuleServiceRegistry.publish('calendar', {
+    // () => Promise<KubunoDataEnvelope | null> — opens the event picker and
+    // resolves with the chosen event's `calendar.event` envelope (null = cancelled).
+    pickEvent,
+
     openDate: (arg?: { date?: string } | string) => {
       const dateStr = typeof arg === 'string' ? arg : arg?.date
       const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
@@ -133,16 +135,28 @@ export function register() {
     },
   })
 
+  // `calendar.event` JSON envelopes (event "Copier" in the detail panel, event
+  // picker): consumer modules (chat, notes…) resolve this card through `core.data-card`.
+  registerDataCardRenderer('calendar', {
+    types: ['calendar.event'],
+    Component: EventDataCard,
+  })
+
   // Routes
-  const CalendarApp          = lazy(() => import('./CalendarApp'))
-  const CalendarSettingsPage = lazy(() => import('./CalendarSettingsPage'))
+  const CalendarApp             = lazy(() => import('./CalendarApp'))
+  const CalendarSettingsPage    = lazy(() => import('./CalendarSettingsPage'))
+  const AppointmentSchedulePage = lazy(() => import('./AppointmentScheduleEditor'))
 
   RouteRegistry.register('calendar',               CalendarApp)
   RouteRegistry.register('calendar/scheduling',    CalendarApp)
+  // Appointment-schedule editor — a full dedicated page (two panes), not a modal.
+  // `new` creates; any other value edits that schedule id. 3 segments → never
+  // collides with the `calendar/:view` param route below.
+  RouteRegistry.register('calendar/booking/:id',   AppointmentSchedulePage)
   // Per-user settings live in the module (reached via the header gear). Instance-wide
   // (admin) settings are configured from the core admin console, not here.
   RouteRegistry.register('calendar/user-settings', CalendarSettingsPage)
-  // Vue dans l'URL : /calendar/day, /calendar/week, /calendar/month, /calendar/year.
-  // (les routes statiques ci-dessus priment sur ce param dynamique côté react-router)
+  // View in the URL: /calendar/day, /calendar/week, /calendar/month, /calendar/year.
+  // (the static routes above take precedence over this dynamic param in react-router)
   RouteRegistry.register('calendar/:view',      CalendarApp)
 }

@@ -17,16 +17,16 @@ struct CalColor {
 pub struct EventService;
 
 impl EventService {
-    /// Liste les occurrences (instances) dans la fenêtre [from, until].
+    /// List the occurrences (instances) within the [from, until] window.
     pub async fn list(
         user_id: Uuid,
         query: EventsQuery,
         db: &PgPool,
     ) -> Result<Vec<EventInstance>> {
-        let from  = query.from.unwrap_or_else(|| Utc::now());
+        let from  = query.from.unwrap_or_else(Utc::now);
         let until = query.until.unwrap_or_else(|| from + Duration::days(30));
 
-        // Récupérer les calendriers accessibles et leur couleur
+        // Fetch the accessible calendars and their color
         let cal_colors: Vec<CalColor> = sqlx::query_as::<_, (Uuid, String)>(
             r#"
             SELECT DISTINCT c.id, c.color
@@ -56,18 +56,18 @@ impl EventService {
             return Ok(vec![]);
         }
 
-        // Charger les événements de base dans la fenêtre
-        // Inclut les récurrents qui commencent avant until (pour expansion)
+        // Load the base events within the window
+        // Includes recurring ones starting before until (for expansion)
         let base_events: Vec<Event> = sqlx::query_as::<_, Event>(
             r#"
             SELECT * FROM calendar.events
             WHERE calendar_id = ANY($1)
               AND parent_event_id IS NULL
               AND (
-                  -- Événements simples dans la fenêtre
+                  -- Plain events within the window
                   (rrule IS NULL AND starts_at < $3 AND ends_at > $2)
                   OR
-                  -- Récurrents: on les charge tous et on filtre par expansion
+                  -- Recurring: load them all and filter through expansion
                   (rrule IS NOT NULL AND starts_at < $3)
               )
             ORDER BY starts_at
@@ -79,7 +79,7 @@ impl EventService {
         .fetch_all(db)
         .await?;
 
-        // Charger les exceptions d'occurrences dans la fenêtre
+        // Load the occurrence exceptions within the window
         let exception_events: Vec<Event> = sqlx::query_as::<_, Event>(
             r#"
             SELECT * FROM calendar.events
@@ -100,7 +100,7 @@ impl EventService {
         let mut instances: Vec<EventInstance> = Vec::new();
 
         for event in &base_events {
-            // Couleur de l'événement (sinon héritée du calendrier).
+            // Event color (otherwise inherited from the calendar).
             let color = event.color.clone().or_else(|| color_map.get(&event.calendar_id).cloned());
             if event.rrule.is_some() {
                 let expanded = RecurrenceService::expand(event, color, from, until);
@@ -110,8 +110,8 @@ impl EventService {
             }
         }
 
-        // Supprimer les occurrences remplacées par des exceptions
-        // et ajouter les exceptions elles-mêmes
+        // Remove the occurrences replaced by exceptions
+        // and add the exceptions themselves
         for exc in &exception_events {
             let parent_id     = exc.parent_event_id.unwrap();
             let recurrence_ts = exc.recurrence_id.map(|d| d.timestamp()).unwrap_or(0);
@@ -130,7 +130,7 @@ impl EventService {
         Ok(instances)
     }
 
-    /// Récupère un événement par son ID.
+    /// Fetch an event by its ID.
     pub async fn get(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Event> {
         let event = sqlx::query_as::<_, Event>(
             r#"
@@ -151,14 +151,14 @@ impl EventService {
         Ok(event)
     }
 
-    /// Crée un nouvel événement.
+    /// Create a new event.
     pub async fn create(user_id: Uuid, dto: CreateEventDto, db: &PgPool) -> Result<Event> {
-        // Valider la RRULE si présente
+        // Validate the RRULE when present
         if let Some(ref rrule) = dto.rrule {
             RecurrenceService::validate_rrule(rrule)?;
         }
 
-        // Vérifier accès au calendrier
+        // Check access to the calendar
         Self::check_calendar_write_access(dto.calendar_id, user_id, db).await?;
 
         let all_day   = dto.all_day.unwrap_or(false);
@@ -172,10 +172,10 @@ impl EventService {
         let event = sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO calendar.events
-                (calendar_id, owner_id, title, description, location, url,
+                (id, calendar_id, owner_id, title, description, location, url,
                  starts_at, ends_at, all_day, timezone, rrule, reminders,
                  ical_uid, status, visibility, busy, color)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            VALUES (COALESCE($18, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
                     $13, $14, $15, $16, $17)
             RETURNING *
             "#,
@@ -197,10 +197,11 @@ impl EventService {
         .bind(&visibility)
         .bind(busy)
         .bind(&dto.color)
+        .bind(dto.id)
         .fetch_one(db)
         .await?;
 
-        // Mettre à jour le ctag du calendrier
+        // Update the calendar's ctag
         sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
             .bind(dto.calendar_id)
             .execute(db)
@@ -293,12 +294,13 @@ impl EventService {
         Ok(inserted)
     }
 
-    /// Met à jour un événement, avec gestion de la portée de récurrence.
+    /// Update an event, handling the recurrence scope.
     pub async fn update(
         id: Uuid,
         user_id: Uuid,
         dto: UpdateEventDto,
         scope: RecurrenceScope,
+        occurrence_dt: Option<DateTime<Utc>>,
         db: &PgPool,
     ) -> Result<Event> {
         let event = Self::get_owned(id, user_id, db).await?;
@@ -307,9 +309,55 @@ impl EventService {
             RecurrenceService::validate_rrule(rrule)?;
         }
 
+        // "This event only" on a series: detach the occurrence — exdate on
+        // the master + a standalone copy (without rrule) carrying the changes,
+        // linked via parent_event_id so that "this and following" can purge
+        // future exceptions.
+        if matches!(scope, RecurrenceScope::This) && event.rrule.is_some() {
+            if let Some(occ) = occurrence_dt {
+                sqlx::query(
+                    "UPDATE calendar.events
+                        SET exdates = array_append(exdates, $2),
+                            sequence = sequence + 1, etag = md5(random()::text)
+                      WHERE id = $1",
+                )
+                .bind(id)
+                .bind(occ)
+                .execute(db)
+                .await?;
+
+                let occ_duration = event.ends_at - event.starts_at;
+                let new_dto = CreateEventDto {
+                    id: None,
+                    calendar_id: dto.calendar_id.unwrap_or(event.calendar_id),
+                    title:       dto.title.unwrap_or(event.title),
+                    description: dto.description.or(event.description),
+                    location:    dto.location.or(event.location),
+                    url:         dto.url.or(event.url),
+                    starts_at:   dto.starts_at.unwrap_or(occ),
+                    ends_at:     dto.ends_at.unwrap_or(occ + occ_duration),
+                    all_day:     dto.all_day.or(Some(event.all_day)),
+                    timezone:    dto.timezone.or(Some(event.timezone)),
+                    color:       if dto.clear_color { None } else { dto.color.or(event.color) },
+                    rrule:       None,
+                    reminders:   dto.reminders.or(Some(event.reminders)),
+                    status:      dto.status.or(Some(event.status)),
+                    visibility:  dto.visibility.or(Some(event.visibility)),
+                    busy:        dto.busy.or(Some(event.busy)),
+                };
+                let created = Self::create(user_id, new_dto, db).await?;
+                sqlx::query("UPDATE calendar.events SET parent_event_id = $2 WHERE id = $1")
+                    .bind(created.id)
+                    .bind(id)
+                    .execute(db)
+                    .await?;
+                return Ok(created);
+            }
+        }
+
         match scope {
             RecurrenceScope::All | RecurrenceScope::This => {
-                // Mise à jour directe de l'événement
+                // Direct update of the event
                 let title      = dto.title.unwrap_or(event.title);
                 let description = dto.description.or(event.description);
                 let location   = dto.location.or(event.location);
@@ -318,7 +366,7 @@ impl EventService {
                 let ends_at    = dto.ends_at.unwrap_or(event.ends_at);
                 let all_day    = dto.all_day.unwrap_or(event.all_day);
                 let timezone   = dto.timezone.unwrap_or(event.timezone);
-                let rrule      = if dto.rrule.is_some() { dto.rrule } else { event.rrule };
+                let rrule      = if dto.clear_rrule { None } else if dto.rrule.is_some() { dto.rrule } else { event.rrule };
                 let reminders  = dto.reminders.unwrap_or(event.reminders);
                 let status     = dto.status.unwrap_or(event.status);
                 let visibility = dto.visibility.unwrap_or(event.visibility);
@@ -355,7 +403,7 @@ impl EventService {
                 .fetch_one(db)
                 .await?;
 
-                // Mise à jour ctag
+                // Update ctag
                 sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
                     .bind(event.calendar_id)
                     .execute(db)
@@ -364,22 +412,18 @@ impl EventService {
                 Ok(updated)
             }
             RecurrenceScope::Following => {
-                // Tronquer la récurrence parente et créer un nouveau master
-                // pour les occurrences suivantes
-                let starts_at_new = dto.starts_at.unwrap_or(event.starts_at);
+                // Truncate the parent recurrence and create a new master
+                // for the following occurrences
+                let starts_at_new = occurrence_dt.or(dto.starts_at).unwrap_or(event.starts_at);
 
-                // Ajouter UNTIL sur la récurrence parente pour la terminer avant
+                // End the parent recurrence just before this occurrence
                 let old_until = starts_at_new - Duration::seconds(1);
                 let until_str = old_until.format("%Y%m%dT%H%M%SZ").to_string();
-                let new_rrule = if let Some(ref r) = event.rrule {
-                    if r.contains("UNTIL=") {
-                        r.clone()
-                    } else {
-                        format!("{};UNTIL={}", r, until_str)
-                    }
-                } else {
-                    event.rrule.clone().unwrap_or_default()
-                };
+                let new_rrule = event
+                    .rrule
+                    .as_deref()
+                    .map(|r| Self::truncated_rrule(r, &until_str))
+                    .unwrap_or_default();
 
                 sqlx::query("UPDATE calendar.events SET rrule = $2 WHERE id = $1")
                     .bind(id)
@@ -387,8 +431,9 @@ impl EventService {
                     .execute(db)
                     .await?;
 
-                // Créer un nouveau maître avec les nouvelles valeurs
+                // Create a new master with the new values
                 let new_dto = CreateEventDto {
+                id: None,
                     calendar_id:  dto.calendar_id.unwrap_or(event.calendar_id),
                     title:        dto.title.unwrap_or(event.title),
                     description:  dto.description.or(event.description),
@@ -410,7 +455,7 @@ impl EventService {
         }
     }
 
-    /// Supprime un événement (ou une portée d'occurrences).
+    /// Delete an event (or a scope of occurrences).
     pub async fn delete(
         id: Uuid,
         user_id: Uuid,
@@ -428,7 +473,7 @@ impl EventService {
                     .await?;
             }
             RecurrenceScope::This => {
-                // Ajouter une exdate pour masquer cette occurrence
+                // Add an exdate to hide this occurrence
                 if let Some(occ_dt) = occurrence_dt {
                     sqlx::query(
                         "UPDATE calendar.events SET exdates = array_append(exdates, $2) WHERE id = $1",
@@ -448,17 +493,17 @@ impl EventService {
                 if let Some(occ_dt) = occurrence_dt {
                     let until = occ_dt - Duration::seconds(1);
                     let until_str = until.format("%Y%m%dT%H%M%SZ").to_string();
-                    let new_rrule = if let Some(ref r) = event.rrule {
-                        format!("{};UNTIL={}", r, until_str)
-                    } else {
-                        event.rrule.clone().unwrap_or_default()
-                    };
+                    let new_rrule = event
+                        .rrule
+                        .as_deref()
+                        .map(|r| Self::truncated_rrule(r, &until_str))
+                        .unwrap_or_default();
                     sqlx::query("UPDATE calendar.events SET rrule = $2 WHERE id = $1")
                         .bind(id)
                         .bind(&new_rrule)
                         .execute(db)
                         .await?;
-                    // Supprimer les exceptions futures
+                    // Remove future exceptions
                     sqlx::query(
                         "DELETE FROM calendar.events WHERE parent_event_id = $1 AND starts_at >= $2",
                     )
@@ -479,6 +524,20 @@ impl EventService {
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
+
+    /// Rewrites an RRULE so the series ends at `until_str`, dropping any prior
+    /// UNTIL/COUNT (appending a second UNTIL would produce an invalid rule).
+    fn truncated_rrule(rrule: &str, until_str: &str) -> String {
+        let base = rrule
+            .split(';')
+            .filter(|p| {
+                let u = p.to_ascii_uppercase();
+                !u.starts_with("UNTIL=") && !u.starts_with("COUNT=") && !p.is_empty()
+            })
+            .collect::<Vec<_>>()
+            .join(";");
+        format!("{base};UNTIL={until_str}")
+    }
 
     async fn get_owned(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Event> {
         sqlx::query_as::<_, Event>(

@@ -178,7 +178,7 @@ pub async fn get_forecast(
         .weather
         .forecast(q.lat, q.lon, &q.tz)
         .await
-        .map_err(|e| crate::errors::CalendarError::Internal(e))?;
+        .map_err(crate::errors::CalendarError::Internal)?;
 
     Ok(Json(serde_json::json!({ "forecast": forecast })))
 }
@@ -205,7 +205,7 @@ pub async fn geocode(
         .weather
         .geocode(&q.q, q.lang.as_deref())
         .await
-        .map_err(|e| crate::errors::CalendarError::Internal(e))?;
+        .map_err(crate::errors::CalendarError::Internal)?;
 
     Ok(Json(serde_json::json!({ "results": results })))
 }

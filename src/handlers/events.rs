@@ -26,6 +26,8 @@ pub struct DeleteQuery {
 pub struct UpdateQuery {
     #[serde(default)]
     pub scope: RecurrenceScope,
+    /// Start of the targeted occurrence (required for scope=this on a series).
+    pub occurrence: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn list(
@@ -75,8 +77,8 @@ pub async fn update(
     Query(q): Query<UpdateQuery>,
     Json(dto): Json<UpdateEventDto>,
 ) -> Result<Json<serde_json::Value>> {
-    let event = EventService::update(id, user.id, dto, q.scope, &state.db).await?;
-    // Notifier les personnes avec qui l'événement est partagé.
+    let event = EventService::update(id, user.id, dto, q.scope, q.occurrence, &state.db).await?;
+    // Notify the people the event is shared with.
     {
         let state2 = state.clone();
         let user_id = user.id;

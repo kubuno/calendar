@@ -15,7 +15,7 @@ use crate::{
     state::AppState,
 };
 
-/// Informations sur un RSVP (depuis le lien email)
+/// Information about an RSVP (from the e-mail link)
 pub async fn rsvp_info(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -53,7 +53,7 @@ pub async fn rsvp_info(
     })))
 }
 
-/// Réponse à un RSVP depuis le lien email (sans authentification)
+/// RSVP response from the e-mail link (no authentication)
 pub async fn rsvp_respond(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -83,6 +83,110 @@ pub async fn rsvp_respond(
     Ok(Json(serde_json::json!({ "attendee": attendee, "message": "Réponse enregistrée" })))
 }
 
+/// Standalone RSVP page (minimal HTML, no shell nor authentication): the guest
+/// opens the received link, sees the event and answers Yes / Maybe / No.
+pub async fn rsvp_page(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<axum::response::Html<String>> {
+    // Reuse the same validation as rsvp_info.
+    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
+        r#"
+        SELECT a.* FROM calendar.attendees a
+        WHERE a.rsvp_token = $1
+          AND (a.rsvp_expires_at IS NULL OR a.rsvp_expires_at > NOW())
+        "#,
+    )
+    .bind(&token)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
+
+    let event: crate::models::event::Event = sqlx::query_as::<_, crate::models::event::Event>(
+        "SELECT * FROM calendar.events WHERE id = $1",
+    )
+    .bind(attendee.event_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| CalendarError::NotFound("Événement introuvable".to_string()))?;
+
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    let title    = esc(&event.title);
+    let location = event.location.as_deref().map(esc).unwrap_or_default();
+    let date_str = event.starts_at.format("%d/%m/%Y %H:%M").to_string();
+    let end_str  = event.ends_at.format("%H:%M").to_string();
+    let guest    = esc(attendee.display_name.as_deref().unwrap_or(&attendee.email));
+    let current  = attendee.status.clone();
+    let token_js = esc(&token);
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invitation — {title}</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; margin: 0;
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
+  .card {{ background: #fff; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
+          padding: 32px; max-width: 420px; width: calc(100% - 32px); }}
+  h1 {{ font-size: 20px; margin: 0 0 4px; color: #111827; }}
+  .meta {{ color: #6b7280; font-size: 14px; margin: 2px 0; }}
+  .guest {{ margin: 18px 0 10px; font-size: 14px; color: #374151; }}
+  .btns {{ display: flex; gap: 8px; margin-top: 14px; }}
+  button {{ flex: 1; padding: 10px 0; border-radius: 10px; border: 1px solid #d1d5db;
+           background: #fff; font-size: 14px; cursor: pointer; }}
+  button:hover {{ background: #f9fafb; }}
+  button.active {{ border-color: #4d38db; background: #4d38db; color: #fff; }}
+  #msg {{ margin-top: 14px; font-size: 13px; color: #059669; min-height: 18px; }}
+</style></head><body>
+<div class="card">
+  <h1>{title}</h1>
+  <p class="meta">📅 {date_str} – {end_str}</p>
+  {location_line}
+  <p class="guest">Bonjour <strong>{guest}</strong>, participerez-vous ?</p>
+  <div class="btns">
+    <button id="accepted">Oui</button>
+    <button id="tentative">Peut-être</button>
+    <button id="declined">Non</button>
+  </div>
+  <p id="msg"></p>
+</div>
+<script>
+  const current = "{current}";
+  const mark = s => document.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.id === s));
+  if (current !== 'needs-action') mark(current);
+  for (const id of ['accepted', 'tentative', 'declined']) {{
+    document.getElementById(id).onclick = async () => {{
+      const r = await fetch('/api/v1/calendar/public/rsvp/{token_js}', {{
+        method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ status: id }})
+      }});
+      if (r.ok) {{ mark(id); document.getElementById('msg').textContent = 'Réponse enregistrée, merci !'; }}
+      else document.getElementById('msg').textContent = 'Erreur — réessayez.';
+    }};
+  }}
+</script>
+</body></html>"#,
+        title = title,
+        date_str = date_str,
+        end_str = end_str,
+        guest = guest,
+        current = current,
+        token_js = token_js,
+        location_line = if location.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<p class="meta">📍 {location}</p>"#)
+        },
+    );
+
+    Ok(axum::response::Html(html))
+}
+
 /// Informations sur un sondage public
 pub async fn poll_info(
     State(state): State<AppState>,
@@ -92,7 +196,7 @@ pub async fn poll_info(
     let slots = SchedulingService::get_poll_slots(poll.id, &state.db).await?;
     let responses = SchedulingService::get_poll_responses(poll.id, &state.db).await?;
 
-    // Vérifier expiration
+    // Check expiration
     if let Some(expires_at) = poll.expires_at {
         if expires_at < Utc::now() {
             return Err(CalendarError::Validation("Ce sondage a expiré".to_string()));
@@ -106,7 +210,7 @@ pub async fn poll_info(
     })))
 }
 
-/// Répondre à un sondage public (sans authentification complète)
+/// Respond to a public poll (without full authentication)
 pub async fn poll_respond(
     State(state): State<AppState>,
     Path(token): Path<String>,

@@ -9,13 +9,17 @@ use crate::{
 pub struct CalendarService;
 
 impl CalendarService {
-    /// Liste les calendriers d'un utilisateur (propres + partagés avec lui).
+    /// List a user's calendars (own + shared with them).
     pub async fn list(user_id: Uuid, db: &PgPool) -> Result<Vec<Calendar>> {
+        // `my_permission` tells the caller what they may do with each calendar
+        // ('owner' | 'write' | 'read') so the UI can grey out what's read-only.
         let rows = sqlx::query_as::<_, Calendar>(
             r#"
-            SELECT DISTINCT c.*
+            SELECT c.*,
+                   CASE WHEN c.owner_id = $1 THEN 'owner' ELSE cs.permission END AS my_permission
             FROM calendar.calendars c
-            LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id
+            LEFT JOIN calendar.calendar_shares cs
+                   ON cs.calendar_id = c.id AND cs.shared_with = $1
             WHERE c.owner_id = $1
                OR cs.shared_with = $1
             ORDER BY c.is_default DESC, c.name ASC
@@ -27,7 +31,19 @@ impl CalendarService {
         Ok(rows)
     }
 
-    /// Récupère un calendrier par son ID, vérifie l'accès.
+    /// List the shares of a calendar (owner only).
+    pub async fn list_shares(id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<Vec<CalendarShare>> {
+        Self::get_owned(id, owner_id, db).await?;
+        let rows = sqlx::query_as::<_, CalendarShare>(
+            "SELECT * FROM calendar.calendar_shares WHERE calendar_id = $1 ORDER BY created_at",
+        )
+        .bind(id)
+        .fetch_all(db)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Fetch a calendar by its ID, checking access.
     pub async fn get(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Calendar> {
         let row = sqlx::query_as::<_, Calendar>(
             r#"
@@ -47,14 +63,14 @@ impl CalendarService {
         Ok(row)
     }
 
-    /// Crée un nouveau calendrier.
+    /// Create a new calendar.
     pub async fn create(user_id: Uuid, dto: CreateCalendarDto, db: &PgPool) -> Result<Calendar> {
         let color    = dto.color.unwrap_or_else(|| "#4D38DB".to_string());
         let cal_type = dto.cal_type.unwrap_or_else(|| "personal".to_string());
         let timezone = dto.timezone.unwrap_or_else(|| "UTC".to_string());
         let is_public = dto.is_public.unwrap_or(false);
 
-        // Vérifier si c'est le premier calendrier (→ par défaut)
+        // Check whether this is the first calendar (→ default)
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM calendar.calendars WHERE owner_id = $1")
             .bind(user_id)
             .fetch_one(db)
@@ -64,8 +80,8 @@ impl CalendarService {
         let row = sqlx::query_as::<_, Calendar>(
             r#"
             INSERT INTO calendar.calendars
-                (owner_id, name, description, color, cal_type, is_default, timezone, is_public)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (id, owner_id, name, description, color, cal_type, is_default, timezone, is_public)
+            VALUES (COALESCE($9, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
             "#,
         )
@@ -77,15 +93,16 @@ impl CalendarService {
         .bind(is_default)
         .bind(&timezone)
         .bind(is_public)
+        .bind(dto.id)
         .fetch_one(db)
         .await?;
 
         Ok(row)
     }
 
-    /// Met à jour un calendrier.
+    /// Update a calendar.
     pub async fn update(id: Uuid, user_id: Uuid, dto: UpdateCalendarDto, db: &PgPool) -> Result<Calendar> {
-        // Vérifier ownership
+        // Check ownership
         let cal = Self::get_owned(id, user_id, db).await?;
 
         let name       = dto.name.unwrap_or(cal.name);
@@ -118,7 +135,7 @@ impl CalendarService {
         Ok(row)
     }
 
-    /// Supprime un calendrier et tous ses événements (CASCADE).
+    /// Delete a calendar and all its events (CASCADE).
     pub async fn delete(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<()> {
         let cal = Self::get_owned(id, user_id, db).await?;
         if cal.is_default {
@@ -133,7 +150,7 @@ impl CalendarService {
         Ok(())
     }
 
-    /// Partage un calendrier avec un autre utilisateur.
+    /// Share a calendar with another user.
     pub async fn share(id: Uuid, owner_id: Uuid, dto: ShareCalendarDto, db: &PgPool) -> Result<CalendarShare> {
         Self::get_owned(id, owner_id, db).await?;
         let permission = dto.permission.unwrap_or_else(|| "read".to_string());
@@ -169,7 +186,7 @@ impl CalendarService {
         Ok(())
     }
 
-    /// Récupère un calendrier dont l'utilisateur est propriétaire.
+    /// Fetch a calendar owned by the user.
     async fn get_owned(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Calendar> {
         sqlx::query_as::<_, Calendar>(
             "SELECT * FROM calendar.calendars WHERE id = $1 AND owner_id = $2",

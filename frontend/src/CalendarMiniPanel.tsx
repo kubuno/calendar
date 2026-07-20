@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { calendarApi, type EventInstance, type Calendar } from './api'
 import { useCalendarStore } from './store'
+import { MonoText } from './MonoText'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -296,18 +297,17 @@ function DayView({
                   left: '46px',
                   right: '4px',
                   backgroundColor: color + '25',
-                  borderLeft: `3px solid ${color}`,
-                  borderRadius: '0 4px 4px 0',
+                  borderRadius: '4px',
                 }}
                 className="absolute px-1.5 py-0.5 cursor-pointer hover:opacity-80 overflow-hidden text-left"
               >
                 <p className="text-[10px] font-semibold leading-tight truncate" style={{ color }}>
                   {ev.title}
-                  {height >= 22 && `, ${format(start, 'HH:mm')}`}
+                  {height >= 22 && <>, <MonoText>{format(start, 'HH:mm')}</MonoText></>}
                 </p>
                 {height >= 34 && (
                   <p className="text-[9px] leading-none" style={{ color: color + 'bb' }}>
-                    {format(start, 'HH:mm')} – {format(end, 'HH:mm')}
+                    <MonoText>{format(start, 'HH:mm')}</MonoText> – <MonoText>{format(end, 'HH:mm')}</MonoText>
                   </p>
                 )}
               </button>
@@ -367,7 +367,7 @@ function PlanningView({
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-text-primary truncate">{ev.title}</p>
                       {!ev.all_day && (
-                        <p className="text-[10px] text-text-tertiary">{format(start, 'HH:mm')}</p>
+                        <p className="text-[10px] text-text-tertiary"><MonoText>{format(start, 'HH:mm')}</MonoText></p>
                       )}
                     </div>
                   </button>
@@ -446,7 +446,7 @@ export default function CalendarMiniPanel() {
 
   const pickerRef = useRef<HTMLDivElement>(null)
 
-  // Close picker popover on outside click (le menu ⋮ gère lui-même sa fermeture)
+  // Close picker popover on outside click (the ⋮ menu handles its own closing)
   useEffect(() => {
     if (!pickerOpen) return
     const handler = (e: MouseEvent) => {

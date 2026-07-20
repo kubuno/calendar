@@ -10,7 +10,11 @@ use crate::{
 pub struct AvailabilityService;
 
 impl AvailabilityService {
-    /// Trouve les créneaux libres communs entre plusieurs utilisateurs.
+    /// Find the common free slots between several users.
+    ///
+    /// A single query loads every busy interval of the window (recurring
+    /// series are expanded in memory), then a stepped sweep
+    /// de 30 min calcule la proportion de participants disponibles (score).
     pub async fn find_common_slots(
         query: AvailabilityQuery,
         db: &PgPool,
@@ -19,39 +23,58 @@ impl AvailabilityService {
             return Ok(vec![]);
         }
 
+        // Every "busy" event of the window — including recurring masters
+        // whose occurrences may fall inside it (earlier starts_at).
+        let events: Vec<crate::models::event::Event> = sqlx::query_as(
+            r#"
+            SELECT e.*
+            FROM calendar.events e
+            WHERE e.owner_id = ANY($1)
+              AND e.busy = TRUE
+              AND e.status != 'cancelled'
+              AND (
+                    (e.rrule IS NULL AND e.starts_at < $3 AND e.ends_at > $2)
+                 OR (e.rrule IS NOT NULL AND e.starts_at < $3)
+              )
+            "#,
+        )
+        .bind(&query.user_ids)
+        .bind(query.from)
+        .bind(query.until)
+        .fetch_all(db)
+        .await?;
+
+        // Busy intervals per user (recurrences expanded).
+        let mut busy: Vec<(Uuid, DateTime<Utc>, DateTime<Utc>)> = Vec::new();
+        for e in &events {
+            if e.rrule.is_some() {
+                for occ in crate::services::recurrence_service::RecurrenceService::expand(
+                    e, None, query.from, query.until,
+                ) {
+                    busy.push((e.owner_id, occ.starts_at, occ.ends_at));
+                }
+            } else {
+                busy.push((e.owner_id, e.starts_at, e.ends_at));
+            }
+        }
+
         let mut slots: Vec<AvailableSlot> = Vec::new();
         let slot_duration = Duration::minutes(30);
+        let user_count = query.user_ids.len() as f64;
         let mut cursor = query.from;
 
         while cursor < query.until {
             let slot_end = cursor + slot_duration;
-            let user_count = query.user_ids.len() as f64;
 
-            // Compter les conflits par utilisateur
-            let busy_count: i64 = sqlx::query_scalar(
-                r#"
-                SELECT COUNT(DISTINCT e.owner_id)
-                FROM calendar.events e
-                JOIN calendar.calendars c ON c.id = e.calendar_id
-                WHERE e.owner_id = ANY($1)
-                  AND e.busy = TRUE
-                  AND e.status != 'cancelled'
-                  AND e.rrule IS NULL
-                  AND e.starts_at < $3
-                  AND e.ends_at > $2
-                "#,
-            )
-            .bind(&query.user_ids)
-            .bind(cursor)
-            .bind(slot_end)
-            .fetch_one(db)
-            .await?;
-
-            let free_count = user_count - busy_count as f64;
-            let score = free_count / user_count;
+            let busy_users: std::collections::HashSet<Uuid> = busy
+                .iter()
+                .filter(|(_, s, e)| *s < slot_end && *e > cursor)
+                .map(|(u, _, _)| *u)
+                .collect();
+            let score = (user_count - busy_users.len() as f64) / user_count;
 
             if score > 0.0 {
-                // Fusionner avec le créneau précédent si adjacent
+                // Merge with the previous slot when adjacent with the same score
                 if let Some(last) = slots.last_mut() {
                     if last.ends_at == cursor && (last.score - score).abs() < 0.01 {
                         last.ends_at = slot_end;
@@ -72,7 +95,7 @@ impl AvailabilityService {
         Ok(slots)
     }
 
-    /// Retourne les événements d'un utilisateur dans une fenêtre (pour affichage de dispo).
+    /// Return a user's events within a window (for availability display).
     pub async fn get_user_availability(
         user_id: Uuid,
         from: DateTime<Utc>,

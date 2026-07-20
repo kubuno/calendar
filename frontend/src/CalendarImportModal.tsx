@@ -19,7 +19,11 @@ export default function CalendarImportModal({ onClose }: { onClose: () => void }
     queryKey: ['calendar-calendars'],
     queryFn:  calendarApi.listCalendars,
   })
-  const calendars = useMemo(() => calData?.calendars ?? [], [calData])
+  // Only calendars the user can WRITE to are valid import targets (read-only
+  // shares and subscription mirrors would reject the import with a 403).
+  const calendars = useMemo(() => (calData?.calendars ?? []).filter(c =>
+    (c.my_permission == null || c.my_permission === 'owner' || c.my_permission === 'write')
+    && !c.subscription_url), [calData])
 
   const [calendarId, setCalendarId] = useState<string>('')
   const [files, setFiles]   = useState<File[]>([])
@@ -139,7 +143,7 @@ export default function CalendarImportModal({ onClose }: { onClose: () => void }
                 <span className="text-xs text-text-tertiary shrink-0">{(f.size / 1024).toFixed(1)} Ko</span>
                 <button
                   onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
-                  className="text-text-tertiary hover:text-error transition-colors"
+                  className="text-text-tertiary hover:text-danger transition-colors"
                   title={t('import_remove_file', { defaultValue: 'Retirer' })}
                 >
                   ✕
@@ -166,7 +170,7 @@ export default function CalendarImportModal({ onClose }: { onClose: () => void }
               })}
             </p>
             {result.errors.length > 0 && (
-              <div className="text-xs text-error space-y-0.5">
+              <div className="text-xs text-danger space-y-0.5">
                 <div className="flex items-center gap-1 font-medium">
                   <AlertTriangle size={12} />
                   {t('import_errors', { defaultValue: '{{count}} erreur(s)', count: result.errors.length })}
@@ -180,7 +184,7 @@ export default function CalendarImportModal({ onClose }: { onClose: () => void }
         )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
+          <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             <AlertTriangle size={16} className="shrink-0" />
             {error}
           </div>

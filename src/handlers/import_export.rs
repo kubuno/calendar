@@ -38,6 +38,7 @@ pub async fn import_ics(
         };
 
         let create_dto = CreateEventDto {
+                id: None,
             calendar_id: dto.calendar_id,
             title:       p.summary,
             description: p.description,

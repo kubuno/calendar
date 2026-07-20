@@ -26,8 +26,8 @@ impl TimeBlockService {
         let row = sqlx::query_as::<_, TimeBlock>(
             r#"
             INSERT INTO calendar.time_blocks
-                (owner_id, label, color, days, start_time, end_time, priority)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (id, owner_id, label, color, days, start_time, end_time, priority)
+            VALUES (COALESCE($8, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#,
         )
@@ -38,6 +38,7 @@ impl TimeBlockService {
         .bind(dto.start_time)
         .bind(dto.end_time)
         .bind(&priority)
+        .bind(dto.id)
         .fetch_one(db)
         .await?;
 

@@ -96,7 +96,7 @@ struct Cli {
     config: Option<String>,
 }
 
-// ── Point d'entrée ────────────────────────────────────────────────────────────
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Kubuno Calendar v{} démarrage…", env!("CARGO_PKG_VERSION"));
 
-    // Sécurité : interdire toute exécution de processus sur l’hôte (voir kubuno-seccomp).
+    // Security: forbid any process execution on the host (see kubuno-seccomp).
     kubuno_seccomp::lock_down_process_execution("calendar");
 
     // Pool PostgreSQL
@@ -160,11 +160,11 @@ async fn main() -> Result<()> {
         weather:  Arc::new(WeatherService::new()),
     };
 
-    // Enregistrement auprès du core (avec retry infini)
+    // Registration with the core (with infinite retry)
     let http = Client::new();
     register_with_core(&http, &settings).await;
 
-    // Heartbeat toutes les 30s
+    // Heartbeat every 30s
     {
         let http2     = http.clone();
         let settings2 = settings.clone();
@@ -194,6 +194,20 @@ async fn main() -> Result<()> {
         let state2 = Arc::new(state.clone());
         tokio::spawn(async move {
             ReminderService::run_worker(state2).await;
+        });
+    }
+
+    // Periodic sync of remote iCalendar subscriptions (hourly)
+    {
+        let db = state.db.clone();
+        tokio::spawn(async move {
+            use kubuno_calendar::services::subscription_service::SubscriptionService;
+            // First pass 2 min after startup (lets the DB/network settle)
+            tokio::time::sleep(Duration::from_secs(120)).await;
+            loop {
+                SubscriptionService::sync_all(&db).await;
+                tokio::time::sleep(Duration::from_secs(3600)).await;
+            }
         });
     }
 
@@ -245,10 +259,10 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         .map(|m| serde_json::to_value(&m.settings).unwrap_or_else(|_| json!([])))
         .unwrap_or_else(|| json!([]));
 
-    // Outils MCP exposés à l'assistant via la passerelle du core. Les noms
-    // utilisent des underscores (certains LLM rejettent les points). Le champ
-    // `annotations` distingue les outils backend (exécutés côté serveur) des
-    // outils UI (`kubuno_ui` : dispatchés dans le client de l'utilisateur).
+    // MCP tools exposed to the assistant through the core gateway. The names
+    // use underscores (some LLMs reject dots). The
+    // `annotations` distinguishes backend tools (executed server-side) from
+    // UI tools (`kubuno_ui`: dispatched into the user's client).
     let mcp_tools = json!([
         {
             "name": "calendar_list_events",

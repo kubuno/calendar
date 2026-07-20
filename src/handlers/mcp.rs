@@ -114,6 +114,7 @@ pub async fn create_event(
 ) -> Result<Json<serde_json::Value>> {
     let calendar_id = default_calendar(user.id, &state.db).await?;
     let dto = CreateEventDto {
+                id: None,
         calendar_id,
         title:       args.title,
         description: args.description,

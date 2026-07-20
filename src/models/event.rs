@@ -36,7 +36,7 @@ pub struct Event {
     pub updated_at:       DateTime<Utc>,
 }
 
-/// Représente une occurrence d'un événement (récurrent ou non).
+/// Represents one occurrence of an event (recurring or not).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventInstance {
     pub id:           String,   // "{event_id}" ou "{event_id}_{timestamp}"
@@ -63,6 +63,9 @@ pub struct EventInstance {
 
 #[derive(Debug, Deserialize, validator::Validate)]
 pub struct CreateEventDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub calendar_id:  Uuid,
     #[validate(length(min = 1, max = 500))]
     pub title:        String,
@@ -96,6 +99,10 @@ pub struct UpdateEventDto {
     #[serde(default)]
     pub clear_color:  bool,
     pub rrule:        Option<String>,
+    /// Remove the recurrence ("Does not repeat") — `rrule: None` means
+    /// "unchanged", hence this explicit flag, like `clear_color`.
+    #[serde(default)]
+    pub clear_rrule:  bool,
     pub reminders:    Option<Value>,
     pub status:       Option<String>,
     pub visibility:   Option<String>,

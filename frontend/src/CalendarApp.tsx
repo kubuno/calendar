@@ -1,14 +1,15 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCalendarStore, type ViewMode } from './store'
 import {
   X, Calendar as CalendarIcon,
   Clock, MapPin, Search, Plus, Edit2, Copy, Trash2, Bell,
   Mail, Share2, AlignLeft, Check, User as UserIcon,
   MoreVertical, Printer, Link2, Lock, Globe,
-  Repeat, Users, Briefcase, ChevronDown, Pipette, Video,
+  Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
+  LayoutGrid,
 } from 'lucide-react'
 import { useAuthStore } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
@@ -22,12 +23,20 @@ import {
 import DOMPurify from 'dompurify'
 import { getDateLocale } from '@kubuno/sdk'
 import {
-  calendarApi, weatherApi, wmoInfo, weatherIconUrl,
+  calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
-  type EventReminder,
+  type EventReminder, type AppointmentSchedule,
 } from './api'
 import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
 import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
+import { buildRrule, presetFromRrule, describeRrule } from './rrule'
+import { copyKubunoData, eventEnvelope, openLabelPicker } from './kubunoData'
+import RecurrenceCustomDialog from './RecurrenceCustomDialog'
+import { MonoText } from './MonoText'
+import {
+  MoonIcon, PrincipalMoonIcon, moonPhase, moonIllumination,
+  moonPhaseName, principalPhaseOfDay, principalPhaseName,
+} from './moon'
 
 // Contract for a video-meeting provider published by another module (e.g. chat).
 // Calendar discovers it dynamically — no hard dependency on any specific module.
@@ -57,55 +66,100 @@ function isWeekend(date: Date): boolean {
   return d === 0 || d === 6
 }
 
-// Humanise une RRULE iCalendar en texte lisible (FR). Couvre les cas usuels
-// (FREQ + INTERVAL + BYDAY + COUNT/UNTIL). Retourne null si non interprétable.
-function describeRrule(rrule: string | null, lang: string, start: Date): string | null {
-  if (!rrule) return null
-  const parts = Object.fromEntries(
-    rrule.replace(/^RRULE:/i, '').split(';').map(kv => {
-      const [k, v] = kv.split('=')
-      return [k.toUpperCase(), (v ?? '').toUpperCase()]
-    })
-  ) as Record<string, string>
-  const freq = parts.FREQ
-  if (!freq) return null
-  const interval = Math.max(1, parseInt(parts.INTERVAL ?? '1', 10) || 1)
-  const loc = getDateLocale(lang)
+// Calendars the user can WRITE to: their own plus those shared with "Edit"
+// access. Subscriptions (mirrors of a remote feed) are excluded: any event
+// created there would be purged on the next sync.
+function writableCalendars(calendars: Calendar[]): Calendar[] {
+  return calendars.filter(c =>
+    (c.my_permission == null || c.my_permission === 'owner' || c.my_permission === 'write')
+    && !c.subscription_url)
+}
 
-  const DAY_NAMES: Record<string, string> = {
-    MO: 'lundi', TU: 'mardi', WE: 'mercredi', TH: 'jeudi', FR: 'vendredi', SA: 'samedi', SU: 'dimanche',
-  }
-  const byday = (parts.BYDAY ?? '').split(',').map(d => d.replace(/^[+-]?\d+/, '')).filter(Boolean)
-  const dayList = byday.map(d => DAY_NAMES[d]).filter(Boolean)
-  const joinDays = (ds: string[]) =>
-    ds.length <= 1 ? (ds[0] ?? '') : `${ds.slice(0, -1).join(', ')} et ${ds[ds.length - 1]}`
+// Calendar locked for event editing (read-only or subscription).
+function isCalendarLocked(cal: Calendar | undefined): boolean {
+  return !!cal && (cal.my_permission === 'read' || !!cal.subscription_url)
+}
 
-  let base: string
-  switch (freq) {
-    case 'DAILY':
-      base = interval === 1 ? 'Tous les jours' : `Tous les ${interval} jours`
-      break
-    case 'WEEKLY': {
-      const days = dayList.length ? joinDays(dayList) : format(start, 'EEEE', { locale: loc })
-      base = interval === 1 ? `Toutes les semaines le ${days}` : `Toutes les ${interval} semaines le ${days}`
-      break
+// Marker prefix identifying a synthetic availability block (vs a real event).
+const APPT_PREFIX = 'appt::'
+
+// Expand appointment schedules into synthetic per-day availability blocks over
+// the visible range, so the owner sees when their booking pages are open
+// (recurring "09:00 <title>" markers). These are non-editable events
+// tagged via `event_id = appt::<scheduleId>`; clicking one opens the editor.
+// Times are built in local time — correct when the browser shares the schedule's
+// timezone (the default), which is the common case.
+function buildAvailabilityEvents(schedules: AppointmentSchedule[], from: Date, to: Date): EventInstance[] {
+  const out: EventInstance[] = []
+  for (const s of schedules) {
+    const rules = s.availability ?? []
+    if (rules.length === 0) continue
+    const color = s.color || '#4d38db'
+    const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate())
+    const last = new Date(to.getFullYear(), to.getMonth(), to.getDate())
+    while (cursor <= last) {
+      const y = cursor.getFullYear(), mo = cursor.getMonth(), d = cursor.getDate()
+      const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      const weekday = (cursor.getDay() + 6) % 7                    // 0 = Mon … 6 = Sun
+      const overrides = rules.filter(r => r.specific_date === iso)
+      const windows = overrides.length > 0 ? overrides : rules.filter(r => r.weekday === weekday)
+      for (const w of windows) {
+        const start = new Date(y, mo, d, Math.floor(w.start_minute / 60), w.start_minute % 60)
+        const end   = new Date(y, mo, d, Math.floor(w.end_minute / 60), w.end_minute % 60)
+        out.push({
+          id: `${APPT_PREFIX}${s.id}::${iso}::${w.start_minute}`,
+          event_id: `${APPT_PREFIX}${s.id}`,
+          calendar_id: s.calendar_id, owner_id: s.owner_id,
+          title: s.title || 'Rendez-vous',
+          description: null, location: null,
+          starts_at: start.toISOString(), ends_at: end.toISOString(),
+          all_day: false, is_recurring: true, rrule: null,
+          status: 'confirmed', visibility: 'public', busy: false,
+          color, ical_uid: '', etag: '', reminders: [],
+        })
+      }
+      cursor.setDate(cursor.getDate() + 1)
     }
-    case 'MONTHLY':
-      base = interval === 1 ? 'Tous les mois' : `Tous les ${interval} mois`
-      break
-    case 'YEARLY':
-      base = interval === 1 ? 'Tous les ans' : `Tous les ${interval} ans`
-      break
-    default:
-      return null
+  }
+  return out
+}
+
+// Side-by-side layout of overlapping events (day/week views): groups
+// transitive overlaps into "clusters", assigns each event the first free
+// column, and splits the cluster width between its columns.
+function layoutDayEvents(evs: EventInstance[]): Map<string, { leftPct: number; widthPct: number }> {
+  const MIN_SPAN = 30 // minutes: a very short event still takes up room
+  const items = evs
+    .map(ev => {
+      const s = parseISO(ev.starts_at)
+      const e = parseISO(ev.ends_at)
+      const sMin = s.getHours() * 60 + s.getMinutes()
+      return { id: ev.id, s: sMin, e: Math.max(e.getHours() * 60 + e.getMinutes(), sMin + MIN_SPAN) }
+    })
+    .sort((a, b) => a.s - b.s || b.e - a.e)
+
+  const res = new Map<string, { leftPct: number; widthPct: number }>()
+  let cluster: Array<{ id: string; s: number; e: number; col: number }> = []
+  let clusterEnd = -1
+
+  const flush = () => {
+    if (!cluster.length) return
+    const cols = Math.max(...cluster.map(c => c.col)) + 1
+    for (const c of cluster) res.set(c.id, { leftPct: (c.col / cols) * 100, widthPct: 100 / cols })
+    cluster = []
+    clusterEnd = -1
   }
 
-  if (parts.COUNT) base += `, ${parts.COUNT} fois`
-  else if (parts.UNTIL) {
-    const m = parts.UNTIL.match(/^(\d{4})(\d{2})(\d{2})/)
-    if (m) base += `, jusqu'au ${format(new Date(+m[1], +m[2] - 1, +m[3]), 'd MMMM yyyy', { locale: loc })}`
+  for (const it of items) {
+    if (cluster.length && it.s >= clusterEnd) flush()
+    const busy = new Set(cluster.filter(c => c.e > it.s).map(c => c.col))
+    let col = 0
+    while (busy.has(col)) col++
+    cluster.push({ ...it, col })
+    clusterEnd = Math.max(clusterEnd, it.e)
   }
-  return base
+  flush()
+  return res
 }
 
 function calendarGrid(month: Date): Date[] {
@@ -183,31 +237,17 @@ function RemindersSection({
   )
 }
 
-// ── Récurrence (rrule) ────────────────────────────────────────────────────────
-const WEEKDAY_BY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
-function buildRrule(preset: string, start: Date): string | null {
-  switch (preset) {
-    case 'daily':   return 'FREQ=DAILY'
-    case 'weekly':  return `FREQ=WEEKLY;BYDAY=${WEEKDAY_BY[getDay(start)]}`
-    case 'weekday': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
-    case 'monthly': return 'FREQ=MONTHLY'
-    case 'yearly':  return 'FREQ=YEARLY'
-    default:        return null
-  }
-}
-function presetFromRrule(rrule: string | null | undefined): string {
-  if (!rrule) return 'none'
-  const u = rrule.toUpperCase()
-  if (u.includes('FREQ=DAILY')) return 'daily'
-  if (u.includes('BYDAY=MO,TU,WE,TH,FR')) return 'weekday'
-  if (u.includes('FREQ=WEEKLY')) return 'weekly'
-  if (u.includes('FREQ=MONTHLY')) return 'monthly'
-  if (u.includes('FREQ=YEARLY')) return 'yearly'
-  return 'custom'
-}
-
-function RecurrenceField({ preset, onChange, start }: { preset: string; onChange: (p: string) => void; start: Date }) {
+// ── Recurrence (rrule) — shared helpers in ./rrule.ts ────────────────────────
+function RecurrenceField({ preset, customRrule, onChange, onCustomRrule, start }: {
+  preset: string
+  /** RRULE when preset === 'custom' (edited through the dedicated dialog). */
+  customRrule: string | null
+  onChange: (p: string) => void
+  onCustomRrule: (rrule: string) => void
+  start: Date
+}) {
   const { t, i18n } = useTranslation('calendar')
+  const [showCustom, setShowCustom] = useState(false)
   const dayName = format(start, 'EEEE', { locale: getDateLocale(i18n.language) })
   const opts = [
     { value: 'none',    label: t('recur_none', { defaultValue: 'Ne se répète pas' }) },
@@ -218,15 +258,42 @@ function RecurrenceField({ preset, onChange, start }: { preset: string; onChange
     { value: 'yearly',  label: t('recur_yearly', { defaultValue: 'Tous les ans' }) },
   ]
   const isCustom = preset === 'custom'
+  // Label of the "custom" entry: humanized summary of the current rule.
+  const customLabel = (isCustom && describeRrule(customRrule, i18n.language, start))
+    || t('recur_custom', { defaultValue: 'Récurrence personnalisée' })
   return (
     <div className="flex items-center gap-3">
       <Repeat size={18} className="shrink-0 text-text-tertiary" />
       <Dropdown
         className="flex-1"
         value={isCustom ? 'custom' : preset}
-        onChange={onChange}
-        options={isCustom ? [{ value: 'custom', label: t('recur_custom', { defaultValue: 'Récurrence personnalisée' }) }, ...opts] : opts}
+        onChange={(v: string) => {
+          if (v === 'custom-open') setShowCustom(true)
+          else onChange(v)
+        }}
+        options={[
+          ...(isCustom ? [{ value: 'custom', label: customLabel }] : []),
+          ...opts,
+          { value: 'custom-open', label: `${t('recur_custom', { defaultValue: 'Récurrence personnalisée' })}…` },
+        ]}
       />
+      {isCustom && (
+        <button
+          onClick={() => setShowCustom(true)}
+          title={t('recur_edit_custom', { defaultValue: 'Modifier la récurrence' })}
+          className="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-primary hover:bg-surface-2 transition-colors"
+        >
+          <Edit2 size={14} />
+        </button>
+      )}
+      {showCustom && (
+        <RecurrenceCustomDialog
+          initialRrule={customRrule}
+          start={start}
+          onSave={onCustomRrule}
+          onClose={() => setShowCustom(false)}
+        />
+      )}
     </div>
   )
 }
@@ -235,6 +302,8 @@ function RecurrenceField({ preset, onChange, start }: { preset: string; onChange
 
 interface CreateModalProps {
   initialDate: Date | null
+  /** Preselected end (creation by dragging on the grid). */
+  initialEnd?: Date | null
   calendars: Calendar[]
   onClose: () => void
 }
@@ -245,7 +314,7 @@ interface EditModalProps {
   onClose: () => void
 }
 
-// ── Menu « Autres actions » de l'éditeur ──────────────────────────────────────
+// ── Editor "More actions" menu ────────────────────────────────────────────────
 function EditEventActionsMenu({ event, onClose }: { event: EventInstance; calendars: Calendar[]; onClose: () => void }) {
   const { t } = useTranslation('calendar')
   const qc = useQueryClient()
@@ -295,10 +364,10 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   )
 }
 
-// ── Sélecteur de couleur compact ──────────────────────────────────────────────
-// Couleurs « Personnalisé » ajoutées par l'utilisateur — persistées localement et
-// PARTAGÉES avec le reste de l'app (même clé que le ColorSwatchPicker de @ui, donc
-// les couleurs créées dans Documents réapparaissent ici, et inversement).
+// ── Compact color picker ──────────────────────────────────────────────────────
+// "Custom" colors added by the user — persisted locally and SHARED with the
+// rest of the app (same key as @ui's ColorSwatchPicker, so colors created in
+// Documents reappear here, and vice versa).
 const CUSTOM_COLORS_KEY = 'kubuno:picker:custom-swatches'
 function loadCustomColors(): string[] {
   if (typeof localStorage === 'undefined') return []
@@ -310,8 +379,8 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
   const { t } = useTranslation('calendar')
   const C = useAppPickerTheme()
   const [open, setOpen] = useState(false)
-  const [customOpen, setCustomOpen] = useState(false)   // écran ColorPicker complet
-  const [draft, setDraft] = useState(color ?? calColor) // couleur en cours d'édition (pas encore appliquée)
+  const [customOpen, setCustomOpen] = useState(false)   // full ColorPicker screen
+  const [draft, setDraft] = useState(color ?? calColor) // color being edited (not applied yet)
   const [custom, setCustom] = useState<string[]>(loadCustomColors)
   const cur = color ?? calColor
 
@@ -326,7 +395,7 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
   const pickEyedropper = async () => {
     const ED = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper
     if (!ED) return
-    try { const r = await new ED().open(); addCustom(r.sRGBHex); setColor(r.sRGBHex); close() } catch { /* annulé */ }
+    try { const r = await new ED().open(); addCustom(r.sRGBHex); setColor(r.sRGBHex); close() } catch { /* cancelled */ }
   }
 
   const swatch = (c: string, onClick: () => void, key?: string, active?: boolean) => (
@@ -348,10 +417,10 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
         <>
           <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
           {customOpen ? (
-            // ColorPicker complet : centré en `fixed` pour ne JAMAIS déborder du
-            // dialogue/viewport (sinon le pied Ajouter/Annuler sort de l'écran).
-            // Pas de `t` : le picker utilise ses libellés intégrés (clés `layer_*`
-            // absentes du namespace calendar) ; on traduit seulement Ajouter/Annuler.
+            // Full ColorPicker: centered with `fixed` so it NEVER overflows the
+            // dialog/viewport (otherwise the Add/Cancel footer leaves the screen).
+            // No `t`: the picker uses its built-in labels (`layer_*` keys absent
+            // from the calendar namespace); only Add/Cancel are translated.
             <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 92 }}>
               <ColorPicker C={C} color={draft}
                 onChange={setDraft}
@@ -368,16 +437,16 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
               boxShadow: '0 4px 16px rgba(0,0,0,.18)', padding: 8,
               display: 'flex', flexWrap: 'wrap', gap: 6, width: 156,
             }}>
-              {/* Pastille « couleur de l'agenda » (défaut) */}
+              {/* "Calendar color" swatch (default) */}
               {swatch(calColor, () => { setColor(calColor); close() }, 'cal', cur === calColor)}
               {EVENT_SWATCHES.filter(c => c.toLowerCase() !== calColor.toLowerCase()).map(c =>
                 swatch(c, () => { setColor(c); close() }, c, color === c))}
-              {/* Couleurs personnalisées sauvegardées (sans doublon avec la palette ci-dessus) */}
+              {/* Saved custom colors (deduplicated against the palette above) */}
               {custom.filter(c => {
                 const lc = c.toLowerCase()
                 return lc !== calColor.toLowerCase() && !EVENT_SWATCHES.some(s => s.toLowerCase() === lc)
               }).map(c => swatch(c, () => { setColor(c); close() }, 'cust-' + c, color === c))}
-              {/* + : ouvre le ColorPicker complet (comme dans Documents) */}
+              {/* +: opens the full ColorPicker (like in Documents) */}
               <button type="button" title={t('custom_color', { defaultValue: 'Personnalisé' })}
                 onClick={() => { setDraft(cur); setCustomOpen(true) }}
                 style={{ width: 28, height: 28, borderRadius: '9999px', border: '1px solid #dadce0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5f6368' }}>
@@ -393,7 +462,7 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
   )
 }
 
-// ── Panneau invités (édition) ─────────────────────────────────────────────────
+// ── Attendees panel (editing) ─────────────────────────────────────────────────
 function GuestsPanel({ eventId }: { eventId: string }) {
   const { t } = useTranslation('calendar')
   const qc = useQueryClient()
@@ -426,22 +495,64 @@ function GuestsPanel({ eventId }: { eventId: string }) {
       </div>
       {attendees.length > 0 && (
         <div className="space-y-1.5">
-          {attendees.map(a => (
-            <div key={a.id} className="flex items-center gap-2 text-sm">
-              <span className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center text-xs shrink-0">
-                {(a.display_name || a.email)[0]?.toUpperCase()}
-              </span>
-              <span className="flex-1 truncate">
-                {a.display_name || a.email}
-                {a.is_organizer && <span className="text-text-tertiary text-xs ml-1">· {t('organizer', { defaultValue: 'organisateur' })}</span>}
-              </span>
-              {!a.is_organizer && (
-                <button type="button" onClick={() => remove.mutate(a.id)} className="p-1 text-text-tertiary hover:text-danger" aria-label={t('delete')}>
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          ))}
+          {/* Response summary: 2 yes · 1 pending… */}
+          <p className="text-xs text-text-tertiary">
+            {(['accepted', 'tentative', 'declined', 'needs-action'] as const)
+              .map(s => [s, attendees.filter(a => (a.status || 'needs-action') === s).length] as const)
+              .filter(([, n]) => n > 0)
+              .map(([s, n]) => `${n} ${t(`rsvp_count_${s.replace('-', '_')}`, {
+                defaultValue: { accepted: 'oui', tentative: 'peut-être', declined: 'non', 'needs-action': 'en attente' }[s],
+              })}`)
+              .join(' · ')}
+          </p>
+          {attendees.map(a => {
+            const status = a.status || 'needs-action'
+            const rsvpUrl = calendarApi.rsvpPageUrl(a)
+            const statusDot = {
+              accepted: 'bg-success', declined: 'bg-danger', tentative: 'bg-warning', 'needs-action': 'bg-surface-3',
+            }[status] ?? 'bg-surface-3'
+            const statusLabel = {
+              accepted:       t('rsvp_yes',      { defaultValue: 'A accepté' }),
+              declined:       t('rsvp_no',       { defaultValue: 'A refusé' }),
+              tentative:      t('rsvp_maybe',    { defaultValue: 'Peut-être' }),
+              'needs-action': t('rsvp_pending',  { defaultValue: 'En attente' }),
+            }[status] ?? status
+            return (
+              <div key={a.id} className="group flex items-center gap-2 text-sm">
+                <span className="relative w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center text-xs shrink-0">
+                  {(a.display_name || a.email)[0]?.toUpperCase()}
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface-0 ${statusDot}`} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">{a.display_name || a.email}</span>
+                  <span className="block text-[11px] text-text-tertiary truncate">
+                    {a.is_organizer ? t('organizer', { defaultValue: 'organisateur' }) : statusLabel}
+                  </span>
+                </span>
+                {!a.is_organizer && rsvpUrl && (
+                  <>
+                    <button type="button"
+                      onClick={() => { navigator.clipboard.writeText(rsvpUrl).catch(() => {}) }}
+                      title={t('rsvp_copy_link', { defaultValue: 'Copier le lien d’invitation' })}
+                      className="p-1 text-text-tertiary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link2 size={13} />
+                    </button>
+                    <a
+                      href={`mailto:${a.email}?subject=${encodeURIComponent(t('rsvp_mail_subject', { defaultValue: 'Invitation' }))}&body=${encodeURIComponent(t('rsvp_mail_body', { defaultValue: 'Bonjour,\n\nVous êtes invité(e). Merci de répondre ici : ' }) + rsvpUrl)}`}
+                      title={t('rsvp_send_mail', { defaultValue: 'Envoyer l’invitation par e-mail' })}
+                      className="p-1 text-text-tertiary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Mail size={13} />
+                    </a>
+                  </>
+                )}
+                {!a.is_organizer && (
+                  <button type="button" onClick={() => remove.mutate(a.id)} className="p-1 text-text-tertiary hover:text-danger" aria-label={t('delete')}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
       <div className="pt-2">
@@ -456,47 +567,187 @@ function GuestsPanel({ eventId }: { eventId: string }) {
   )
 }
 
-// ── Onglet « Rechercher un horaire » ──────────────────────────────────────────
-function ScheduleTab({ eventId }: { eventId?: string }) {
-  const { t } = useTranslation('calendar')
+// ── "Find a time" tab ─────────────────────────────────────────────────────────
+// Cross-references the calendars of Kubuno attendees (via /calendar/availability)
+// and suggests slots where everyone is free; a click carries the slot back into
+// the editor.
+function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
+  durationMinutes: number
+  defaultDate: string
+  onPick: (start: Date, end: Date) => void
+}) {
+  const { t, i18n } = useTranslation('calendar')
   const isMobile = useIsMobile()
-  const { data } = useQuery({
-    queryKey: ['event-attendees', eventId],
-    queryFn:  () => calendarApi.listAttendees(eventId!).then(r => r.attendees),
-    enabled:  !!eventId,
-  })
-  const attendees = data ?? []
+  const me = useAuthStore(s => s.user)
+  const loc = getDateLocale(i18n.language)
+
+  const [participants, setParticipants] = useState<Array<{ id: string; label: string }>>([])
+  const [query, setQuery] = useState('')
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; username: string; display_name: string | null }>>([])
+  const [fromDate, setFromDate] = useState(defaultDate)
+  const [days, setDays] = useState('5')
+  const [workHours, setWorkHours] = useState(true)
+  const [slots, setSlots] = useState<import('./api').AvailableSlot[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // User suggestions (core directory), excluding myself + already added.
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    const q = query.trim()
+    if (q.length < 2) { setSuggestions([]); return }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const users = await calendarApi.searchUsers(q)
+        const taken = new Set([me?.id, ...participants.map(p => p.id)])
+        setSuggestions(users.filter(u => !taken.has(u.id)))
+      } catch { setSuggestions([]) }
+    }, 250)
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
+  }, [query, participants, me?.id])
+
+  const runSearch = async () => {
+    if (!me?.id || searching) return
+    setSearching(true)
+    try {
+      const from = new Date(`${fromDate}T00:00:00`)
+      const until = addDays(from, Math.max(1, parseInt(days, 10) || 5))
+      const r = await calendarApi.findCommonSlots({
+        from: from.toISOString(), until: until.toISOString(),
+        user_ids: [me.id, ...participants.map(p => p.id)],
+      })
+      setSlots(r.slots)
+    } catch { setSlots([]) }
+    finally { setSearching(false) }
+  }
+
+  // Split the free ranges into slots of the event duration, filtered to
+  // office hours when requested, grouped by day (max 6 per day).
+  const proposals = useMemo(() => {
+    if (!slots) return null
+    const durMs = durationMinutes * 60_000
+    const byDay = new Map<string, Array<{ start: Date; end: Date; score: number }>>()
+    for (const s of slots) {
+      if (s.score < 0.999) continue        // only suggest "everyone available"
+      let cur = parseISO(s.starts_at).getTime()
+      const end = parseISO(s.ends_at).getTime()
+      while (cur + durMs <= end) {
+        const st = new Date(cur)
+        const en = new Date(cur + durMs)
+        const okHours = !workHours || (st.getHours() >= 8 && (en.getHours() < 19 || (en.getHours() === 19 && en.getMinutes() === 0)))
+        if (okHours) {
+          const key = format(st, 'yyyy-MM-dd')
+          const list = byDay.get(key) ?? []
+          if (list.length < 6) list.push({ start: st, end: en, score: s.score })
+          byDay.set(key, list)
+        }
+        cur += 30 * 60_000
+      }
+    }
+    return [...byDay.entries()].filter(([, l]) => l.length).sort(([a], [b]) => a.localeCompare(b))
+  }, [slots, durationMinutes, workHours])
+
   return (
-    <div className={`${isMobile ? 'px-4' : 'px-16'} py-10 max-h-[55vh] overflow-y-auto`}>
-      {attendees.length === 0 ? (
-        <div className="text-center text-text-tertiary py-10">
-          <Users size={28} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">{t('schedule_empty', { defaultValue: "Ajoutez des invités pour comparer les disponibilités et trouver un créneau commun." })}</p>
-        </div>
-      ) : (
-        <div>
-          <p className="text-sm text-text-secondary mb-4">{t('schedule_intro', { defaultValue: 'Disponibilités des participants :' })}</p>
-          <div className="space-y-2">
-            {attendees.map(a => (
-              <div key={a.id} className="flex items-center gap-3 text-sm">
-                <span className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center text-xs shrink-0">
-                  {(a.display_name || a.email)[0]?.toUpperCase()}
-                </span>
-                <span className="flex-1 truncate">{a.display_name || a.email}</span>
-                <span className="text-xs text-text-tertiary">{a.status === 'accepted' ? t('rsvp_yes', { defaultValue: 'A accepté' }) : t('rsvp_pending', { defaultValue: 'En attente' })}</span>
+    <div className={`${isMobile ? 'px-4' : 'px-10'} py-6 max-h-[55vh] overflow-y-auto space-y-4`}>
+      {/* Participants */}
+      <div>
+        <p className="text-xs font-semibold text-text-secondary mb-1.5">
+          {t('schedule_participants', { defaultValue: 'Participants (utilisateurs Kubuno)' })}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+            {me?.display_name || me?.username || t('schedule_me', { defaultValue: 'Moi' })}
+          </span>
+          {participants.map(p => (
+            <span key={p.id} className="px-2.5 py-1 rounded-full bg-surface-2 text-text-primary text-xs flex items-center gap-1">
+              {p.label}
+              <button type="button" onClick={() => setParticipants(prev => prev.filter(x => x.id !== p.id))}
+                className="text-text-tertiary hover:text-danger"><X size={11} /></button>
+            </span>
+          ))}
+          <div className="relative">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={t('schedule_add_user', { defaultValue: 'Ajouter…' })}
+              className="px-2 py-1 text-xs rounded-lg border border-border bg-surface-0 outline-none focus:border-primary w-36"
+            />
+            {suggestions.length > 0 && (
+              <div className="absolute z-20 left-0 top-full mt-1 w-52 rounded-lg border border-border bg-surface-0 shadow-lg overflow-hidden">
+                {suggestions.map(u => (
+                  <button key={u.id} type="button"
+                    onClick={() => { setParticipants(prev => [...prev, { id: u.id, label: u.display_name || u.username }]); setQuery(''); setSuggestions([]) }}
+                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-surface-1 truncate">
+                    {u.display_name || u.username} <span className="text-text-tertiary">@{u.username}</span>
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
+        </div>
+      </div>
+
+      {/* Search window */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-40"><DatePicker mode="date" value={fromDate} onChange={v => setFromDate(v ?? fromDate)} /></div>
+        <Dropdown value={days} onChange={setDays} className="w-36"
+          options={[
+            { value: '1',  label: t('schedule_days_1',  { defaultValue: '1 jour' }) },
+            { value: '3',  label: t('schedule_days_3',  { defaultValue: '3 jours' }) },
+            { value: '5',  label: t('schedule_days_5',  { defaultValue: '5 jours' }) },
+            { value: '7',  label: t('schedule_days_7',  { defaultValue: '7 jours' }) },
+            { value: '14', label: t('schedule_days_14', { defaultValue: '14 jours' }) },
+          ]} />
+        <Checkbox checked={workHours} onChange={setWorkHours}
+          label={t('schedule_work_hours', { defaultValue: 'Heures de bureau (8h – 19h)' })}
+          labelClassName="text-xs text-text-secondary" />
+        <Button type="button" size="sm" loading={searching} onClick={runSearch}>
+          {t('schedule_search', { defaultValue: 'Rechercher' })}
+        </Button>
+      </div>
+
+      {/* Results */}
+      {proposals === null ? (
+        <div className="text-center text-text-tertiary py-8">
+          <Users size={28} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm">{t('schedule_empty', { defaultValue: 'Choisissez des participants puis lancez la recherche : les créneaux où tout le monde est libre s’affichent ici.' })}</p>
+        </div>
+      ) : proposals.length === 0 ? (
+        <p className="text-sm text-text-tertiary italic py-4">
+          {t('schedule_no_slot', { defaultValue: 'Aucun créneau commun trouvé sur cette période.' })}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {proposals.map(([day, list]) => (
+            <div key={day}>
+              <p className="text-xs font-semibold text-text-secondary mb-1.5 capitalize">
+                {format(parseISO(`${day}T00:00:00`), 'EEEE d MMMM', { locale: loc })}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {list.map(({ start, end }) => (
+                  <button
+                    key={start.toISOString()}
+                    type="button"
+                    onClick={() => onPick(start, end)}
+                    className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary
+                               hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <MonoText>{format(start, 'HH:mm')}</MonoText> – <MonoText>{format(end, 'HH:mm')}</MonoText>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
 }
 
-// ── Éditeur d'événement (création + édition) façon Google Agenda ──────────────
-// Pilotage responsive en JS : les variantes `sm:`/`lg:` d'un MODULE qui annulent
-// une classe de base (px-4, flex-col, w-full…) sont écrasées par l'utilitaire de
-// base du host (couche utilities > kubuno-module). On utilise donc matchMedia.
+// ── Event editor (create + edit) ──────────────────────────────────────────────
+// Responsive control in JS: a MODULE's `sm:`/`lg:` variants that cancel a base
+// class (px-4, flex-col, w-full…) are overridden by the host's base utility
+// (utilities layer > kubuno-module). Hence matchMedia.
 function useIsMobile(): boolean {
   const [m, setM] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches)
@@ -509,8 +760,8 @@ function useIsMobile(): boolean {
   return m
 }
 
-function EventEditor({ mode, event, initialDate, calendars, onClose }: {
-  mode: 'create' | 'edit'; event?: EventInstance; initialDate?: Date | null; calendars: Calendar[]; onClose: () => void
+function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose }: {
+  mode: 'create' | 'edit'; event?: EventInstance; initialDate?: Date | null; initialEnd?: Date | null; calendars: Calendar[]; onClose: () => void
 }) {
   const { t } = useTranslation('calendar')
   const isMobile = useIsMobile()
@@ -518,9 +769,9 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   const qc = useQueryClient()
   const ev = event
 
-  // Fenêtre d'édition déplaçable : la barre supérieure sert de poignée. On ignore
-  // les clics sur les éléments interactifs (champ titre, boutons, menus) pour ne pas
-  // gêner l'édition. L'offset translate la carte depuis sa position centrée initiale.
+  // Draggable edit window: the top bar acts as the handle. Clicks on interactive
+  // elements (title field, buttons, menus) are ignored so they don't disturb
+  // editing. The offset translates the card from its initial centered position.
   const [winOffset, setWinOffset] = useState({ x: 0, y: 0 })
   const dragRef = useRef<{ ox: number; oy: number; sx: number; sy: number } | null>(null)
   const onWindowDragStart = (e: React.MouseEvent) => {
@@ -544,10 +795,15 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   const [tab,        setTab]        = useState<'details' | 'schedule'>('details')
   const [title,      setTitle]      = useState(ev?.title ?? '')
   const [calId,      setCalId]      = useState(ev?.calendar_id ?? '')
+  // A preselected range (dragging on the grid) prefills the times.
+  const initialHasTime = !!initialDate && (initialDate.getHours() !== 0 || initialDate.getMinutes() !== 0 || !!initialEnd)
   const [date,       setDate]       = useState(ev ? parseDate(ev.starts_at) : format(initialDate ?? new Date(), 'yyyy-MM-dd'))
-  const [endDate,    setEndDate]    = useState(ev ? parseDate(ev.ends_at) : format(initialDate ?? new Date(), 'yyyy-MM-dd'))
-  const [startTime,  setStartTime]  = useState(ev ? parseTime(ev.starts_at) : '09:00')
-  const [endTime,    setEndTime]    = useState(ev ? parseTime(ev.ends_at) : '10:00')
+  const [endDate,    setEndDate]    = useState(ev ? parseDate(ev.ends_at) : format(initialEnd ?? initialDate ?? new Date(), 'yyyy-MM-dd'))
+  const [startTime,  setStartTime]  = useState(ev ? parseTime(ev.starts_at) : initialHasTime ? format(initialDate!, 'HH:mm') : '09:00')
+  const [endTime,    setEndTime]    = useState(ev ? parseTime(ev.ends_at)
+    : initialEnd ? format(initialEnd, 'HH:mm')
+    : initialHasTime ? format(new Date(initialDate!.getTime() + 3600_000), 'HH:mm')
+    : '10:00')
   const [allDay,     setAllDay]     = useState(ev?.all_day ?? false)
   const [location,   setLocation]   = useState(ev?.location ?? '')
   const [addingMeeting, setAddingMeeting] = useState(false)
@@ -557,15 +813,35 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   const [reminders,  setReminders]  = useState<EventReminder[]>(ev?.reminders ?? [])
   const [color,      setColor]      = useState<string | null>(ev?.color ?? null)
   const [recur,      setRecur]      = useState(mode === 'edit' ? presetFromRrule(ev?.rrule) : 'none')
+  // Full RRULE when the recurrence is "custom" (dedicated editor).
+  const [customRrule, setCustomRrule] = useState<string | null>(ev?.rrule ?? null)
   const [busy,       setBusy]       = useState(ev?.busy ?? true)
   const [visibility, setVisibility] = useState(ev?.visibility || 'default')
+  // Editing a series: ask for the scope (this event / following / all).
+  const [askScope,   setAskScope]   = useState(false)
 
-  useEffect(() => {
-    if (!calId && calendars.length > 0) setCalId((calendars.find(c => c.is_default) ?? calendars[0]).id)
+  // Possible targets = calendars writable by the user (never a read-only shared
+  // calendar nor a subscription — the API would answer "Access denied").
+  // When editing, the event's current calendar stays listed even when locked,
+  // so the field is never empty.
+  const targetCals = useMemo(() => {
+    const writable = writableCalendars(calendars)
+    const current = calId ? calendars.find(c => c.id === calId) : undefined
+    return current && !writable.some(c => c.id === current.id) ? [current, ...writable] : writable
   }, [calendars, calId])
 
-  const { mutate, isPending, error } = useMutation<unknown, Error>({
-    mutationFn: () => {
+  useEffect(() => {
+    if (calId) return
+    const writable = writableCalendars(calendars)
+    if (writable.length > 0) setCalId((writable.find(c => c.is_default) ?? writable[0]).id)
+  }, [calendars, calId])
+
+  // Was the recurrence modified? (⇒ "this event only" would make no sense)
+  const recurChanged = mode === 'edit' && recur !== presetFromRrule(ev?.rrule)
+    || (recur === 'custom' && customRrule !== (ev?.rrule ?? null))
+
+  const { mutate, isPending, error } = useMutation<unknown, Error, string | undefined>({
+    mutationFn: (scope?: string) => {
       let startsAt: string, endsAt: string
       if (allDay) {
         startsAt = `${date}T00:00:00.000Z`
@@ -578,28 +854,40 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
       const calColor = calendars.find(c => c.id === calId)?.color
       const tz       = calendars.find(c => c.id === calId)?.timezone
       const start    = new Date(`${date}T${allDay ? '00:00' : startTime}:00`)
+      // Effective RRULE per the choice: preset, custom, or none.
+      const effectiveRrule = recur === 'custom' ? (customRrule ?? undefined) : buildRrule(recur, start) ?? undefined
       const base = {
         calendar_id: calId, title: title.trim(),
         description: desc.trim() || undefined, location: location.trim() || undefined,
         starts_at: startsAt, ends_at: endsAt, all_day: allDay,
         reminders: reminders.length ? reminders : undefined,
-        // « Visibilité par défaut » (UI) = visibilité par défaut du backend = 'public'.
+        // "Default visibility" (UI) = the backend's default visibility = 'public'.
         // Le backend n'accepte que public/private/confidential (contrainte CHECK).
         busy, visibility: visibility === 'default' ? 'public' : visibility, timezone: tz,
       }
       if (mode === 'create') {
         return calendarApi.createEvent({ ...base,
-          rrule: buildRrule(recur, start) ?? undefined,
+          rrule: effectiveRrule,
           ...(color && color !== calColor ? { color } : {}),
         })
       }
       return calendarApi.updateEvent(ev!.event_id, { ...base,
-        ...(['daily', 'weekly', 'weekday', 'monthly', 'yearly'].includes(recur) ? { rrule: buildRrule(recur, start) ?? undefined } : {}),
+        // "Does not repeat" on a recurring event = explicit removal of the
+        // rule (an absent rrule means "unchanged" backend-side).
+        ...(recur === 'none' && ev?.rrule ? { clear_rrule: true }
+          : effectiveRrule && effectiveRrule !== ev?.rrule ? { rrule: effectiveRrule } : {}),
         ...(color && color !== calColor ? { color } : { clear_color: true }),
+        ...(scope ? { scope, ...(scope !== 'all' ? { occurrence: ev!.starts_at } : {}) } : {}),
       })
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['calendar-events'] }); onClose() },
   })
+
+  // Save: on an existing series, ask for the scope first.
+  const save = () => {
+    if (mode === 'edit' && ev?.is_recurring) setAskScope(true)
+    else mutate(undefined)
+  }
 
   const canSave  = title.trim().length > 0 && calId !== '' && !isPending
   const calColor = calendars.find(c => c.id === calId)?.color ?? '#4D38DB'
@@ -615,17 +903,53 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   return (
     <div className="fixed inset-0 z-[80] bg-black/30 flex items-start justify-center overflow-y-auto p-4"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-4"
+      <div className="bg-surface-0 rounded-2xl shadow-2xl w-full max-w-5xl my-4"
         style={{ transform: `translate(${winOffset.x}px, ${winOffset.y}px)` }}>
-        {/* Barre supérieure — sert de poignée de déplacement de la fenêtre */}
+        {/* Top bar — acts as the window drag handle */}
         <div className="flex items-center gap-3 px-5 py-3 cursor-move select-none"
           onMouseDown={onWindowDragStart}>
           <button type="button" onClick={onClose} className="p-1.5 rounded-full hover:bg-surface-2 text-text-secondary" aria-label={t('cancel')}><X size={20} /></button>
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder={t('event_title')} maxLength={500}
             className="flex-1 text-xl text-text-primary placeholder:text-text-tertiary border-b border-transparent focus:border-primary outline-none py-1 bg-transparent min-w-0" />
-          <Button onClick={() => canSave && mutate()} disabled={!canSave} loading={isPending}>{t('save', { defaultValue: 'Enregistrer' })}</Button>
+          <Button onClick={() => canSave && save()} disabled={!canSave} loading={isPending}>{t('save', { defaultValue: 'Enregistrer' })}</Button>
           {mode === 'edit' && ev && <EditEventActionsMenu event={ev} calendars={calendars} onClose={onClose} />}
         </div>
+
+        {/* Scope of the modification of a recurring event */}
+        {askScope && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center" onClick={() => setAskScope(false)}>
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="relative bg-surface-0 rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold text-text-primary mb-1">
+                {t('edit_recurring_title', { defaultValue: 'Modifier l’événement récurrent' })}
+              </h3>
+              <p className="text-xs text-text-secondary mb-4">
+                {recurChanged
+                  ? t('edit_recurring_desc_rrule', { defaultValue: 'La récurrence a été modifiée : le changement s’applique à la série.' })
+                  : t('edit_recurring_desc', { defaultValue: 'Quels événements de la série modifier ?' })}
+              </p>
+              <div className="flex flex-col gap-2">
+                {!recurChanged && (
+                  <button onClick={() => { setAskScope(false); mutate('this') }}
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                    {t('move_this_only', { defaultValue: 'Cet événement seulement' })}
+                  </button>
+                )}
+                <button onClick={() => { setAskScope(false); mutate('following') }}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                  {t('move_this_following', { defaultValue: 'Celui-ci et les suivants' })}
+                </button>
+                <button onClick={() => { setAskScope(false); mutate('all') }}
+                  className="w-full text-sm px-3 py-2 rounded-lg bg-primary text-white hover:bg-primary-hover text-left">
+                  {t('edit_all_events', { defaultValue: 'Tous les événements' })}
+                </button>
+                <button onClick={() => setAskScope(false)} className="w-full text-sm px-3 py-1.5 text-text-secondary">
+                  {t('cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Date / heure / fuseau */}
         <div className={`${PX} pb-1 flex flex-wrap items-center gap-2`}>
@@ -640,7 +964,15 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
         </div>
         <div className={`${PX} pb-3 flex items-center gap-4`}>
           <Checkbox label={t('all_day')} checked={allDay} onChange={setAllDay} />
-          <div className="w-72"><RecurrenceField preset={recur} onChange={setRecur} start={new Date(`${date}T${allDay ? '00:00' : startTime}:00`)} /></div>
+          <div className="w-72">
+            <RecurrenceField
+              preset={recur}
+              customRrule={recur === 'custom' ? customRrule : null}
+              onChange={setRecur}
+              onCustomRrule={(r) => { setCustomRrule(r); setRecur('custom') }}
+              start={new Date(`${date}T${allDay ? '00:00' : startTime}:00`)}
+            />
+          </div>
         </div>
 
         {/* Onglets */}
@@ -654,7 +986,7 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
           <div className={`${PX} py-6 flex ${isMobile ? 'flex-col gap-6' : 'flex-row gap-12'} max-h-[55vh] overflow-y-auto`}>
             <div className="space-y-5 min-w-0 flex-1">
               {!hasMeeting && row(<MapPin size={18} />, <Input placeholder={t('add_location', { defaultValue: 'Ajouter un lieu' })} value={location} onChange={e => setLocation(e.target.value)} className="w-full" />)}
-              {/* Réunion vidéo — fournie dynamiquement par un module (ex: chat) */}
+              {/* Video meeting — provided dynamically by a module (e.g. chat) */}
               {(meetingProvider || hasMeeting) && row(<Video size={18} />, hasMeeting ? (
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-primary font-medium">{t('video_meeting_added', { defaultValue: 'Réunion vidéo Kubuno' })}</span>
@@ -675,7 +1007,7 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
               <RemindersSection reminders={reminders} onChange={setReminders} />
               {row(<CalendarIcon size={18} />, (
                 <div className="flex items-center gap-2">
-                  <Dropdown className="flex-1" value={calId} onChange={setCalId} options={calendars.map(c => ({ value: c.id, label: c.name }))} />
+                  <Dropdown className="flex-1" value={calId} onChange={setCalId} options={targetCals.map(c => ({ value: c.id, label: c.name }))} />
                   <ColorField color={color} calColor={calColor} setColor={setColor} />
                 </div>
               ))}
@@ -703,13 +1035,40 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
             </div>
           </div>
         ) : (
-          <ScheduleTab eventId={ev?.event_id} />
+          <ScheduleTab
+            durationMinutes={(() => {
+              if (allDay) return 60
+              const s = new Date(`${date}T${startTime}:00`).getTime()
+              const e = new Date(`${endDate || date}T${endTime}:00`).getTime()
+              return Math.max(30, Math.round((e - s) / 60_000) || 60)
+            })()}
+            defaultDate={date}
+            onPick={(s, e) => {
+              setDate(format(s, 'yyyy-MM-dd'))
+              setEndDate(format(e, 'yyyy-MM-dd'))
+              setStartTime(format(s, 'HH:mm'))
+              setEndTime(format(e, 'HH:mm'))
+              setAllDay(false)
+              setTab('details')
+            }}
+          />
         )}
 
-        {(error || calendars.length === 0) && (
+        {(error || targetCals.length === 0) && (
           <div className={`${PX} pb-4`}>
-            {error && <p className="text-xs text-danger">{error.message}</p>}
-            {calendars.length === 0 && <p className="text-xs text-warning">{t('no_calendar_available')}</p>}
+            {error && (
+              <p className="text-xs text-danger">
+                {/* A raw "Access denied" explains nothing: spell out the most common case. */}
+                {/(403|refusé|forbidden)/i.test(error.message)
+                  ? t('event_forbidden_hint', { defaultValue: 'Accès refusé : vous n’avez pas le droit d’écrire dans cet agenda. Choisissez un agenda dont vous êtes propriétaire ou partagé en modification.' })
+                  : error.message}
+              </p>
+            )}
+            {targetCals.length === 0 && (
+              <p className="text-xs text-warning">
+                {t('no_writable_calendar', { defaultValue: 'Aucun agenda modifiable : créez un agenda ou demandez un partage en modification.' })}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -717,8 +1076,8 @@ function EventEditor({ mode, event, initialDate, calendars, onClose }: {
   )
 }
 
-function CreateEventModal({ initialDate, calendars, onClose }: CreateModalProps) {
-  return <EventEditor mode="create" initialDate={initialDate} calendars={calendars} onClose={onClose} />
+function CreateEventModal({ initialDate, initialEnd, calendars, onClose }: CreateModalProps) {
+  return <EventEditor mode="create" initialDate={initialDate} initialEnd={initialEnd} calendars={calendars} onClose={onClose} />
 }
 
 function EditEventModal({ event, calendars, onClose }: EditModalProps) {
@@ -727,7 +1086,7 @@ function EditEventModal({ event, calendars, onClose }: EditModalProps) {
 
 // ── Event detail ──────────────────────────────────────────────────────────────
 
-// Petit bouton-icône pour la barre d'actions de l'en-tête (style Google).
+// Small icon button for the header action bar.
 function HeaderIconBtn({ title, onClick, danger, children }: {
   title: string; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; danger?: boolean; children: React.ReactNode
 }) {
@@ -761,11 +1120,20 @@ function EventDetail({
   const loc   = getDateLocale(i18n.language)
   const [copied, setCopied] = useState(false)
   const [moreMenu, setMoreMenu] = useState<MenuDropdownPos | null>(null)
+  // Deleting a series: ask for the scope (occurrence / following / all).
+  const [askDelScope, setAskDelScope] = useState(false)
 
-  const { mutate: del, isPending } = useMutation<unknown, Error>({
-    mutationFn: () => calendarApi.deleteEvent(event.event_id, 'this'),
+  const { mutate: delMut, isPending } = useMutation<unknown, Error, string>({
+    // `occurrence` = start of THIS occurrence — without it, this/following
+    // would apply to the whole series backend-side.
+    mutationFn: (scope: string) => calendarApi.deleteEvent(
+      event.event_id, scope, scope !== 'all' ? event.starts_at : undefined),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['calendar-events'] }); onDelete() },
   })
+  const del = () => {
+    if (event.is_recurring) setAskDelScope(true)
+    else delMut('all')
+  }
 
   const start = parseISO(event.starts_at)
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -779,7 +1147,7 @@ function EventDetail({
   const recurrenceText = event.is_recurring ? describeRrule(event.rrule, i18n.language, start) : null
   const ownerName = user?.display_name || user?.username || user?.email || null
 
-  // Récapitulatif texte de l'événement (pour partage / e-mail).
+  // Plain-text summary of the event (for sharing / e-mail).
   const summary = [
     event.title,
     dateText + (recurrenceText ? `\n${recurrenceText}` : ''),
@@ -823,7 +1191,14 @@ function EventDetail({
     try { await navigator.clipboard.writeText(inviteLink) } catch { /* indisponible */ }
   }
 
-  // Durée lisible (ex. « 1 h », « 30 min », « 1 h 30 »).
+  // Cross-module copy: a JSON envelope pasteable as a rich card in chat, notes…
+  const handleCopyCard = () => {
+    copyKubunoData(eventEnvelope(event)).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Human-readable duration (e.g. "1 h", "30 min", "1 h 30").
   const durationText = (() => {
     if (event.all_day) return t('detail_all_day', { defaultValue: 'Toute la journée' })
     const mins = Math.max(0, Math.round((parseISO(event.ends_at).getTime() - start.getTime()) / 60000))
@@ -831,12 +1206,14 @@ function EventDetail({
     return [h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ') || '0 min'
   })()
 
-  // Visibilité (public/privé) — affichée seulement si non publique pour rester sobre.
+  // Visibility (public/private) — only shown when not public, to stay minimal.
   const vis = (event.visibility || '').toLowerCase()
   const isPrivate = vis === 'private' || vis === 'confidential'
 
   const moreItems: MenuItem[] = [
     { type: 'action', icon: <Copy size={16} />,    label: t('duplicate'),                                          onClick: () => duplicate() },
+    { type: 'action', icon: <Copy size={16} />,    label: t('detail_copy_card', { defaultValue: "Copier l'événement" }), onClick: handleCopyCard },
+    { type: 'action', icon: <Tag size={16} />,     label: t('detail_kubuno_labels', { defaultValue: 'Étiquettes Kubuno…' }), onClick: () => { openLabelPicker(eventEnvelope(event)).catch(() => {}) } },
     { type: 'action', icon: <Link2 size={16} />,   label: t('detail_copy_link', { defaultValue: 'Copier le lien' }), onClick: handleCopyLink },
     { type: 'action', icon: <Printer size={16} />, label: t('print', { defaultValue: 'Imprimer' }),                onClick: () => window.print() },
   ]
@@ -851,8 +1228,13 @@ function EventDetail({
       }
       titleActions={
         <div className="flex items-center gap-0.5">
-          <HeaderIconBtn title={t('edit')} onClick={onEdit}><Edit2 size={16} /></HeaderIconBtn>
-          <HeaderIconBtn title={t('delete')} danger onClick={() => del()}><Trash2 size={16} /></HeaderIconBtn>
+          {/* Agenda en lecture seule / abonnement : pas de modification possible */}
+          {!isCalendarLocked(cal) && (
+            <>
+              <HeaderIconBtn title={t('edit')} onClick={onEdit}><Edit2 size={16} /></HeaderIconBtn>
+              <HeaderIconBtn title={t('delete')} danger onClick={() => del()}><Trash2 size={16} /></HeaderIconBtn>
+            </>
+          )}
           <HeaderIconBtn title={t('detail_send_email', { defaultValue: 'Envoyer par e-mail' })} onClick={handleEmail}><Mail size={16} /></HeaderIconBtn>
           <HeaderIconBtn
             title={t('more_options', { defaultValue: "Plus d'options" })}
@@ -865,7 +1247,39 @@ function EventDetail({
       backdrop
     >
       <div className="px-5 py-4">
-        {/* Date + durée + récurrence */}
+        {/* Scope of the deletion of a recurring event */}
+        {askDelScope && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center" onClick={() => setAskDelScope(false)}>
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="relative bg-surface-0 rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold text-text-primary mb-1">
+                {t('delete_recurring_title', { defaultValue: 'Supprimer l’événement récurrent' })}
+              </h3>
+              <p className="text-xs text-text-secondary mb-4">
+                {t('delete_recurring_desc', { defaultValue: 'Quels événements de la série supprimer ?' })}
+              </p>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => { setAskDelScope(false); delMut('this') }} disabled={isPending}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                  {t('move_this_only', { defaultValue: 'Cet événement seulement' })}
+                </button>
+                <button onClick={() => { setAskDelScope(false); delMut('following') }} disabled={isPending}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                  {t('move_this_following', { defaultValue: 'Celui-ci et les suivants' })}
+                </button>
+                <button onClick={() => { setAskDelScope(false); delMut('all') }} disabled={isPending}
+                  className="w-full text-sm px-3 py-2 rounded-lg bg-danger text-white hover:opacity-90 text-left">
+                  {t('delete_all_events', { defaultValue: 'Tous les événements' })}
+                </button>
+                <button onClick={() => setAskDelScope(false)} className="w-full text-sm px-3 py-1.5 text-text-secondary">
+                  {t('cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Date + duration + recurrence */}
         <div className="flex items-start gap-3">
           <Clock size={18} className="shrink-0 text-text-tertiary mt-0.5" />
           <div className="text-sm text-text-primary leading-snug">
@@ -876,7 +1290,7 @@ function EventDetail({
           </div>
         </div>
 
-        {/* Inviter avec un lien */}
+        {/* Invite with a link */}
         <button
           type="button"
           onClick={handleShare}
@@ -889,7 +1303,7 @@ function EventDetail({
             : t('detail_invite_link', { defaultValue: 'Inviter avec un lien' })}
         </button>
 
-        {/* Réunion vidéo — bouton de jointure (lien fourni par le module chat) */}
+        {/* Video meeting — join button (link provided by the chat module) */}
         {meetingLink && (
           <button
             type="button"
@@ -939,7 +1353,7 @@ function EventDetail({
           </div>
         )}
 
-        {/* Visibilité */}
+        {/* Visibility */}
         <div className="flex items-start gap-3 mt-4">
           {isPrivate
             ? <Lock size={18} className="shrink-0 text-text-tertiary mt-0.5" />
@@ -951,7 +1365,7 @@ function EventDetail({
           </div>
         </div>
 
-        {/* Agenda + propriétaire */}
+        {/* Calendar + owner */}
         {cal && (
           <div className="flex items-start gap-3 mt-4">
             <CalendarIcon size={18} className="shrink-0 text-text-tertiary mt-0.5" />
@@ -985,8 +1399,8 @@ interface CtxMenuState {
   event: EventInstance
 }
 
-// Heure courante « vivante » : re-rend périodiquement pour faire évoluer en temps réel
-// la ligne « maintenant » et le grisage passé/à venir, sans recharger la page.
+// "Live" current time: re-renders periodically so the "now" line and the
+// past/upcoming dimming evolve in real time without reloading the page.
 function useNowTick(intervalMs = 30_000): Date {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -996,32 +1410,64 @@ function useNowTick(intervalMs = 30_000): Date {
   return now
 }
 
+
+// Width (px) reserved on the left of a day column for appointment-schedule
+// availability strips, so real events are nudged right and never cover them.
+const APPT_GUTTER = 18
+
+// Availability blocks (appointment schedules) render as a thin colored strip
+// pinned to the left of the day — a floating icon + label sits at the top,
+// overflowing to the right. Read-only: a click opens the schedule editor.
+function AvailabilityStrip({ ev, top, height, sMin, onClick }: {
+  ev: EventInstance; top: number; height: number; sMin: number; onClick: () => void
+}) {
+  const color = ev.color ?? '#4D38DB'
+  const hm = `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`
+  return (
+    <div onClick={onClick} title={`${ev.title} · ${hm}`}
+      className="absolute z-[6] cursor-pointer" style={{ top, height, left: 2, width: 13 }}>
+      <div className="absolute inset-0 rounded-md" style={{ background: color + '26', border: `1px solid ${color}59` }} />
+      <div className="absolute top-1 left-0 flex items-center gap-1.5 whitespace-nowrap pointer-events-none">
+        <span className="shrink-0 grid place-items-center w-5 h-5 rounded-full ring-2 ring-surface-0 shadow-sm"
+          style={{ background: color, color: '#fff' }}>
+          <LayoutGrid size={11} />
+        </span>
+        <span className="text-[11px] font-medium leading-none" style={{ color }}>{ev.title}, <MonoText>{hm}</MonoText></span>
+      </div>
+    </div>
+  )
+}
+
 // ── Day view ──────────────────────────────────────────────────────────────────
 
-function DayView({ date, events, calendars, onEventClick, onEventContextMenu, onEventDrop, onEventResize, weatherByDate }: {
+function DayView({ date, events, calendars, onEventClick, onEventContextMenu, onEventDrop, onEventResize, onRangeCreate, weatherByDate }: {
   date: Date; events: EventInstance[]; calendars: Calendar[]
   onEventClick: (ev: EventInstance) => void
   onEventContextMenu: (e: React.MouseEvent, ev: EventInstance) => void
   onEventDrop: (ev: EventInstance, newStart: Date) => void
   onEventResize: (ev: EventInstance, newStart: Date, newEnd: Date) => void
+  onRangeCreate: (start: Date, end: Date) => void
   weatherByDate: Map<string, DailyWeather>
 }) {
-  const { i18n } = useTranslation('calendar')
+  const { t, i18n } = useTranslation('calendar')
   const hours    = Array.from({ length: 24 }, (_, i) => i)
   const calMap   = useMemo(() => new Map(calendars.map(c => [c.id, c])), [calendars])
   const weekend  = isWeekend(date)
-  const dayEvs   = events.filter(ev => !ev.all_day && isSameDay(parseISO(ev.starts_at), date))
+  const dayEvs0  = events.filter(ev => !ev.all_day && isSameDay(parseISO(ev.starts_at), date))
+  const apptEvs  = dayEvs0.filter(ev => ev.event_id.startsWith(APPT_PREFIX))
+  const dayEvs   = dayEvs0.filter(ev => !ev.event_id.startsWith(APPT_PREFIX))
+  const apptPad  = apptEvs.length ? APPT_GUTTER : 0
   const allDayEvs = events.filter(ev => ev.all_day && isSameDay(parseISO(ev.starts_at), date))
   const dateKey  = format(date, 'yyyy-MM-dd')
   const wx       = weatherByDate.get(dateKey) ?? null
   const [dragging, setDragging] = useState<EventInstance | null>(null)
   const [ghostMin, setGhostMin] = useState<number | null>(null)
-  // Ref synchrone : onDragOver/onDrop ne dépendent pas du timing de re-render de `dragging`
-  // (sinon les premiers dragover voient null, ne preventDefault pas, et le drop n'arrive jamais).
+  // Synchronous ref: onDragOver/onDrop don't depend on `dragging` re-render timing
+  // (otherwise the first dragovers see null, skip preventDefault, and the drop never lands).
   const draggingRef = useRef<EventInstance | null>(null)
   const ghostHeight = dragging ? Math.max(((parseISO(dragging.ends_at).getTime() - parseISO(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
 
-  // Redimensionnement vertical d'un événement (poignées haut/bas → début/fin).
+  // Vertical resize of an event (top/bottom handles → start/end).
   const PX_PER_HOUR = 40
   const [resize, setResize] = useState<{ id: string; startMin: number; endMin: number } | null>(null)
   const resizingRef = useRef(false)   // bloque le drag HTML5 pendant un resize
@@ -1052,7 +1498,37 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
   }
   const fmtMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
-  // Fuseau secondaire (préférence perso) + fuseau local pour la double colonne d'heures.
+  // Creation by dragging on an empty grid area (single click = 1 h).
+  const [creating, setCreating] = useState<{ startMin: number; endMin: number } | null>(null)
+  const startCreate = (e: React.PointerEvent) => {
+    if (e.button !== 0 || resizingRef.current) return
+    if ((e.target as Element).closest('[data-event]')) return   // click on an event
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const m0 = Math.max(0, Math.min(24 * 60 - 15, Math.round(((e.clientY - rect.top) / PX_PER_HOUR * 60) / 15) * 15))
+    let cur = { startMin: m0, endMin: m0 + 15 }
+    let moved = false
+    setCreating(cur)
+    const move = (me: PointerEvent) => {
+      const m = Math.max(0, Math.min(24 * 60, Math.round(((me.clientY - rect.top) / PX_PER_HOUR * 60) / 15) * 15))
+      moved = true
+      cur = m >= m0 + 15 ? { startMin: m0, endMin: m } : { startMin: Math.min(m, m0), endMin: m0 + 15 }
+      setCreating(cur)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+      setCreating(null)
+      const endMin = moved ? cur.endMin : Math.min(24 * 60, m0 + 60)
+      const s = new Date(date); s.setHours(0, cur.startMin, 0, 0)
+      const en = new Date(date); en.setHours(0, endMin, 0, 0)
+      onRangeCreate(s, en)
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }
+
+  // Side-by-side layout of the overlaps.
+  const layout = useMemo(() => layoutDayEvents(dayEvs), [dayEvs])
+
+  // Secondary timezone (personal preference) + local timezone for the dual hour column.
   const secondaryTimezone = useCalendarStore(s => s.secondaryTimezone)
   const localTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
   const tzOffsetLabel = (tz: string) => {
@@ -1067,45 +1543,76 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
     catch { return '' }
   }
 
-  // Ligne « maintenant » (aujourd'hui uniquement) — évolue en temps réel via le tick.
+  // "Now" line (today only) — evolves in real time via the tick.
   const now     = useNowTick()
   const showNow = isToday(date)
   const nowTop  = (now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600) * 40
 
-  // Police monospace JetBrains Mono pour tous les horaires (gouttières + événements).
-  const MONO = "'JetBrains Mono', ui-monospace, monospace"
+  // Times (gutters + events) in DM Sans, digits aligned via `tabular-nums`.
+  const MONO = "'DM Sans', ui-sans-serif, system-ui, sans-serif"
 
-  // Rendu d'une colonne de gouttière horaire (heures d'un fuseau).
-  const gutter = (labelFor: (h: number) => string) => (
-    <div className="border-r border-border">
+  // On mount / day change: snap the scroll to the current hour (today) or to
+  // the early morning — instead of opening on midnight.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const target = showNow ? Math.max(0, nowTop - sc.clientHeight / 2.5) : 7.5 * PX_PER_HOUR
+    sc.scrollTop = target
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date.getTime()])
+
+  // Render one hour-gutter column (hours of a given timezone). `withNow` adds
+  // the red dot of the current time (local gutter only).
+  const gutter = (labelFor: (h: number) => string, withNow = false) => (
+    <div className="border-r border-border relative">
       {hours.map(h => (
-        <div key={h} className="h-10 flex items-start justify-end pr-2 pt-0.5">
-          {h > 0 && <span className="text-xs text-text-tertiary tabular-nums" style={{ fontFamily: MONO }}>{labelFor(h)}</span>}
+        <div key={h} className="h-10 flex items-start justify-end pr-2 -mt-px pt-0.5">
+          {h > 0 && <span className="text-[11px] text-text-tertiary -translate-y-1/2" style={{ fontFamily: MONO }}><MonoText>{labelFor(h)}</MonoText></span>}
         </div>
       ))}
+      {withNow && showNow && (
+        <div className="absolute right-1 z-30 -translate-y-1/2 px-1 py-px rounded bg-danger text-white text-[10px] font-semibold pointer-events-none"
+          style={{ top: nowTop, fontFamily: MONO }}>
+          <MonoText>{format(now, 'HH:mm')}</MonoText>
+        </div>
+      )}
     </div>
   )
 
+  // Moon: preference + stable reference date (local noon of the displayed day).
+  const moonOn = useCalendarStore(s => s.moonEnabled)
+  const moonRefDate = useMemo(() => { const d = new Date(date); d.setHours(12, 0, 0, 0); return d }, [date])
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      {/* En-tête */}
+      {/* Header */}
       <div className={`border-b border-border shrink-0 py-3 text-center ${weekend ? 'bg-surface-1' : ''}`}>
         <div className={`text-sm font-medium capitalize ${isToday(date) ? 'text-primary' : weekend ? 'text-text-tertiary' : 'text-text-primary'}`}>
           {format(date, 'EEEE d MMMM yyyy', { locale: getDateLocale(i18n.language) })}
         </div>
-        {/* Météo du jour */}
-        {wx && (
+        {/* Today's weather + moon */}
+        {(wx || moonOn) && (
           <div className="flex items-center justify-center gap-2 mt-1 text-sm text-text-secondary">
-            <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={24} height={24} style={{ width: 24, height: 24 }} draggable={false} />
-            <span>{wmoInfo(wx.weather_code).label}</span>
-            <span className="text-text-primary font-medium">{Math.round(wx.temp_max)}°</span>
-            <span className="text-text-tertiary">/ {Math.round(wx.temp_min)}°</span>
-            {wx.precip_prob_max > 10 && (
-              <span className="text-blue-500 text-xs inline-flex items-center gap-0.5">
-                <img src="/weather-icons/drop.svg" alt="" width={15} height={15} style={{ width: 15, height: 15 }} draggable={false} />
-                {wx.precip_prob_max}%
-              </span>
-            )}
+            {wx && (<>
+              <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={24} height={24} style={{ width: 24, height: 24 }} draggable={false} />
+              <span>{wmoInfo(wx.weather_code).label}</span>
+              <span className="text-text-primary font-medium">{Math.round(wx.temp_max)}°</span>
+              <span className="text-text-tertiary">/ {Math.round(wx.temp_min)}°</span>
+              {wx.precip_prob_max > 10 && (
+                <span className="text-blue-500 text-xs inline-flex items-center gap-0.5">
+                  <img src="/weather-icons/drop.svg" alt="" width={15} height={15} style={{ width: 15, height: 15 }} draggable={false} />
+                  {wx.precip_prob_max}%
+                </span>
+              )}
+            </>)}
+            {/* Today's moon phase (local computation, at noon for stability) */}
+            {moonOn && (<>
+              {wx && <span className="text-text-tertiary/50">·</span>}
+              <MoonIcon phase={moonPhase(moonRefDate)} size={17} />
+              <span className="text-xs">{moonPhaseName(moonRefDate, t)}</span>
+              <span className="text-text-tertiary text-xs tabular-nums">{Math.round(moonIllumination(moonRefDate) * 100)} %</span>
+            </>)}
           </div>
         )}
         {allDayEvs.length > 0 && (
@@ -1117,7 +1624,7 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
                 <div key={ev.id}
                   onClick={() => onEventClick(ev)}
                   onContextMenu={e => onEventContextMenu(e, ev)}
-                  style={{ backgroundColor: color + '20', borderLeft: `3px solid ${color}` }}
+                  style={{ backgroundColor: color + '20' }}
                   className="text-xs px-2 py-0.5 rounded cursor-pointer hover:opacity-80">
                   {ev.title}
                 </div>
@@ -1128,10 +1635,10 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
       </div>
 
       {/* Grille horaire */}
-      <div className={`flex-1 overflow-y-auto ${weekend ? 'bg-surface-1/30' : ''}`}>
-        {/* Bandeau libellés de fuseaux (seulement si un fuseau secondaire est défini) */}
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${weekend ? 'bg-surface-1/30' : ''}`}>
+        {/* Timezone-label strip (only when a secondary timezone is set) */}
         {secondaryTimezone && (
-          <div className="grid sticky top-0 z-30 bg-white border-b border-border"
+          <div className="grid sticky top-0 z-30 bg-surface-0 border-b border-border"
             style={{ gridTemplateColumns: '52px 52px 1fr' }}>
             <div className="text-[10px] text-text-tertiary text-center py-1 truncate" title={secondaryTimezone}>{tzOffsetLabel(secondaryTimezone)}</div>
             <div className="text-[10px] text-text-tertiary text-center py-1 truncate" title={localTz}>{tzOffsetLabel(localTz)}</div>
@@ -1139,18 +1646,33 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
           </div>
         )}
         <div className="grid" style={{ minHeight: '960px', gridTemplateColumns: secondaryTimezone ? '52px 52px 1fr' : '60px 1fr' }}>
-          {/* Colonne fuseau secondaire (à gauche) */}
+          {/* Secondary-timezone column (left) */}
           {secondaryTimezone && gutter(h => tzHourLabel(secondaryTimezone, h))}
-          {/* Colonne fuseau local (adjacente à la grille) */}
-          {gutter(h => `${String(h).padStart(2, '0')}:00`)}
+          {/* Local-timezone column (adjacent to the grid) */}
+          {gutter(h => `${String(h).padStart(2, '0')}:00`, true)}
           <div className="relative"
+            onPointerDown={startCreate}
             onDragOver={e => { if (!draggingRef.current) return; e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const y = e.clientY - rect.top; let m = Math.round((y / 40 * 60) / 15) * 15; m = Math.max(0, Math.min(24 * 60 - 15, m)); setGhostMin(m) }}
             onDrop={e => { const drag = draggingRef.current; if (drag && ghostMin !== null) { e.preventDefault(); const ns = new Date(date); ns.setHours(Math.floor(ghostMin / 60), ghostMin % 60, 0, 0); onEventDrop(drag, ns) } draggingRef.current = null; setDragging(null); setGhostMin(null) }}>
-            {hours.map(h => <div key={h} className="h-10 border-b border-border/50" />)}
+            {/* Hour lines + half-hour dotted line */}
+            {hours.map(h => (
+              <div key={h} className="h-10 border-b border-border/60 relative">
+                <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-border/40" />
+              </div>
+            ))}
             {dragging && ghostMin !== null && (
               <div className="absolute left-1 right-1 rounded bg-primary/20 border border-dashed border-primary pointer-events-none z-20"
                 style={{ top: ghostMin * 40 / 60, height: ghostHeight }}>
-                <div className="text-xs font-medium text-primary px-2" style={{ fontFamily: MONO }}>{String(Math.floor(ghostMin / 60)).padStart(2, '0')}:{String(ghostMin % 60).padStart(2, '0')}</div>
+                <div className="text-xs font-medium text-primary px-2" style={{ fontFamily: MONO }}><MonoText>{`${String(Math.floor(ghostMin / 60)).padStart(2, '0')}:${String(ghostMin % 60).padStart(2, '0')}`}</MonoText></div>
+              </div>
+            )}
+            {/* Range being created (dragging on an empty area) */}
+            {creating && (
+              <div className="absolute left-1 right-1 rounded bg-primary/15 border border-primary pointer-events-none z-20"
+                style={{ top: creating.startMin * PX_PER_HOUR / 60, height: Math.max((creating.endMin - creating.startMin) / 60 * PX_PER_HOUR, 10) }}>
+                <div className="text-xs font-medium text-primary px-2" style={{ fontFamily: MONO }}>
+                  <MonoText>{fmtMin(creating.startMin)}</MonoText> – <MonoText>{fmtMin(creating.endMin)}</MonoText>
+                </div>
               </div>
             )}
             {dayEvs.map(ev => {
@@ -1159,36 +1681,65 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
               const cal    = calMap.get(ev.calendar_id)
               const color  = ev.color ?? cal?.color ?? '#4D38DB'
               const past   = end < now
-              // Pendant un resize, on prévisualise avec les minutes en cours d'édition.
+              // During a resize, preview with the minutes being edited.
               const isResizing = resize?.id === ev.id
               const sMin   = isResizing ? resize!.startMin : start.getHours() * 60 + start.getMinutes()
               const eMin   = isResizing ? resize!.endMin   : end.getHours()   * 60 + end.getMinutes()
               const top    = sMin / 60 * PX_PER_HOUR
               const height = Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)
+              // Overlaps: each event takes its own column within the cluster.
+              const pos     = layout.get(ev.id) ?? { leftPct: 0, widthPct: 100 }
+              const compact = height < 38   // short block → single line "Title · 09:00"
+              const locked  = isCalendarLocked(cal)   // lecture seule / abonnement
               return (
                 <div key={ev.id}
-                  draggable
-                  onDragStart={e => { if (resizingRef.current) { e.preventDefault(); return } draggingRef.current = ev; setDragging(ev) }}
+                  data-event
+                  draggable={!locked}
+                  onDragStart={e => { if (locked || resizingRef.current) { e.preventDefault(); return } draggingRef.current = ev; setDragging(ev) }}
                   onDragEnd={() => { draggingRef.current = null; setDragging(null); setGhostMin(null) }}
                   onClick={() => { if (!isResizing) onEventClick(ev) }}
                   onContextMenu={e => onEventContextMenu(e, ev)}
-                  style={{ top, height, backgroundColor: past ? color + '24' : color, opacity: dragging?.id === ev.id ? 0.4 : 1 }}
-                  className="absolute left-1 right-1 rounded px-2 py-0.5 cursor-pointer overflow-hidden hover:opacity-90 active:cursor-grabbing group">
-                  {/* Poignée de redimensionnement — haut (heure de début) */}
-                  <div onPointerDown={startResize(ev, 'top')} onClick={e => e.stopPropagation()} draggable={false}
-                    className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize z-10" />
-                  <div className={`text-sm font-medium truncate ${past ? 'text-text-tertiary' : 'text-white'}`}>{ev.title}</div>
-                  <div className={`text-xs truncate ${past ? 'text-text-tertiary' : 'text-white/90'}`} style={{ fontFamily: MONO }}>
-                    {fmtMin(sMin)} – {fmtMin(eMin)}
+                  title={`${ev.title} · ${fmtMin(sMin)} – ${fmtMin(eMin)}`}
+                  style={{
+                    top, height,
+                    // Past: light tint + colored text (instead of the solid block).
+                    backgroundColor: past ? color + '2b' : color,
+                    color: past ? color : '#ffffff',
+                    opacity: dragging?.id === ev.id ? 0.4 : 1,
+                    left: `calc(${pos.leftPct}% + ${4 + apptPad}px)`, width: `calc(${pos.widthPct}% - ${8 + apptPad}px)`,
+                  }}
+                  className="absolute rounded-md px-2 py-0.5 cursor-pointer overflow-hidden group
+                             shadow-sm ring-1 ring-surface-0/60 transition-[box-shadow,filter] duration-100
+                             hover:shadow-md hover:brightness-[1.04] hover:z-10 active:cursor-grabbing">
+                  {/* Resize handle — top (start time) */}
+                  {!locked && <div onPointerDown={startResize(ev, 'top')} onClick={e => e.stopPropagation()} draggable={false}
+                    className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize z-10" />}
+                  <div className="text-[13px] font-semibold truncate leading-snug">
+                    {ev.title}
+                    {compact && <span className="font-normal opacity-85 text-xs" style={{ fontFamily: MONO }}> · <MonoText>{fmtMin(sMin)}</MonoText></span>}
                   </div>
-                  {ev.location && <div className={`text-xs truncate ${past ? 'text-text-tertiary' : 'text-white/90'}`}>{ev.location}</div>}
-                  {/* Poignée de redimensionnement — bas (heure de fin) */}
-                  <div onPointerDown={startResize(ev, 'bottom')} onClick={e => e.stopPropagation()} draggable={false}
-                    className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize z-10" />
+                  {!compact && (
+                    <div className="text-xs truncate opacity-85" style={{ fontFamily: MONO }}>
+                      <MonoText>{fmtMin(sMin)}</MonoText> – <MonoText>{fmtMin(eMin)}</MonoText>
+                    </div>
+                  )}
+                  {!compact && ev.location && <div className="text-xs truncate opacity-80">{ev.location}</div>}
+                  {/* Resize handle — bottom (end time) */}
+                  {!locked && <div onPointerDown={startResize(ev, 'bottom')} onClick={e => e.stopPropagation()} draggable={false}
+                    className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize z-10" />}
                 </div>
               )
             })}
-            {/* Ligne « maintenant » — point et trait centrés verticalement sur l'heure courante */}
+            {/* Availability bands (appointment schedules) — read-only */}
+            {apptEvs.map(ev => {
+              const start = parseISO(ev.starts_at), end = parseISO(ev.ends_at)
+              const sMin = start.getHours() * 60 + start.getMinutes()
+              const eMin = end.getHours() * 60 + end.getMinutes()
+              return <AvailabilityStrip key={ev.id} ev={ev} sMin={sMin}
+                top={sMin / 60 * PX_PER_HOUR} height={Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)}
+                onClick={() => onEventClick(ev)} />
+            })}
+            {/* "Now" line — dot and line vertically centered on the current time */}
             {showNow && (
               <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                 style={{ top: nowTop, transform: 'translateY(-50%)' }}>
@@ -1205,15 +1756,16 @@ function DayView({ date, events, calendars, onEventClick, onEventContextMenu, on
 
 // ── Week view ─────────────────────────────────────────────────────────────────
 
-function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, onEventDrop, onEventResize, weatherByDate }: {
+function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, onEventDrop, onEventResize, onRangeCreate, weatherByDate }: {
   date: Date; events: EventInstance[]; calendars: Calendar[]
   onEventClick: (ev: EventInstance) => void
   onEventContextMenu: (e: React.MouseEvent, ev: EventInstance) => void
   onEventDrop: (ev: EventInstance, newStart: Date) => void
   onEventResize: (ev: EventInstance, newStart: Date, newEnd: Date) => void
+  onRangeCreate: (start: Date, end: Date) => void
   weatherByDate: Map<string, DailyWeather>
 }) {
-  const { i18n } = useTranslation('calendar')
+  const { t, i18n } = useTranslation('calendar')
   const weekStart = startOfWeek(date, { weekStartsOn: 1 })
   const days      = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const hours     = Array.from({ length: 24 }, (_, i) => i)
@@ -1227,9 +1779,9 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
   const draggingRef = useRef<EventInstance | null>(null)   // ref synchrone (cf. DayView)
   const ghostHeight = dragging ? Math.max(((parseISO(dragging.ends_at).getTime() - parseISO(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
 
-  // Helpers partagés avec la vue Jour : fuseaux, police mono, heure courante temps réel.
+  // Helpers shared with the Day view: timezones, font (DM Sans), real-time current time.
   const PX_PER_HOUR = 40
-  const MONO = "'JetBrains Mono', ui-monospace, monospace"
+  const MONO = "'DM Sans', ui-sans-serif, system-ui, sans-serif"
   const now = useNowTick()
   const secondaryTimezone = useCalendarStore(s => s.secondaryTimezone)
   const localTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
@@ -1239,7 +1791,7 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
   const minOf = (iso: string) => { const d = parseISO(iso); return d.getHours() * 60 + d.getMinutes() }
   const nowTop = (now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600) * PX_PER_HOUR
 
-  // Redimensionnement vertical (poignées haut/bas → début/fin) — par jour.
+  // Vertical resize (top/bottom handles → start/end) — per day.
   const [resize, setResize] = useState<{ id: string; startMin: number; endMin: number } | null>(null)
   const resizingRef = useRef(false)
   const startResize = (ev: EventInstance, day: Date, edge: 'top' | 'bottom') => (e: React.PointerEvent) => {
@@ -1265,21 +1817,69 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
 
+  // Creation by dragging on an empty column area (single click = 1 h).
+  const [creating, setCreating] = useState<{ dayKey: string; startMin: number; endMin: number } | null>(null)
+  const startCreate = (day: Date) => (e: React.PointerEvent) => {
+    if (e.button !== 0 || resizingRef.current) return
+    if ((e.target as Element).closest('[data-event]')) return
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const dayKey = day.toISOString()
+    const m0 = Math.max(0, Math.min(24 * 60 - 15, Math.round(((e.clientY - rect.top) / PX_PER_HOUR * 60) / 15) * 15))
+    let cur = { startMin: m0, endMin: m0 + 15 }
+    let moved = false
+    setCreating({ dayKey, ...cur })
+    const move = (me: PointerEvent) => {
+      const m = Math.max(0, Math.min(24 * 60, Math.round(((me.clientY - rect.top) / PX_PER_HOUR * 60) / 15) * 15))
+      moved = true
+      cur = m >= m0 + 15 ? { startMin: m0, endMin: m } : { startMin: Math.min(m, m0), endMin: m0 + 15 }
+      setCreating({ dayKey, ...cur })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+      setCreating(null)
+      const endMin = moved ? cur.endMin : Math.min(24 * 60, m0 + 60)
+      const s = new Date(day); s.setHours(0, cur.startMin, 0, 0)
+      const en = new Date(day); en.setHours(0, endMin, 0, 0)
+      onRangeCreate(s, en)
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }
+
   const gutterCols = secondaryTimezone ? '52px 52px' : '60px'
   const gridCols = `${gutterCols} repeat(7, minmax(0, 1fr))`
-  const gutter = (labelFor: (h: number) => string) => (
-    <div className="border-r border-border">
+  const showNowWeek = days.some(d => isToday(d))
+  // Moon: principal-phase marker on the header of the day concerned.
+  const moonOn = useCalendarStore(s => s.moonEnabled)
+  const moonDay = (d: Date) => (moonOn ? principalPhaseOfDay(d) : null)
+  const gutter = (labelFor: (h: number) => string, withNow = false) => (
+    <div className="border-r border-border relative">
       {hours.map(h => (
-        <div key={h} className="h-10 flex items-start justify-end pr-2 pt-0.5">
-          {h > 0 && <span className="text-xs text-text-tertiary tabular-nums" style={{ fontFamily: MONO }}>{labelFor(h)}</span>}
+        <div key={h} className="h-10 flex items-start justify-end pr-2 -mt-px pt-0.5">
+          {h > 0 && <span className="text-[11px] text-text-tertiary -translate-y-1/2" style={{ fontFamily: MONO }}><MonoText>{labelFor(h)}</MonoText></span>}
         </div>
       ))}
+      {withNow && showNowWeek && (
+        <div className="absolute right-1 z-30 -translate-y-1/2 px-1 py-px rounded bg-danger text-white text-[10px] font-semibold pointer-events-none"
+          style={{ top: nowTop, fontFamily: MONO }}>
+          <MonoText>{format(now, 'HH:mm')}</MonoText>
+        </div>
+      )}
     </div>
   )
 
+  // Initial scroll: current time (when the week contains today), otherwise
+  // early morning.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const sc = scrollRef.current
+    if (!sc) return
+    sc.scrollTop = showNowWeek ? Math.max(0, nowTop - sc.clientHeight / 2.5) : 7.5 * PX_PER_HOUR
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart.getTime()])
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      {/* En-têtes jours (+ libellés de fuseaux dans la/les gouttière(s)) */}
+      {/* Day headers (+ timezone labels in the gutter(s)) */}
       <div className="grid border-b border-border shrink-0" style={{ gridTemplateColumns: gridCols }}>
         {secondaryTimezone && (
           <div className="text-[10px] text-text-tertiary text-center self-end pb-2 truncate" title={secondaryTimezone}>{tzOffsetLabel(secondaryTimezone)}</div>
@@ -1298,11 +1898,16 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
                                ${isToday(day) ? 'bg-primary text-white' : weekend ? 'text-text-tertiary' : 'text-text-primary'}`}>
                 {format(day, 'd')}
               </div>
-              {/* Météo compacte */}
-              {wx && (
-                <div className="flex items-center justify-center gap-0.5 mt-0.5">
-                  <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={20} height={20} style={{ width: 20, height: 20 }} draggable={false} />
-                  <span className="text-[10px] text-text-secondary">{Math.round(wx.temp_max)}°/{Math.round(wx.temp_min)}°</span>
+              {/* Compact weather + moon-phase marker (principal-phase days) */}
+              {(wx || moonDay(day)) && (
+                <div className="flex items-center justify-center gap-1 mt-0.5">
+                  {wx && (<>
+                    <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={20} height={20} style={{ width: 20, height: 20 }} draggable={false} />
+                    <span className="text-[10px] text-text-secondary">{Math.round(wx.temp_max)}°/{Math.round(wx.temp_min)}°</span>
+                  </>)}
+                  {(() => { const ph = moonDay(day); return ph
+                    ? <PrincipalMoonIcon phase={ph} size={14} title={principalPhaseName(ph, t)} className="shrink-0" />
+                    : null })()}
                 </div>
               )}
             </div>
@@ -1311,23 +1916,42 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
       </div>
 
       {/* Grille horaire */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="grid" style={{ minHeight: '960px', gridTemplateColumns: gridCols }}>
           {secondaryTimezone && gutter(h => tzHourLabel(secondaryTimezone, h))}
-          {gutter(h => `${String(h).padStart(2, '0')}:00`)}
+          {gutter(h => `${String(h).padStart(2, '0')}:00`, true)}
           {days.map(day => {
             const weekend  = isWeekend(day)
-            const dayEvs   = eventsForDay(day)
+            const dayEvs0  = eventsForDay(day)
+            const apptEvs  = dayEvs0.filter(ev => ev.event_id.startsWith(APPT_PREFIX))
+            const dayEvs   = dayEvs0.filter(ev => !ev.event_id.startsWith(APPT_PREFIX))
+            const apptPad  = apptEvs.length ? APPT_GUTTER : 0
+            const layout   = layoutDayEvents(dayEvs)
             return (
               <div key={day.toISOString()}
+                onPointerDown={startCreate(day)}
                 onDragOver={e => { if (!draggingRef.current) return; e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const y = e.clientY - rect.top; let m = Math.round((y / 40 * 60) / 15) * 15; m = Math.max(0, Math.min(24 * 60 - 15, m)); setGhost({ dayKey: day.toISOString(), min: m }) }}
                 onDrop={e => { const drag = draggingRef.current; if (drag && ghost) { e.preventDefault(); const ns = new Date(day); ns.setHours(Math.floor(ghost.min / 60), ghost.min % 60, 0, 0); onEventDrop(drag, ns) } draggingRef.current = null; setDragging(null); setGhost(null) }}
                 className={`border-r border-border relative ${weekend ? 'bg-surface-1/40' : ''}`}>
-                {hours.map(h => <div key={h} className="h-10 border-b border-border/50" />)}
+                {/* Hour lines + half-hour dotted line */}
+                {hours.map(h => (
+                  <div key={h} className="h-10 border-b border-border/60 relative">
+                    <div className="absolute left-0 right-0 top-1/2 border-b border-dashed border-border/40" />
+                  </div>
+                ))}
                 {dragging && ghost?.dayKey === day.toISOString() && (
                   <div className="absolute left-0.5 right-0.5 rounded bg-primary/20 border border-dashed border-primary pointer-events-none z-20"
                     style={{ top: ghost.min * 40 / 60, height: ghostHeight }}>
-                    <div className="text-[10px] font-medium text-primary px-1" style={{ fontFamily: MONO }}>{String(Math.floor(ghost.min / 60)).padStart(2, '0')}:{String(ghost.min % 60).padStart(2, '0')}</div>
+                    <div className="text-[10px] font-medium text-primary px-1" style={{ fontFamily: MONO }}><MonoText>{`${String(Math.floor(ghost.min / 60)).padStart(2, '0')}:${String(ghost.min % 60).padStart(2, '0')}`}</MonoText></div>
+                  </div>
+                )}
+                {/* Range being created (dragging on an empty area) */}
+                {creating?.dayKey === day.toISOString() && (
+                  <div className="absolute left-0.5 right-0.5 rounded bg-primary/15 border border-primary pointer-events-none z-20"
+                    style={{ top: creating.startMin * PX_PER_HOUR / 60, height: Math.max((creating.endMin - creating.startMin) / 60 * PX_PER_HOUR, 10) }}>
+                    <div className="text-[10px] font-medium text-primary px-1" style={{ fontFamily: MONO }}>
+                      <MonoText>{fmtMin(creating.startMin)}</MonoText> – <MonoText>{fmtMin(creating.endMin)}</MonoText>
+                    </div>
                   </div>
                 )}
                 {dayEvs.map(ev => {
@@ -1341,25 +1965,52 @@ function WeekView({ date, events, calendars, onEventClick, onEventContextMenu, o
                   const eMin   = isResizing ? resize!.endMin   : end.getHours()   * 60 + end.getMinutes()
                   const top    = sMin / 60 * PX_PER_HOUR
                   const height = Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)
+                  const pos     = layout.get(ev.id) ?? { leftPct: 0, widthPct: 100 }
+                  const compact = height < 34   // bloc court → une seule ligne
+                  const locked  = isCalendarLocked(cal)   // lecture seule / abonnement
                   return (
                     <div key={ev.id}
-                      draggable
-                      onDragStart={e => { if (resizingRef.current) { e.preventDefault(); return } draggingRef.current = ev; setDragging(ev) }}
+                      data-event
+                      draggable={!locked}
+                      onDragStart={e => { if (locked || resizingRef.current) { e.preventDefault(); return } draggingRef.current = ev; setDragging(ev) }}
                       onDragEnd={() => { draggingRef.current = null; setDragging(null); setGhost(null) }}
                       onClick={() => { if (!isResizing) onEventClick(ev) }}
                       onContextMenu={e => onEventContextMenu(e, ev)}
-                      style={{ top, height, backgroundColor: past ? color + '24' : color, opacity: dragging?.id === ev.id ? 0.4 : 1 }}
-                      className="absolute left-0.5 right-0.5 rounded px-1 py-0.5 cursor-pointer overflow-hidden hover:opacity-90 active:cursor-grabbing">
-                      <div onPointerDown={startResize(ev, day, 'top')} onClick={e => e.stopPropagation()} draggable={false}
-                        className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize z-10" />
-                      <div className={`text-xs font-medium truncate ${past ? 'text-text-tertiary' : 'text-white'}`}>{ev.title}</div>
-                      <div className={`text-[10px] truncate ${past ? 'text-text-tertiary' : 'text-white/90'}`} style={{ fontFamily: MONO }}>{fmtMin(sMin)} – {fmtMin(eMin)}</div>
-                      <div onPointerDown={startResize(ev, day, 'bottom')} onClick={e => e.stopPropagation()} draggable={false}
-                        className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10" />
+                      title={`${ev.title} · ${fmtMin(sMin)} – ${fmtMin(eMin)}`}
+                      style={{
+                        top, height,
+                        backgroundColor: past ? color + '2b' : color,
+                        color: past ? color : '#ffffff',
+                        opacity: dragging?.id === ev.id ? 0.4 : 1,
+                        left: `calc(${pos.leftPct}% + ${2 + apptPad}px)`, width: `calc(${pos.widthPct}% - ${4 + apptPad}px)`,
+                      }}
+                      className="absolute rounded-md px-1.5 py-0.5 cursor-pointer overflow-hidden
+                                 shadow-sm ring-1 ring-surface-0/60 transition-[box-shadow,filter] duration-100
+                                 hover:shadow-md hover:brightness-[1.04] hover:z-10 active:cursor-grabbing">
+                      {!locked && <div onPointerDown={startResize(ev, day, 'top')} onClick={e => e.stopPropagation()} draggable={false}
+                        className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize z-10" />}
+                      <div className="text-xs font-semibold truncate leading-snug">
+                        {ev.title}
+                        {compact && <span className="font-normal opacity-85 text-[10px]" style={{ fontFamily: MONO }}> · <MonoText>{fmtMin(sMin)}</MonoText></span>}
+                      </div>
+                      {!compact && (
+                        <div className="text-[10px] truncate opacity-85" style={{ fontFamily: MONO }}><MonoText>{fmtMin(sMin)}</MonoText> – <MonoText>{fmtMin(eMin)}</MonoText></div>
+                      )}
+                      {!locked && <div onPointerDown={startResize(ev, day, 'bottom')} onClick={e => e.stopPropagation()} draggable={false}
+                        className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10" />}
                     </div>
                   )
                 })}
-                {/* Ligne « maintenant » dans la colonne du jour courant */}
+                {/* Availability bands (appointment schedules) — read-only */}
+                {apptEvs.map(ev => {
+                  const start = parseISO(ev.starts_at), end = parseISO(ev.ends_at)
+                  const sMin = start.getHours() * 60 + start.getMinutes()
+                  const eMin = end.getHours() * 60 + end.getMinutes()
+                  return <AvailabilityStrip key={ev.id} ev={ev} sMin={sMin}
+                    top={sMin / 60 * PX_PER_HOUR} height={Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)}
+                    onClick={() => onEventClick(ev)} />
+                })}
+                {/* "Now" line in the current day's column */}
                 {isToday(day) && (
                   <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                     style={{ top: nowTop, transform: 'translateY(-50%)' }}>
@@ -1400,17 +2051,21 @@ function MonthView({ month, events, calendars, onDayClick, onEventClick, onEvent
   const eventsForDay = (day: Date) =>
     events.filter(ev => isSameDay(parseISO(ev.starts_at), day))
 
-  // Référence « maintenant » (temps réel) pour estomper les événements déjà passés.
+  // "Now" reference (real time) to dim events already past.
   const now = useNowTick(60_000)
+
+  // Moon: principal-phase marker on the day concerned (paper-calendar style).
+  const moonOn = useCalendarStore(s => s.moonEnabled)
+  const moonDay = (d: Date) => (moonOn ? principalPhaseOfDay(d) : null)
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      {/* Titre du mois — visible UNIQUEMENT à l'impression (la barre d'outils,
-          qui porte le titre à l'écran, est masquée en impression). */}
+      {/* Month title — visible ONLY in print (the toolbar, which carries the
+          title on screen, is hidden when printing). */}
       <div className="print-only mb-2 text-center text-xl font-bold text-black">
         {format(month, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })}
       </div>
-      {/* En-têtes jours de la semaine */}
+      {/* Weekday headers */}
       <div className="grid grid-cols-7 border-b border-border">
         {weekdaysShort.map((d, i) => (
           <div key={i}
@@ -1421,7 +2076,7 @@ function MonthView({ month, events, calendars, onDayClick, onEventClick, onEvent
         ))}
       </div>
 
-      {/* Grille jours — nombre de rangées dynamique (4, 5 ou 6 semaines) pour remplir toute la hauteur */}
+      {/* Day grid — dynamic row count (4, 5 or 6 weeks) to fill the whole height */}
       <div className="flex-1 grid grid-cols-7 overflow-hidden"
         style={{ gridTemplateRows: `repeat(${weeks}, minmax(0, 1fr))` }}>
         {days.map(day => {
@@ -1449,51 +2104,62 @@ function MonthView({ month, events, calendars, onDayClick, onEventClick, onEvent
                                     : 'text-text-primary'}`}>
                   {format(day, 'd')}
                 </span>
-                {/* Météo compacte dans la cellule */}
-                {wx && (
-                  <span className="flex items-center gap-0.5 text-[10px] text-text-tertiary leading-none pr-0.5">
-                    <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={16} height={16} style={{ width: 16, height: 16 }} draggable={false} />
-                    <span>{Math.round(wx.temp_max)}°</span>
+                {/* Moon-phase marker + compact weather in the cell */}
+                {(wx || (inMonth && moonDay(day))) && (
+                  <span className="flex items-center gap-1 text-[10px] text-text-tertiary leading-none pr-0.5">
+                    {inMonth && (() => { const ph = moonDay(day); return ph
+                      ? <PrincipalMoonIcon phase={ph} size={13} title={principalPhaseName(ph, t)} className="shrink-0" />
+                      : null })()}
+                    {wx && (<>
+                      <img src={weatherIconUrl(wx.weather_code, true)} alt="" width={16} height={16} style={{ width: 16, height: 16 }} draggable={false} />
+                      <span>{Math.round(wx.temp_max)}°</span>
+                    </>)}
                   </span>
                 )}
               </div>
               <div className="space-y-0.5 overflow-hidden">
                 {dayEvs.slice(0, 4).map(ev => {
-                  const cal   = calMap.get(ev.calendar_id)
-                  const color = ev.color ?? cal?.color ?? '#4D38DB'
-                  const past  = parseISO(ev.ends_at) < now
+                  const cal    = calMap.get(ev.calendar_id)
+                  const color  = ev.color ?? cal?.color ?? '#4D38DB'
+                  const past   = parseISO(ev.ends_at) < now
+                  const locked = isCalendarLocked(cal)
+                  // Same block style as the day/week views: solid (white text)
+                  // for upcoming, tinted (colored text) for past.
                   return (
                     <div key={ev.id}
-                      draggable
-                      onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData('text/plain', ev.id); e.dataTransfer.effectAllowed = 'move' }}
+                      draggable={!locked}
+                      onDragStart={e => { if (locked) { e.preventDefault(); return } e.stopPropagation(); e.dataTransfer.setData('text/plain', ev.id); e.dataTransfer.effectAllowed = 'move' }}
                       onClick={e => { e.stopPropagation(); onEventClick(ev) }}
                       onContextMenu={e => { e.stopPropagation(); onEventContextMenu(e, ev) }}
-                      className="flex items-center gap-1.5 text-xs px-1 py-0.5 rounded cursor-pointer hover:bg-surface-2"
-                      title={ev.title}>
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: color, opacity: past ? 0.35 : 1 }} />
+                      title={ev.title}
+                      style={{ backgroundColor: past ? color + '2b' : color, color: past ? color : '#fff' }}
+                      className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md cursor-pointer truncate
+                                 shadow-sm hover:brightness-[1.05] hover:shadow transition-[filter,box-shadow]">
                       {!ev.all_day && (
-                        <span className={`shrink-0 tabular-nums ${past ? 'text-text-tertiary' : 'text-text-secondary'}`}>
-                          {format(parseISO(ev.starts_at), 'HH:mm')}
+                        <span className="shrink-0 opacity-85 text-[11px]">
+                          <MonoText>{format(parseISO(ev.starts_at), 'HH:mm')}</MonoText>
                         </span>
                       )}
-                      <span className={`truncate min-w-0 ${past ? 'text-text-tertiary' : 'text-text-primary font-medium'}`}>
-                        {ev.title}
-                      </span>
+                      <span className="truncate min-w-0 font-medium">{ev.title}</span>
                     </div>
                   )
                 })}
                 {dayEvs.length > 4 && (
                   <div className="text-xs text-text-tertiary px-1">{t('more_events', { count: dayEvs.length - 4 })}</div>
                 )}
-                {/* Items superposés par d'autres modules (point d'extension générique) */}
+                {/* Items overlaid by other modules (generic extension point) —
+                    same block style as events: solid (to do) or tinted +
+                    colored text (done). */}
                 {(overlayByDate.get(format(day, 'yyyy-MM-dd')) ?? []).slice(0, 2).map(it => {
+                  const tcolor = it.color ?? '#80868b'
                   const chip = (
                     <div
-                      style={{ borderLeft: `3px solid ${it.color ?? '#80868b'}` }}
-                      className="flex items-center gap-1 text-xs px-1 py-0.5 rounded bg-surface-2 truncate"
+                      style={{ backgroundColor: it.done ? tcolor + '2b' : tcolor, color: it.done ? tcolor : '#fff' }}
+                      className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md truncate font-medium
+                                 shadow-sm hover:brightness-[1.05] hover:shadow transition-[filter,box-shadow]"
                       title={it.title}>
-                      <span className={it.done ? 'line-through text-text-tertiary' : ''}>{it.title}</span>
+                      <Check size={11} className={`shrink-0 ${it.done ? '' : 'opacity-70'}`} strokeWidth={3} />
+                      <span className={`truncate min-w-0 ${it.done ? 'line-through' : ''}`}>{it.title}</span>
                     </div>
                   )
                   return it.link
@@ -1517,60 +2183,84 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
   selectedDay: Date | null
   onSelectDay: (d: Date, rect: DOMRect) => void
 }) {
-  const { i18n } = useTranslation('calendar')
+  const { t, i18n } = useTranslation('calendar')
   const days = calendarGrid(month)
-  const weekdaysShort = useMemo(() => {
+  // Day letters (localized) — enough at the scale of a year card.
+  const weekdayLetters = useMemo(() => {
     const lc = getDateLocale(i18n.language)
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
-    return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEE', { locale: lc }))
+    return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: lc }))
   }, [i18n.language])
-  // Couleurs des indicateurs (événements + tâches) par jour → carrés colorés sous le jour.
+  // Indicator colors (events + tasks) per day, deduplicated: one dot per
+  // CALENDAR/source, not per event.
   const colorsByDay = useMemo(() => {
     const m = new Map<string, string[]>()
-    const add = (k: string, c: string) => { const a = m.get(k); if (a) a.push(c); else m.set(k, [c]) }
+    const add = (k: string, c: string) => {
+      const a = m.get(k)
+      if (!a) m.set(k, [c])
+      else if (!a.includes(c)) a.push(c)
+    }
     events.forEach(ev => { if (isSameMonth(parseISO(ev.starts_at), month)) add(format(parseISO(ev.starts_at), 'yyyy-MM-dd'), ev.color ?? '#4D38DB') })
     overlayByDate.forEach((items, k) => { if (k.startsWith(format(month, 'yyyy-MM'))) items.forEach(it => add(k, it.color ?? '#80868b')) })
     return m
   }, [events, overlayByDate, month])
 
+  const monthEventCount = useMemo(
+    () => events.filter(ev => isSameMonth(parseISO(ev.starts_at), month)).length,
+    [events, month])
+  const isCurrentMonth = isSameMonth(new Date(), month)
+
   return (
-    <div className="p-3 flex flex-col h-full">
+    <div className="px-2.5 pt-2.5 pb-1.5 flex flex-col h-full min-h-0">
+      {/* Header: month (→ month view) + month workload */}
       <button onClick={() => onMonthClick(month)}
-        className="text-base font-semibold text-text-primary hover:text-primary mb-2 capitalize block w-full text-center">
-        {format(month, 'MMMM', { locale: getDateLocale(i18n.language) })}
+        title={t('year_open_month', { defaultValue: 'Ouvrir la vue mensuelle' })}
+        className="group/mm flex items-baseline justify-between gap-2 mb-1 px-1 w-full text-left shrink-0">
+        <span className={`text-[15px] font-semibold capitalize transition-colors
+          ${isCurrentMonth ? 'text-primary' : 'text-text-primary group-hover/mm:text-primary'}`}>
+          {format(month, 'MMMM', { locale: getDateLocale(i18n.language) })}
+        </span>
+        {monthEventCount > 0 && (
+          <span className="text-[10px] tabular-nums px-1.5 py-px rounded-full bg-surface-2 text-text-secondary
+                           group-hover/mm:bg-primary/10 group-hover/mm:text-primary transition-colors">
+            {monthEventCount}
+          </span>
+        )}
       </button>
-      <div className="grid grid-cols-7 mb-1">
-        {weekdaysShort.map((d, i) => (
-          <div key={i} className={`text-center text-[10px] uppercase tracking-wide ${i >= 5 ? 'text-text-tertiary/60' : 'text-text-tertiary'}`}>
+      <div className="grid grid-cols-7 mb-0.5 shrink-0">
+        {weekdayLetters.map((d, i) => (
+          <div key={i} className={`text-center text-[10px] font-medium uppercase ${i >= 5 ? 'text-text-tertiary/50' : 'text-text-tertiary'}`}>
             {d}
           </div>
         ))}
       </div>
-      {/* Jours : numéro + carrés colorés (événements & tâches). Le détail s'ouvre dans
-          une box FLOTTANTE (cf. YearView), donc la grille remplit la hauteur de la carte. */}
-      <div className="grid grid-cols-7 flex-1 auto-rows-fr">
+      {/* Days: out-of-month days hidden (airy grid, classic year-view style);
+          number + color dots (one per calendar/source). The detail opens in a
+          FLOATING box (see YearView), so the grid fills the card. */}
+      <div className="grid grid-cols-7 flex-1 auto-rows-fr min-h-0">
         {days.map(day => {
-          const inMonth  = isSameMonth(day, month)
-          const today    = isToday(day)
-          const weekend  = isWeekend(day)
-          const isSel    = inMonth && selectedDay != null && isSameDay(day, selectedDay)
-          const dots     = inMonth ? (colorsByDay.get(format(day, 'yyyy-MM-dd')) ?? []) : []
+          const inMonth = isSameMonth(day, month)
+          if (!inMonth) return <span key={day.toISOString()} aria-hidden />
+          const today   = isToday(day)
+          const weekend = isWeekend(day)
+          const isSel   = selectedDay != null && isSameDay(day, selectedDay)
+          const dots    = colorsByDay.get(format(day, 'yyyy-MM-dd')) ?? []
           return (
             <button key={day.toISOString()} type="button"
-              onClick={e => inMonth && onSelectDay(day, e.currentTarget.getBoundingClientRect())}
-              className="flex flex-col items-center justify-start gap-0.5 pt-1 outline-none">
-              <span className={`text-sm w-7 h-7 flex items-center justify-center rounded-full transition-colors
-                ${today    ? 'bg-primary text-white font-bold'
-                  : isSel    ? 'ring-2 ring-primary text-primary font-semibold'
-                  : !inMonth ? 'text-text-tertiary/30'
-                  : weekend  ? 'text-text-tertiary hover:bg-surface-2'
-                  : 'text-text-primary hover:bg-surface-2'}`}>
+              onClick={e => onSelectDay(day, e.currentTarget.getBoundingClientRect())}
+              className="flex flex-col items-center justify-center min-h-0 outline-none group/day">
+              <span className={`text-xs w-6 h-6 flex items-center justify-center rounded-full transition-colors
+                ${today   ? 'bg-primary text-white font-bold shadow-sm'
+                  : isSel   ? 'ring-2 ring-primary text-primary font-semibold'
+                  : weekend ? 'text-text-tertiary group-hover/day:bg-surface-2'
+                  : 'text-text-primary group-hover/day:bg-surface-2'}`}>
                 {format(day, 'd')}
               </span>
-              <span className="flex items-center justify-center gap-0.5 h-2">
+              <span className="flex items-center justify-center gap-[3px] h-1">
                 {dots.slice(0, 3).map((c, i) => (
-                  <span key={i} className="w-1.5 h-1.5 rounded-[2px]" style={{ backgroundColor: c }} />
+                  <span key={i} className="w-1 h-1 rounded-full" style={{ backgroundColor: c }} />
                 ))}
+                {dots.length > 3 && <span className="text-[8px] leading-none text-text-tertiary">+</span>}
               </span>
             </button>
           )
@@ -1580,13 +2270,14 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
   )
 }
 
-// Box FLOTTANTE (portail) listant les événements et tâches d'un jour sélectionné en vue Année.
-function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick }: {
+// FLOATING box (portal) listing the events and tasks of a day selected in the Year view.
+function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick, onCreate }: {
   day: Date; rect: DOMRect
   events: EventInstance[]
   overlayByDate: Map<string, CalendarOverlayItem[]>
   onClose: () => void
   onEventClick: (ev: EventInstance) => void
+  onCreate?: (day: Date) => void
 }) {
   const { t, i18n } = useTranslation('calendar')
   const loc = getDateLocale(i18n.language)
@@ -1594,7 +2285,7 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick }:
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
   const tasks = overlayByDate.get(format(day, 'yyyy-MM-dd')) ?? []
 
-  const W = 248
+  const W = 264
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const placeAbove = rect.bottom + 240 > vh
@@ -1607,12 +2298,33 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick }:
   return createPortal(
     <>
       <div className="fixed inset-0 z-[55]" onClick={onClose} />
-      <div className="cal-details fixed z-[56] bg-white rounded-lg shadow-xl border border-border p-3"
+      <div className="cal-details fixed z-[56] bg-surface-0 rounded-xl shadow-xl border border-border p-3"
         style={pos} onClick={e => e.stopPropagation()}>
-        <span className={`cal-arrow absolute w-2.5 h-2.5 rotate-45 bg-white ${placeAbove ? '-bottom-1.5 border-r border-b' : '-top-1.5 border-l border-t'} border-border`}
+        <span className={`cal-arrow absolute w-2.5 h-2.5 rotate-45 bg-surface-0 ${placeAbove ? '-bottom-1.5 border-r border-b' : '-top-1.5 border-l border-t'} border-border`}
           style={{ left: arrowLeft - 5 }} />
-        <div className="text-xs font-semibold text-text-primary mb-1.5 capitalize">
-          {format(day, 'EEEE d MMMM', { locale: loc })}
+        {/* Header: big number + day, and quick creation on the right */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-base font-bold
+            ${isToday(day) ? 'bg-primary text-white' : 'bg-surface-1 text-text-primary'}`}>
+            {format(day, 'd')}
+          </span>
+          <div className="flex-1 min-w-0 leading-tight">
+            <div className="text-xs font-semibold text-text-primary capitalize truncate">
+              {format(day, 'EEEE', { locale: loc })}
+            </div>
+            <div className="text-[11px] text-text-tertiary capitalize truncate">
+              {format(day, 'MMMM yyyy', { locale: loc })}
+            </div>
+          </div>
+          {onCreate && (
+            <button
+              onClick={() => { onCreate(day); onClose() }}
+              title={t('year_create_here', { defaultValue: 'Créer un événement ce jour' })}
+              className="w-7 h-7 shrink-0 flex items-center justify-center rounded-full text-text-tertiary
+                         hover:bg-primary/10 hover:text-primary transition-colors">
+              <Plus size={15} />
+            </button>
+          )}
         </div>
         <div className="space-y-1 max-h-56 overflow-y-auto">
           {dayEvents.length === 0 && tasks.length === 0 && (
@@ -1623,7 +2335,7 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick }:
               className="cal-event w-full flex items-center gap-1.5 text-xs text-left rounded px-1 py-0.5 hover:bg-surface-1"
               style={{ ['--i' as string]: i } as React.CSSProperties}>
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#4D38DB' }} />
-              {!ev.all_day && <span className="text-text-tertiary tabular-nums shrink-0" style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{format(parseISO(ev.starts_at), 'HH:mm')}</span>}
+              {!ev.all_day && <span className="text-text-tertiary shrink-0"><MonoText>{format(parseISO(ev.starts_at), 'HH:mm')}</MonoText></span>}
               <span className="truncate text-text-primary">{ev.title}</span>
             </button>
           ))}
@@ -1646,17 +2358,18 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick }:
   )
 }
 
-function YearView({ year, events, overlayByDate, onMonthClick, onEventClick }: {
+function YearView({ year, events, overlayByDate, onMonthClick, onEventClick, onDayCreate }: {
   year: Date; events: EventInstance[]
   overlayByDate: Map<string, CalendarOverlayItem[]>
   onMonthClick: (month: Date) => void
   onEventClick: (ev: EventInstance) => void
+  onDayCreate?: (day: Date) => void
 }) {
   const months = useMemo(
     () => Array.from({ length: 12 }, (_, i) => new Date(year.getFullYear(), i, 1)),
     [year],
   )
-  // Jour sélectionné + ancre (rect du bouton) pour positionner la box flottante.
+  // Selected day + anchor (button rect) to position the floating box.
   const [sel, setSel] = useState<{ day: Date; rect: DOMRect } | null>(null)
   const selectDay = (day: Date, rect: DOMRect) =>
     setSel(prev => (prev && isSameDay(prev.day, day) ? null : { day, rect }))
@@ -1666,21 +2379,25 @@ function YearView({ year, events, overlayByDate, onMonthClick, onEventClick }: {
     return () => window.removeEventListener('keydown', h)
   }, [])
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      {/* h-full + auto-rows-fr : les mois remplissent la hauteur (la box de détail flotte
-          au-dessus via un portail, donc elle ne perturbe pas cette grille). */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 h-full auto-rows-fr">
-        {months.map(m => (
-          <div key={m.toISOString()}
-            className="border border-border rounded-xl bg-white hover:shadow-sm transition-shadow flex flex-col">
-            <MiniMonth month={m} events={events} overlayByDate={overlayByDate} onMonthClick={onMonthClick}
-              selectedDay={sel?.day ?? null} onSelectDay={selectDay} />
-          </div>
-        ))}
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-surface-1/40">
+      {/* h-full + auto-rows-fr: the months fill the height (the detail box
+          floats above through a portal, so it doesn't disturb this grid). */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 h-full auto-rows-fr min-h-[560px]">
+        {months.map(m => {
+          const current = isSameMonth(new Date(), m)
+          return (
+            <div key={m.toISOString()}
+              className={`rounded-2xl bg-surface-0 flex flex-col min-h-0 overflow-hidden transition-shadow hover:shadow-md
+                ${current ? 'border border-primary/40 ring-1 ring-primary/20 shadow-sm' : 'border border-border'}`}>
+              <MiniMonth month={m} events={events} overlayByDate={overlayByDate} onMonthClick={onMonthClick}
+                selectedDay={sel?.day ?? null} onSelectDay={selectDay} />
+            </div>
+          )
+        })}
       </div>
       {sel && (
         <DayPopover day={sel.day} rect={sel.rect} events={events} overlayByDate={overlayByDate}
-          onClose={() => setSel(null)} onEventClick={onEventClick} />
+          onClose={() => setSel(null)} onEventClick={onEventClick} onCreate={onDayCreate} />
       )}
     </div>
   )
@@ -1779,7 +2496,7 @@ function SearchResultsView({
                   <span className="text-xs text-text-tertiary shrink-0">
                     {ev.all_day
                       ? format(start, 'd MMMM yyyy', { locale: getDateLocale(i18n.language) })
-                      : `${format(start, 'd MMM, HH:mm', { locale: getDateLocale(i18n.language) })} – ${format(end, 'HH:mm')}`}
+                      : <>{format(start, 'd MMM, ', { locale: getDateLocale(i18n.language) })}<MonoText>{format(start, 'HH:mm')}</MonoText> – <MonoText>{format(end, 'HH:mm')}</MonoText></>}
                   </span>
                 </div>
                 {ev.location && (
@@ -1830,13 +2547,13 @@ export default function CalendarApp() {
         navigate(`/calendar/${viewMode}`, { replace: true })   // vue inconnue → corrige l'URL
       }
     } else if (location.pathname.replace(/\/+$/, '') === '/calendar') {
-      navigate(`/calendar/${viewMode}`, { replace: true })     // /calendar nu → reflète la vue
+      navigate(`/calendar/${viewMode}`, { replace: true })     // bare /calendar → reflect the view
     }
   }, [view, location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // store → URL : un changement de vue (toolbar, drill-down année→mois…) met l'URL à jour.
-  // On ignore le 1er rendu pour ne pas écraser une URL profonde (ex: accès direct
-  // à /calendar/day) avant que l'effet URL→store n'ait synchronisé le store.
+  // store → URL: a view change (toolbar, year→month drill-down…) updates the URL.
+  // The 1st render is ignored so a deep URL (e.g. direct access to /calendar/day)
+  // is not clobbered before the URL→store effect has synced the store.
   const viewSyncMounted = useRef(false)
   useEffect(() => {
     if (!viewSyncMounted.current) { viewSyncMounted.current = true; return }
@@ -1845,12 +2562,63 @@ export default function CalendarApp() {
     }
   }, [viewMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Deep link `?date=YYYY-MM-DD` (used by the `calendar.event` data card and the
+  // `openDate` service): position the view on that day, then drop the param so a
+  // later navigation inside the module isn't stuck on it.
+  useEffect(() => {
+    const dateStr = new URLSearchParams(location.search).get('date')
+    if (!dateStr) return
+    const d = new Date(`${dateStr}T00:00:00`)
+    if (!Number.isNaN(d.getTime())) setCurrentDate(d)
+    navigate(location.pathname, { replace: true })
+  }, [location.search]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [createDay,     setCreateDay]     = useState<Date | null>(null)
+  // Preselected range end (creation by dragging on the grid).
+  const [createEnd,     setCreateEnd]     = useState<Date | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventInstance | null>(null)
   const [editingEvent,  setEditingEvent]  = useState<EventInstance | null>(null)
   const [ctxMenu,       setCtxMenu]       = useState<CtxMenuState | null>(null)
 
-  // Ouvre la modale de création quand un déclencheur externe (ex: sidebar) la demande
+  // Creation by dragging on the day/week views: opens the prefilled editor.
+  const handleRangeCreate = useCallback((start: Date, end: Date) => {
+    setCreateEnd(end)
+    setCreateDay(start)
+  }, [])
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
+  // T = today · ←/→ = previous/next period · 1-4 = views · C = create.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const el = document.activeElement as HTMLElement | null
+      const tag = (el?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return
+      // An open editor already captures the keyboard (autofocused title field);
+      // as a safety net, also ignore while the create/edit modal is mounted.
+      if (createDay !== null || editingEvent) return
+      const k = e.key.toLowerCase()
+      const step = (dir: 1 | -1) => {
+        const d = viewMode === 'day' ? addDays(currentDate, dir)
+          : viewMode === 'week' ? addDays(currentDate, 7 * dir)
+          : viewMode === 'month' ? addDays(startOfMonth(currentDate), dir * 32)
+          : addYears(currentDate, dir)
+        setCurrentDate(viewMode === 'month' ? startOfMonth(d) : d)
+      }
+      if (k === 't') { e.preventDefault(); setCurrentDate(new Date()) }
+      else if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
+      else if (k === 'c') { e.preventDefault(); setCreateDay(currentDate) }
+      else if (['1', '2', '3', '4'].includes(k)) {
+        e.preventDefault()
+        setViewMode((['day', 'week', 'month', 'year'] as ViewMode[])[+k - 1])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewMode, currentDate, setCurrentDate, setViewMode, createDay, editingEvent])
+
+  // Open the creation modal when an external trigger (e.g. sidebar) requests it
   useEffect(() => {
     if (pendingCreateDate) {
       setCreateDay(pendingCreateDate)
@@ -1860,6 +2628,7 @@ export default function CalendarApp() {
 
   const handleEventContextMenu = useCallback((e: React.MouseEvent, ev: EventInstance) => {
     e.preventDefault()
+    if (ev.event_id.startsWith(APPT_PREFIX)) return   // availability blocks aren't editable events
     setCtxMenu({ x: e.clientX, y: e.clientY, event: ev })
   }, [])
 
@@ -1886,36 +2655,48 @@ export default function CalendarApp() {
     })
   }, [ctxMenu, qc, t])
 
+  // Deleting a series from the context menu: ask for the scope.
+  const [pendingDelete, setPendingDelete] = useState<EventInstance | null>(null)
+
+  const doDelete = useCallback((ev: EventInstance, scope: 'this' | 'following' | 'all') => {
+    calendarApi.deleteEvent(ev.event_id, scope, scope !== 'all' ? ev.starts_at : undefined).then(() => {
+      qc.invalidateQueries({ queryKey: ['calendar-events'] })
+      if (selectedEvent?.event_id === ev.event_id) setSelectedEvent(null)
+    })
+  }, [qc, selectedEvent])
+
   const handleCtxDelete = useCallback(() => {
     if (!ctxMenu) return
-    calendarApi.deleteEvent(ctxMenu.event.event_id, 'this').then(() => {
-      qc.invalidateQueries({ queryKey: ['calendar-events'] })
-      if (selectedEvent?.event_id === ctxMenu.event.event_id) setSelectedEvent(null)
-    })
-  }, [ctxMenu, qc, selectedEvent])
+    if (ctxMenu.event.is_recurring) setPendingDelete(ctxMenu.event)
+    else doDelete(ctxMenu.event, 'all')
+  }, [ctxMenu, doDelete])
 
-  // ── Glisser-déposer / redimensionnement d'événements (changement d'horaires) ──
-  // newStart + newEnd explicites : couvre le déplacement (durée conservée) ET le
-  // redimensionnement (début et/ou fin modifiés indépendamment).
+  // ── Event drag-and-drop / resize (time changes) ──────────────────────────────
+  // Explicit newStart + newEnd: covers moving (duration preserved) AND resizing
+  // (start and/or end changed independently).
   const [pendingMove, setPendingMove] = useState<{ ev: EventInstance; newStart: Date; newEnd: Date } | null>(null)
 
   const applyMove = useCallback((ev: EventInstance, newStart: Date, newEnd: Date, scope: 'this' | 'following') => {
     calendarApi.updateEvent(ev.event_id, {
       starts_at: newStart.toISOString(),
       ends_at:   newEnd.toISOString(),
-      scope,
+      // On a series, `occurrence` is the moved occurrence: this = detach it,
+      // following = truncate the series starting at it.
+      ...(ev.is_recurring ? { scope, occurrence: ev.starts_at } : {}),
     }).then(() => qc.invalidateQueries({ queryKey: ['calendar-events'] }))
   }, [qc])
 
   const handleEventDrop = useCallback((ev: EventInstance, newStart: Date) => {
+    if (ev.event_id.startsWith(APPT_PREFIX)) return  // availability blocks are read-only
     if (Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000) return  // pas de changement
     const durationMs = parseISO(ev.ends_at).getTime() - parseISO(ev.starts_at).getTime()
     const newEnd = new Date(newStart.getTime() + durationMs)
-    if (ev.is_recurring) setPendingMove({ ev, newStart, newEnd })   // demander la portée
+    if (ev.is_recurring) setPendingMove({ ev, newStart, newEnd })   // ask for the scope
     else                 applyMove(ev, newStart, newEnd, 'this')
   }, [applyMove])
 
   const handleEventResize = useCallback((ev: EventInstance, newStart: Date, newEnd: Date) => {
+    if (ev.event_id.startsWith(APPT_PREFIX)) return  // availability blocks are read-only
     const sameStart = Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000
     const sameEnd   = Math.abs(newEnd.getTime()   - parseISO(ev.ends_at).getTime())   < 60000
     if (sameStart && sameEnd) return  // pas de changement
@@ -1948,14 +2729,48 @@ export default function CalendarApp() {
     queryFn:  () => calendarApi.listEvents(rangeStart.toISOString(), rangeEnd.toISOString()),
     enabled:  !loadingCals,
   })
-  // Masquer les événements des calendriers décochés dans la sidebar
+  // Hide events of the calendars unchecked in the sidebar
   const events = (evData?.events ?? []).filter(
     (ev) => !hiddenCalendarIds.includes(ev.calendar_id),
   )
 
-  // ── Overlays fournis par d'autres modules (point d'extension générique) ──
-  // Calendar ne connaît aucun module en particulier : il agrège les providers
-  // enregistrés (ex: tasks superpose ses échéances). Voir core/registry/calendarOverlay.
+  // ── Appointment schedules → overlaid availability blocks ──
+  const { data: apptData } = useQuery({
+    queryKey: ['appointment-schedules'],
+    queryFn:  appointmentApi.list,
+    enabled:  !loadingCals,
+  })
+  const scheduleList = apptData?.schedules ?? []
+  // Full detail (with availability rules) per schedule — the list omits rules.
+  const scheduleDetails = useQueries({
+    queries: scheduleList.map(s => ({
+      queryKey: ['appointment-schedule', s.id],
+      queryFn:  () => appointmentApi.get(s.id),
+    })),
+  })
+  const scheduleSig = scheduleDetails.map(q => `${q.data?.schedule.id ?? ''}:${q.data?.schedule.updated_at ?? ''}`).join('|')
+  const availabilityEvents = useMemo(() => {
+    const full = scheduleDetails.map(q => q.data?.schedule).filter(Boolean) as AppointmentSchedule[]
+    return buildAvailabilityEvents(full, rangeStart, rangeEnd)
+      .filter(ev => !hiddenCalendarIds.includes(ev.calendar_id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleSig, rangeStart.getTime(), rangeEnd.getTime(), hiddenCalendarIds])
+  const events2 = useMemo(() => [...events, ...availabilityEvents], [events, availabilityEvents])
+
+  // Clicking an availability block opens its schedule editor rather than the
+  // event detail popover (synthetic events have no backing event).
+  const handleEventClick = (ev: EventInstance) => {
+    if (ev.event_id.startsWith(APPT_PREFIX)) {
+      const id = ev.event_id.slice(APPT_PREFIX.length)
+      navigate(`/calendar/booking/${id}`)   // edit the schedule on its dedicated page
+      return
+    }
+    setSelectedEvent(ev)
+  }
+
+  // ── Overlays provided by other modules (generic extension point) ──
+  // Calendar knows no module in particular: it aggregates the registered
+  // providers (e.g. tasks overlays its due dates). See core/registry/calendarOverlay.
   const overlayProviders = ExtensionRegistry.getAll<CalendarOverlayProvider>(CALENDAR_OVERLAY)
   const { data: overlayItems = [] } = useQuery({
     queryKey: ['calendar-overlay', rangeStart.toISOString(), rangeEnd.toISOString(), overlayProviders.length],
@@ -2019,38 +2834,41 @@ export default function CalendarApp() {
       ) : (
         <>
           {viewMode === 'day' && (
-            <DayView date={currentDate} events={events} calendars={calendars}
-              onEventClick={setSelectedEvent}
+            <DayView date={currentDate} events={events2} calendars={calendars}
+              onEventClick={handleEventClick}
               onEventContextMenu={handleEventContextMenu}
               onEventDrop={handleEventDrop}
               onEventResize={handleEventResize}
+              onRangeCreate={handleRangeCreate}
               weatherByDate={weatherByDate} />
           )}
           {viewMode === 'week' && (
-            <WeekView date={currentDate} events={events} calendars={calendars}
-              onEventClick={setSelectedEvent}
+            <WeekView date={currentDate} events={events2} calendars={calendars}
+              onEventClick={handleEventClick}
               onEventContextMenu={handleEventContextMenu}
               onEventDrop={handleEventDrop}
               onEventResize={handleEventResize}
+              onRangeCreate={handleRangeCreate}
               weatherByDate={weatherByDate} />
           )}
           {viewMode === 'month' && (
-            <MonthView month={currentDate} events={events} calendars={calendars}
+            <MonthView month={currentDate} events={events2} calendars={calendars}
               onDayClick={setCreateDay}
-              onEventClick={setSelectedEvent}
+              onEventClick={handleEventClick}
               onEventContextMenu={handleEventContextMenu}
               onEventDrop={handleEventDrop}
               weatherByDate={weatherByDate}
               overlayByDate={overlayByDate} />
           )}
           {viewMode === 'year' && (
-            <YearView year={currentDate} events={events} overlayByDate={overlayByDate}
-              onMonthClick={handleMonthClick} onEventClick={setSelectedEvent} />
+            <YearView year={currentDate} events={events2} overlayByDate={overlayByDate}
+              onMonthClick={handleMonthClick} onEventClick={handleEventClick}
+              onDayCreate={setCreateDay} />
           )}
         </>
       )}
 
-      {/* Context menu (clic droit sur un événement) */}
+      {/* Context menu (right click on an event) */}
       {ctxMenu && (
         <MenuDropdown
           pos={{ top: ctxMenu.y, left: ctxMenu.x }}
@@ -2064,11 +2882,11 @@ export default function CalendarApp() {
         />
       )}
 
-      {/* Choix de portée lors du déplacement d'un événement récurrent */}
+      {/* Scope choice when moving a recurring event */}
       {pendingMove && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setPendingMove(null)}>
           <div className="absolute inset-0 bg-black/30" />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-surface-0 rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-text-primary mb-1">{t('move_recurring_title')}</h3>
             <p className="text-xs text-text-secondary mb-4">{t('move_recurring_desc')}</p>
             <div className="flex flex-col gap-2">
@@ -2088,10 +2906,42 @@ export default function CalendarApp() {
         </div>
       )}
 
+      {/* Scope choice when deleting a recurring event (context menu) */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setPendingDelete(null)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="relative bg-surface-0 rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-text-primary mb-1">
+              {t('delete_recurring_title', { defaultValue: 'Supprimer l’événement récurrent' })}
+            </h3>
+            <p className="text-xs text-text-secondary mb-4">
+              {t('delete_recurring_desc', { defaultValue: 'Quels événements de la série supprimer ?' })}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => { doDelete(pendingDelete, 'this'); setPendingDelete(null) }}
+                className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                {t('move_this_only', { defaultValue: 'Cet événement seulement' })}
+              </button>
+              <button onClick={() => { doDelete(pendingDelete, 'following'); setPendingDelete(null) }}
+                className="w-full text-sm px-3 py-2 rounded-lg border border-border hover:bg-surface-1 text-left">
+                {t('move_this_following', { defaultValue: 'Celui-ci et les suivants' })}
+              </button>
+              <button onClick={() => { doDelete(pendingDelete, 'all'); setPendingDelete(null) }}
+                className="w-full text-sm px-3 py-2 rounded-lg bg-danger text-white hover:opacity-90 text-left">
+                {t('delete_all_events', { defaultValue: 'Tous les événements' })}
+              </button>
+              <button onClick={() => setPendingDelete(null)} className="w-full text-sm px-3 py-1.5 text-text-secondary">
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       {createDay !== null && (
-        <CreateEventModal initialDate={createDay} calendars={calendars}
-          onClose={() => setCreateDay(null)} />
+        <CreateEventModal initialDate={createDay} initialEnd={createEnd} calendars={calendars}
+          onClose={() => { setCreateDay(null); setCreateEnd(null) }} />
       )}
       {selectedEvent && !editingEvent && (
         <EventDetail event={selectedEvent} calendars={calendars}

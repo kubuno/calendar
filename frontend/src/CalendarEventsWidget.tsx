@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { Calendar, MapPin } from 'lucide-react'
 import { format, isToday, isTomorrow, parseISO, type Locale } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
+import type { ReactNode } from 'react'
 import { calendarApi } from './api'
 import { DashboardWidget } from '@kubuno/sdk'
+import { MonoText } from './MonoText'
 
 type TFn = (key: string) => string
 
@@ -15,9 +17,9 @@ function eventDay(starts_at: string, t: TFn, loc: Locale): string {
   return format(d, 'EEE d MMM', { locale: loc })
 }
 
-function eventTime(event: { starts_at: string; ends_at: string; all_day: boolean }, t: TFn): string {
+function eventTime(event: { starts_at: string; ends_at: string; all_day: boolean }, t: TFn): ReactNode {
   if (event.all_day) return t('all_day')
-  return `${format(parseISO(event.starts_at), 'HH:mm')} – ${format(parseISO(event.ends_at), 'HH:mm')}`
+  return <><MonoText>{format(parseISO(event.starts_at), 'HH:mm')}</MonoText> – <MonoText>{format(parseISO(event.ends_at), 'HH:mm')}</MonoText></>
 }
 
 export default function CalendarEventsWidget() {

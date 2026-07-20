@@ -9,7 +9,7 @@ use crate::{
 pub struct ICalendarService;
 
 impl ICalendarService {
-    /// Convertit un événement Kubuno en chaîne iCalendar (.ics).
+    /// Convert a Kubuno event into an iCalendar (.ics) string.
     pub fn event_to_ics(event: &Event, calendar_name: &str) -> String {
         let mut cal = ICalCalendar::new();
         cal.name(calendar_name);
@@ -48,13 +48,13 @@ impl ICalendarService {
         ical_event.add_property("STATUS", status_str);
 
         // SEQUENCE
-        ical_event.add_property("SEQUENCE", &event.sequence.to_string());
+        ical_event.add_property("SEQUENCE", event.sequence.to_string());
 
         cal.push(ical_event.done());
         cal.to_string()
     }
 
-    /// Convertit un calendrier entier (liste d'événements) en .ics.
+    /// Convert a whole calendar (list of events) into .ics.
     pub fn calendar_to_ics(events: &[Event], calendar_name: &str) -> String {
         let mut cal = ICalCalendar::new();
         cal.name(calendar_name);
@@ -76,7 +76,7 @@ impl ICalendarService {
             if let Some(ref rrule) = event.rrule {
                 ical_event.add_property("RRULE", rrule.trim_start_matches("RRULE:"));
             }
-            ical_event.add_property("SEQUENCE", &event.sequence.to_string());
+            ical_event.add_property("SEQUENCE", event.sequence.to_string());
 
             cal.push(ical_event.done());
         }
@@ -84,7 +84,7 @@ impl ICalendarService {
         cal.to_string()
     }
 
-    /// Parse un flux iCalendar et retourne les événements extraits.
+    /// Parse an iCalendar feed and return the extracted events.
     /// Retourne des tuples (ical_uid, summary, dtstart, dtend, description, location, rrule).
     pub fn parse_ics(ics_content: &str) -> Result<Vec<ParsedIcsEvent>> {
         let calendar: ICalCalendar = ics_content

@@ -1,4 +1,6 @@
+pub mod delta;
 pub mod analytics;
+pub mod appointments;
 pub mod attendees;
 pub mod caldav;
 pub mod calendars;

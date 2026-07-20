@@ -13,8 +13,29 @@ export interface Calendar {
   is_public: boolean
   timezone: string
   caldav_token: string
+  /** Mirrored remote .ics feed (cal_type = 'subscription'). */
+  subscription_url: string | null
+  last_synced_at: string | null
   created_at: string
   updated_at: string
+  /** Droits de l'utilisateur courant : 'owner' | 'write' | 'read'. */
+  my_permission?: 'owner' | 'write' | 'read' | null
+}
+
+export interface CalendarShare {
+  id: string
+  calendar_id: string
+  shared_with: string
+  permission: 'read' | 'write'
+  created_at: string
+}
+
+/** Public profile returned by /users/search and /users/lookup (core). */
+export interface UserBrief {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
 }
 
 export interface EventReminder {
@@ -78,11 +99,19 @@ export interface Attendee {
   user_id:      string | null
   email:        string
   display_name: string | null
-  status:       string   // 'needs_action' | 'accepted' | 'declined' | 'tentative'
+  status:       string   // 'needs-action' | 'accepted' | 'declined' | 'tentative'
   is_organizer: boolean
+  rsvp_token:   string | null
   invited_at:   string
   responded_at: string | null
   comment:      string | null
+}
+
+export interface AvailableSlot {
+  starts_at: string
+  ends_at:   string
+  /** 1.0 = all attendees available. */
+  score:     number
 }
 
 // ── Weather ───────────────────────────────────────────────────────────────────
@@ -99,15 +128,36 @@ export interface WeatherLocation {
   created_at: string
 }
 
+export interface CurrentWeather {
+  time:         string   // "YYYY-MM-DDTHH:MM"
+  weather_code: number
+  temp:         number
+  feels_like:   number
+  is_day:       boolean
+  humidity:     number
+  precip:       number   // mm (last hour)
+  wind_speed:   number
+  wind_gust:    number
+  wind_dir:     number
+  pressure:     number   // hPa
+  cloud_cover:  number   // %
+}
+
 export interface DailyWeather {
-  date:            string   // "YYYY-MM-DD"
-  weather_code:    number
-  temp_max:        number
-  temp_min:        number
-  precip_prob_max: number
-  uv_index_max:    number
-  sunrise:         string | null
-  sunset:          string | null
+  date:              string   // "YYYY-MM-DD"
+  weather_code:      number
+  temp_max:          number
+  temp_min:          number
+  feels_like_max:    number
+  feels_like_min:    number
+  precip_prob_max:   number
+  precip_sum:        number   // mm
+  uv_index_max:      number
+  wind_max:          number
+  wind_gust_max:     number
+  wind_dir_dominant: number
+  sunrise:           string | null
+  sunset:            string | null
 }
 
 export interface HourlyPoint {
@@ -115,16 +165,34 @@ export interface HourlyPoint {
   weather_code: number
   temp:         number
   feels_like:   number
+  is_day:       boolean
   humidity:     number
+  precip:       number   // mm
   precip_prob:  number
   wind_speed:   number
+  wind_gust:    number
   wind_dir:     number
+  uv_index:     number
+  pressure:     number   // hPa
+  visibility:   number   // meters
+  cloud_cover:  number   // %
+}
+
+export interface AirQuality {
+  european_aqi: number | null
+  us_aqi:       number | null
+  pm2_5:        number | null
+  pm10:         number | null
+  ozone:        number | null
+  no2:          number | null
 }
 
 export interface WeatherForecast {
   latitude:  number
   longitude: number
   timezone:  string
+  current:   CurrentWeather | null
+  air:       AirQuality | null
   days:      DailyWeather[]
   hours:     HourlyPoint[]
 }
@@ -175,6 +243,22 @@ export const weatherApi = {
 
 // ── WMO weather code helpers ──────────────────────────────────────────────────
 
+/** i18n key for a WMO weather code (translated in the component via `t()`). */
+export function wmoKey(code: number): string {
+  if (code === 0)  return 'wmo_clear'
+  if (code === 1)  return 'wmo_mainly_clear'
+  if (code === 2)  return 'wmo_partly_cloudy'
+  if (code === 3)  return 'wmo_overcast'
+  if (code <= 49)  return 'wmo_fog'
+  if (code <= 57)  return 'wmo_drizzle'
+  if (code <= 67)  return 'wmo_rain'
+  if (code <= 77)  return 'wmo_snow'
+  if (code <= 82)  return 'wmo_showers'
+  if (code <= 86)  return 'wmo_snow_showers'
+  if (code <= 99)  return 'wmo_thunderstorm'
+  return 'wmo_unknown'
+}
+
 export function wmoInfo(code: number): { emoji: string; label: string } {
   if (code === 0)  return { emoji: '☀️',  label: 'Ciel dégagé' }
   if (code === 1)  return { emoji: '🌤️',  label: 'Généralement dégagé' }
@@ -191,9 +275,9 @@ export function wmoInfo(code: number): { emoji: string; label: string } {
 }
 
 /**
- * URL d'une icône météo SVG animée (amCharts/ammap.com) selon le code WMO Open-Meteo.
- * Fichiers servis depuis public/weather-icons/. Variante jour/nuit pour ciel dégagé/peu nuageux.
- * Icônes : © amCharts — https://www.amcharts.com/free-animated-svg-weather-icons/
+ * URL of an animated SVG weather icon (amCharts/ammap.com) for a WMO Open-Meteo code.
+ * Files served from public/weather-icons/. Day/night variants for clear/partly-cloudy skies.
+ * Icons: © amCharts — https://www.amcharts.com/free-animated-svg-weather-icons/
  */
 export function weatherIconUrl(code: number, isDay = true): string {
   let name: string
@@ -205,7 +289,7 @@ export function weatherIconUrl(code: number, isDay = true): string {
   else if (code <= 57)  name = 'rainy-1'     // bruine
   else if (code === 61) name = 'rainy-4'
   else if (code === 63) name = 'rainy-5'
-  else if (code <= 67)  name = 'rainy-6'     // pluie forte / verglaçante
+  else if (code <= 67)  name = 'rainy-6'     // heavy / freezing rain
   else if (code === 71) name = 'snowy-4'
   else if (code === 73) name = 'snowy-5'
   else if (code <= 77)  name = 'snowy-6'     // neige
@@ -224,14 +308,76 @@ export const calendarApi = {
     return data
   },
 
-  createCalendar: async (dto: { name: string; color?: string; timezone?: string }): Promise<{ calendar: Calendar }> => {
+  createCalendar: async (dto: { name: string; color?: string; timezone?: string; description?: string }): Promise<{ calendar: Calendar }> => {
     const { data } = await apiClient.post('/calendar/calendars', dto)
     return data
   },
 
+  updateCalendar: async (id: string, dto: { name?: string; color?: string; description?: string; is_public?: boolean; is_visible?: boolean }): Promise<{ calendar: Calendar }> => {
+    const { data } = await apiClient.patch(`/calendar/calendars/${id}`, dto)
+    return data
+  },
+
+  deleteCalendar: async (id: string): Promise<void> => {
+    await apiClient.delete(`/calendar/calendars/${id}`)
+  },
+
+  // ── Partage d'agendas ────────────────────────────────────────────────────────
+  listShares: async (id: string): Promise<{ shares: CalendarShare[] }> => {
+    const { data } = await apiClient.get(`/calendar/calendars/${id}/shares`)
+    return data
+  },
+
+  shareCalendar: async (id: string, dto: { user_id: string; permission: 'read' | 'write' }): Promise<{ share: CalendarShare }> => {
+    const { data } = await apiClient.post(`/calendar/calendars/${id}/share`, dto)
+    return data
+  },
+
+  unshareCalendar: async (id: string, userId: string): Promise<void> => {
+    await apiClient.delete(`/calendar/calendars/${id}/share/${userId}`)
+  },
+
+  // ── Abonnements iCalendar distants ───────────────────────────────────────────
+  subscribeCalendar: async (dto: { name: string; url: string; color?: string }): Promise<{ calendar: Calendar }> => {
+    const { data } = await apiClient.post('/calendar/calendars/subscribe', dto)
+    return data
+  },
+
+  refreshCalendar: async (id: string): Promise<{ imported: number; updated: number; removed: number }> => {
+    const { data } = await apiClient.post(`/calendar/calendars/${id}/refresh`)
+    return data
+  },
+
+  // ── .ics export (client-side download) ──────────────────────────────────────
+  exportCalendar: async (id: string, name: string): Promise<void> => {
+    const { data } = await apiClient.get(`/calendar/calendars/${id}/export`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name.replace(/[/\\?%*:|"<>]/g, '-')}.ics`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
+  },
+
+  /** Public URL of the .ics feed (requires is_public = true). */
+  publicFeedUrl: (cal: Calendar): string =>
+    `${window.location.origin}/api/v1/calendar/public/calendars/${cal.caldav_token}/feed.ics`,
+
+  // ── Annuaire (core) ──────────────────────────────────────────────────────────
+  searchUsers: async (q: string): Promise<UserBrief[]> => {
+    const { data } = await apiClient.get('/users/search', { params: { q, limit: 8 } })
+    return data.users ?? []
+  },
+
+  lookupUsers: async (ids: string[]): Promise<UserBrief[]> => {
+    if (!ids.length) return []
+    const { data } = await apiClient.get('/users/lookup', { params: { ids: ids.join(',') } })
+    return data.users ?? []
+  },
+
   listEvents: async (from: string, to: string, calendarIds?: string[]): Promise<{ events: EventInstance[] }> => {
-    // Le backend attend `until` (pas `to`) ; sans lui la fenêtre tombait à from+30j
-    // → la vue Année (et la fin des grilles mensuelles 6 semaines) perdait des événements.
+    // The backend expects `until` (not `to`); without it the window fell back to
+    // from+30d → the Year view (and the tail of 6-week month grids) lost events.
     const params: Record<string, string> = { from, until: to }
     if (calendarIds?.length) params['calendar_ids'] = calendarIds.join(',')
     const { data } = await apiClient.get('/calendar/events', { params })
@@ -243,15 +389,22 @@ export const calendarApi = {
     return data
   },
 
-  updateEvent: async (id: string, dto: Partial<CreateEventDto> & { scope?: string }): Promise<{ event: EventInstance }> => {
-    // `scope` (this|following|all) est un paramètre de requête, pas un champ du corps.
-    const { scope, ...body } = dto
-    const { data } = await apiClient.patch(`/calendar/events/${id}`, body, scope ? { params: { scope } } : undefined)
+  updateEvent: async (id: string, dto: Partial<CreateEventDto> & { scope?: string; occurrence?: string; clear_rrule?: boolean }): Promise<{ event: EventInstance }> => {
+    // `scope` (this|following|all) and `occurrence` (start of the targeted
+    // occurrence, required for this/following on a series) are query parameters.
+    const { scope, occurrence, ...body } = dto
+    const params: Record<string, string> = {}
+    if (scope) params.scope = scope
+    if (occurrence) params.occurrence = occurrence
+    const { data } = await apiClient.patch(`/calendar/events/${id}`, body, Object.keys(params).length ? { params } : undefined)
     return data
   },
 
-  deleteEvent: async (id: string, scope?: string): Promise<void> => {
-    await apiClient.delete(`/calendar/events/${id}`, { params: scope ? { scope } : {} })
+  deleteEvent: async (id: string, scope?: string, occurrence?: string): Promise<void> => {
+    const params: Record<string, string> = {}
+    if (scope) params.scope = scope
+    if (occurrence) params.occurrence = occurrence
+    await apiClient.delete(`/calendar/events/${id}`, { params })
   },
 
   // ── Import iCalendar (.ics) ───────────────────────────────────────────────────
@@ -263,7 +416,7 @@ export const calendarApi = {
     return data
   },
 
-  // ── Invités (attendees) ──────────────────────────────────────────────────────
+  // ── Attendees ────────────────────────────────────────────────────────────────
   listAttendees: async (eventId: string): Promise<{ attendees: Attendee[] }> => {
     const { data } = await apiClient.get(`/calendar/events/${eventId}/attendees`)
     return data
@@ -277,4 +430,119 @@ export const calendarApi = {
   removeAttendee: async (eventId: string, attendeeId: string): Promise<void> => {
     await apiClient.delete(`/calendar/events/${eventId}/attendees/${attendeeId}`)
   },
+
+  /** Standalone public RSVP page of an attendee (to send by e-mail). */
+  rsvpPageUrl: (attendee: Attendee): string | null =>
+    attendee.rsvp_token
+      ? `${window.location.origin}/api/v1/calendar/public/rsvp/${attendee.rsvp_token}/page`
+      : null,
+
+  // ── Common-slot search ───────────────────────────────────────────────────────
+  findCommonSlots: async (dto: { from: string; until: string; user_ids: string[] }): Promise<{ slots: AvailableSlot[] }> => {
+    const { data } = await apiClient.post('/calendar/availability', dto)
+    return data
+  },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bookable appointment schedules
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Custom booking-form field beyond the built-in first/last name + email. */
+export interface BookingFormField {
+  id:       string
+  label:    string
+  type:     'text' | 'email' | 'phone' | 'longtext'
+  required: boolean
+}
+
+/** One availability rule: weekly (weekday set) or date-specific (date set).
+ *  Times are minutes from midnight in the schedule timezone. weekday 0 = Mon. */
+export interface AvailabilityRule {
+  id?:            string
+  weekday:        number | null
+  specific_date:  string | null
+  start_minute:   number
+  end_minute:     number
+}
+
+export interface AppointmentSchedule {
+  id:                string
+  owner_id:          string
+  calendar_id:       string
+  public_token:      string
+  title:             string
+  description:       string | null
+  color:             string | null
+  duration_minutes:  number
+  buffer_minutes:    number | null
+  max_per_day:       number | null
+  timezone:          string
+  window_type:       'rolling' | 'fixed'
+  window_max_days:   number | null
+  window_min_hours:  number | null
+  window_start_date: string | null
+  window_end_date:   string | null
+  location_type:     'none' | 'in_person' | 'phone' | 'video'
+  location_details:  string | null
+  guests_can_invite: boolean
+  host_name:         string | null
+  host_avatar_url:   string | null
+  form_fields:       BookingFormField[]
+  calendar_invite:   boolean
+  email_reminders:   number[]
+  created_at:        string
+  updated_at:        string
+  /** Present on GET /:id — the schedule's availability rules. */
+  availability?:     AvailabilityRule[]
+}
+
+export interface SaveScheduleDto {
+  calendar_id:       string
+  title?:            string
+  description?:      string | null
+  color?:            string | null
+  duration_minutes:  number
+  buffer_minutes?:   number | null
+  max_per_day?:      number | null
+  timezone?:         string
+  window_type?:      'rolling' | 'fixed'
+  window_max_days?:  number | null
+  window_min_hours?: number | null
+  window_start_date?: string | null
+  window_end_date?:  string | null
+  location_type?:    'none' | 'in_person' | 'phone' | 'video'
+  location_details?: string | null
+  guests_can_invite?: boolean
+  host_name?:        string | null
+  host_avatar_url?:  string | null
+  form_fields?:      BookingFormField[]
+  calendar_invite?:  boolean
+  email_reminders?:  number[]
+  availability:      AvailabilityRule[]
+}
+
+export const appointmentApi = {
+  list: async (): Promise<{ schedules: AppointmentSchedule[] }> => {
+    const { data } = await apiClient.get('/calendar/appointment-schedules')
+    return data
+  },
+  get: async (id: string): Promise<{ schedule: AppointmentSchedule }> => {
+    const { data } = await apiClient.get(`/calendar/appointment-schedules/${id}`)
+    return data
+  },
+  create: async (dto: SaveScheduleDto): Promise<{ schedule: AppointmentSchedule }> => {
+    const { data } = await apiClient.post('/calendar/appointment-schedules', dto)
+    return data
+  },
+  update: async (id: string, dto: SaveScheduleDto): Promise<{ schedule: AppointmentSchedule }> => {
+    const { data } = await apiClient.patch(`/calendar/appointment-schedules/${id}`, dto)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await apiClient.delete(`/calendar/appointment-schedules/${id}`)
+  },
+  /** Public booking-page URL to share with invitees. */
+  bookingPageUrl: (token: string): string =>
+    `${window.location.origin}/api/v1/calendar/public/appointments/${token}/page`,
 }

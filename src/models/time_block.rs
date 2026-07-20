@@ -19,6 +19,9 @@ pub struct TimeBlock {
 
 #[derive(Debug, Deserialize, validator::Validate)]
 pub struct CreateTimeBlockDto {
+    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     #[validate(length(min = 1, max = 255))]
     pub label:      String,
     pub color:      Option<String>,

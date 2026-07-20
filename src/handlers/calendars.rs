@@ -9,10 +9,11 @@ use uuid::Uuid;
 use crate::{
     errors::Result,
     middleware::CalendarUser,
-    models::calendar::{CreateCalendarDto, ShareCalendarDto, UpdateCalendarDto},
+    models::calendar::{CreateCalendarDto, ShareCalendarDto, SubscribeCalendarDto, UpdateCalendarDto},
     services::{
         calendar_service::CalendarService,
         icalendar_service::ICalendarService,
+        subscription_service::SubscriptionService,
     },
     state::AppState,
 };
@@ -23,11 +24,12 @@ pub async fn list(
 ) -> Result<Json<serde_json::Value>> {
     let mut calendars = CalendarService::list(user.id, &state.db).await?;
 
-    // Premier accès : créer un calendrier personnel par défaut
+    // First access: create a default personal calendar
     if calendars.is_empty() {
         let default_cal = CalendarService::create(
             user.id,
             CreateCalendarDto {
+                id: None,
                 name:        "Mon calendar".to_string(),
                 description: None,
                 color:       Some("#4D38DB".to_string()),
@@ -104,6 +106,48 @@ pub async fn unshare(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn list_shares(
+    State(state): State<AppState>,
+    Extension(user): Extension<CalendarUser>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let shares = CalendarService::list_shares(id, user.id, &state.db).await?;
+    Ok(Json(serde_json::json!({ "shares": shares })))
+}
+
+/// Subscribe to a remote iCalendar feed (creates a mirror calendar + first sync).
+pub async fn subscribe(
+    State(state): State<AppState>,
+    Extension(user): Extension<CalendarUser>,
+    Json(dto): Json<SubscribeCalendarDto>,
+) -> Result<(StatusCode, Json<serde_json::Value>)> {
+    use validator::Validate;
+    dto.validate()
+        .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
+
+    let cal = SubscriptionService::subscribe(user.id, dto, &state.db).await?;
+    Ok((StatusCode::CREATED, Json(serde_json::json!({ "calendar": cal }))))
+}
+
+/// Manually refresh a subscription calendar.
+pub async fn refresh(
+    State(state): State<AppState>,
+    Extension(user): Extension<CalendarUser>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let cal = CalendarService::get(id, user.id, &state.db).await?;
+    if cal.owner_id != user.id {
+        return Err(crate::errors::CalendarError::Forbidden);
+    }
+    let url = cal
+        .subscription_url
+        .ok_or_else(|| crate::errors::CalendarError::Validation("Ce calendrier n'est pas un abonnement".into()))?;
+    let (imported, updated, removed) = SubscriptionService::sync(id, user.id, &url, &state.db).await?;
+    Ok(Json(serde_json::json!({
+        "imported": imported, "updated": updated, "removed": removed,
+    })))
+}
+
 pub async fn export(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
@@ -111,7 +155,7 @@ pub async fn export(
 ) -> Result<([(axum::http::HeaderName, String); 2], String)> {
     let cal = CalendarService::get(id, user.id, &state.db).await?;
 
-    // Charger tous les événements du calendrier
+    // Load all the calendar's events
     let events: Vec<crate::models::event::Event> = sqlx::query_as::<_, crate::models::event::Event>(
         "SELECT * FROM calendar.events WHERE calendar_id = $1 ORDER BY starts_at",
     )
