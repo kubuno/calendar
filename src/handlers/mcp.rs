@@ -1,6 +1,6 @@
 //! MCP tool endpoints — thin wrappers the core MCP gateway calls on the user's
 //! behalf (identity via the injected `X-Kubuno-User-Id` header, like every other
-//! authenticated route) so the assistant (jarvis) can act on the agenda.
+//! authenticated route) so the assistant module can act on the agenda.
 //!
 //! Tool names use underscores (`calendar_create_event`) because some LLM
 //! providers reject dots in tool names. The mapping name → route is declared in

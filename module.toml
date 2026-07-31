@@ -47,20 +47,197 @@ section  = "main"
 #   scope = "user"        → per-user only
 #   scope = "overridable" → admin default, each user may override it
 
+#
+# `category` groups the settings into the sections of the settings page. The
+# `label`/`description` below are fallbacks: the frontend translates each row
+# through the `setting_<key>` / `setting_<key>_help` i18n keys when they exist.
+
+# ── Langue et région ──────────────────────────────────────────────────────────
+
 [[settings]]
 key     = "default_timezone"
 scope   = "global"
 type    = "enum"
 default = "Europe/Paris"
+category = "region"
 label   = "Fuseau horaire par défaut"
 description = "Fuseau appliqué aux nouveaux calendriers de l'instance."
 values  = ["Europe/Paris", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles", "Africa/Douala", "Asia/Dubai", "Asia/Tokyo", "UTC"]
+
+[[settings]]
+key     = "date_format"
+scope   = "user"
+type    = "enum"
+default = "auto"
+category = "region"
+label   = "Format de date"
+description = "Écriture des dates numériques dans l'agenda."
+values  = [
+    { value = "auto",       label = "Automatique (selon la langue)" },
+    { value = "dd/MM/yyyy", label = "31/12/2026" },
+    { value = "MM/dd/yyyy", label = "12/31/2026" },
+    { value = "yyyy-MM-dd", label = "2026-12-31" },
+    { value = "dd.MM.yyyy", label = "31.12.2026" },
+]
+
+[[settings]]
+key     = "time_format"
+scope   = "overridable"
+type    = "enum"
+default = "24h"
+category = "region"
+label   = "Format horaire"
+description = "Affichage des heures sur 24 h ou avec AM/PM."
+values  = [
+    { value = "24h", label = "24 h (14:30)" },
+    { value = "12h", label = "12 h (2:30 PM)" },
+]
+
+# ── Fuseau horaire ────────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "secondary_timezone"
+scope   = "user"
+type    = "enum"
+default = ""
+category = "timezone"
+label   = "Fuseau horaire secondaire"
+description = "Seconde colonne d'heures dans les vues Jour et Semaine."
+values  = [
+    { value = "",                    label = "Aucun (désactivé)" },
+    "Europe/Paris", "Europe/London", "Europe/Berlin", "Europe/Lisbon", "Europe/Moscow",
+    "America/New_York", "America/Chicago", "America/Los_Angeles", "America/Sao_Paulo",
+    "Africa/Douala", "Africa/Casablanca", "Africa/Nairobi", "Africa/Johannesburg",
+    "Asia/Dubai", "Asia/Kolkata", "Asia/Shanghai", "Asia/Tokyo",
+    "Australia/Sydney", "Pacific/Auckland", "UTC",
+]
+
+# ── Paramètres des événements ─────────────────────────────────────────────────
+
+[[settings]]
+key     = "default_event_duration_min"
+scope   = "overridable"
+type    = "enum"
+default = 60
+category = "events"
+label   = "Durée par défaut"
+description = "Durée appliquée à un nouvel événement."
+values  = [
+    { value = 15,  label = "15 minutes" },
+    { value = 30,  label = "30 minutes" },
+    { value = 45,  label = "45 minutes" },
+    { value = 60,  label = "60 minutes" },
+    { value = 90,  label = "90 minutes" },
+    { value = 120, label = "120 minutes" },
+]
+
+[[settings]]
+key     = "speedy_meetings"
+scope   = "user"
+type    = "bool"
+default = false
+category = "events"
+label   = "Réunions abrégées"
+description = "Terminer 5 minutes plus tôt pour les réunions de 30 minutes, ou 10 minutes plus tôt pour les réunions plus longues."
+
+[[settings]]
+key     = "default_reminder_min"
+scope   = "overridable"
+type    = "enum"
+default = 10
+category = "events"
+label   = "Notification par défaut"
+description = "Rappel ajouté automatiquement aux nouveaux événements."
+values  = [
+    { value = 0,    label = "Aucune" },
+    { value = 5,    label = "5 minutes avant" },
+    { value = 10,   label = "10 minutes avant" },
+    { value = 15,   label = "15 minutes avant" },
+    { value = 30,   label = "30 minutes avant" },
+    { value = 60,   label = "1 heure avant" },
+    { value = 1440, label = "1 jour avant" },
+]
+
+# ── Paramètres de notification ────────────────────────────────────────────────
+
+[[settings]]
+key     = "notifications_mode"
+scope   = "user"
+type    = "enum"
+default = "in_app"
+category = "notifications"
+label   = "Notifications"
+description = "Comment les rappels d'événements vous sont présentés."
+values  = [
+    { value = "off",     label = "Désactivées" },
+    { value = "in_app",  label = "Notifications dans Kubuno" },
+    { value = "desktop", label = "Notifications sur le bureau" },
+]
+
+[[settings]]
+key     = "notification_sound"
+scope   = "user"
+type    = "bool"
+default = true
+category = "notifications"
+label   = "Activer les notifications sonores"
+
+[[settings]]
+key     = "notify_only_if_accepted"
+scope   = "user"
+type    = "bool"
+default = false
+category = "notifications"
+label   = "M'avertir uniquement si j'ai répondu « Oui » ou « Peut-être »"
+
+# ── Options d'affichage ───────────────────────────────────────────────────────
+
+[[settings]]
+key     = "show_weekends"
+scope   = "user"
+type    = "bool"
+default = true
+category = "display"
+label   = "Afficher les week-ends"
+
+[[settings]]
+key     = "show_declined_events"
+scope   = "user"
+type    = "bool"
+default = true
+category = "display"
+label   = "Afficher les événements refusés"
+
+[[settings]]
+key     = "show_week_numbers"
+scope   = "user"
+type    = "bool"
+default = false
+category = "display"
+label   = "Afficher le numéro des semaines"
+
+[[settings]]
+key     = "min_event_height"
+scope   = "user"
+type    = "bool"
+default = false
+category = "display"
+label   = "Afficher les événements courts à la même taille que les événements d'une durée minimum de 30 minutes"
+
+[[settings]]
+key     = "dim_past_events"
+scope   = "user"
+type    = "bool"
+default = true
+category = "display"
+label   = "Réduire la luminosité des événements passés"
 
 [[settings]]
 key     = "week_starts_on"
 scope   = "overridable"
 type    = "enum"
 default = "monday"
+category = "display"
 label   = "Premier jour de la semaine"
 description = "Jour affiché en première colonne des vues Mois et Semaine."
 values  = [
@@ -70,29 +247,20 @@ values  = [
 ]
 
 [[settings]]
-key     = "time_format"
-scope   = "overridable"
+key     = "custom_view_days"
+scope   = "user"
 type    = "enum"
-default = "24h"
-label   = "Format de l'heure"
-description = "Affichage des heures sur 24 h ou avec AM/PM."
+default = 4
+category = "display"
+label   = "Définir la vue personnalisée"
+description = "Nombre de jours de la vue personnalisée (raccourci clavier X)."
 values  = [
-    { value = "24h", label = "24 h (14:30)" },
-    { value = "12h", label = "12 h (2:30 PM)" },
-]
-
-[[settings]]
-key     = "default_event_duration_min"
-scope   = "overridable"
-type    = "enum"
-default = 60
-label   = "Durée d'événement par défaut"
-description = "Durée appliquée à un nouvel événement."
-values  = [
-    { value = 15,  label = "15 minutes" },
-    { value = 30,  label = "30 minutes" },
-    { value = 60,  label = "1 heure" },
-    { value = 120, label = "2 heures" },
+    { value = 2, label = "2 jours" },
+    { value = 3, label = "3 jours" },
+    { value = 4, label = "4 jours" },
+    { value = 5, label = "5 jours" },
+    { value = 6, label = "6 jours" },
+    { value = 7, label = "7 jours" },
 ]
 
 [[settings]]
@@ -100,13 +268,16 @@ key     = "default_view"
 scope   = "user"
 type    = "enum"
 default = "month"
+category = "display"
 label   = "Vue par défaut"
 description = "Affichage utilisé à l'ouverture de l'agenda."
 values  = [
-    { value = "month", label = "Mois" },
-    { value = "week",  label = "Semaine" },
-    { value = "day",   label = "Jour" },
-    { value = "year",  label = "Année" },
+    { value = "day",      label = "Jour" },
+    { value = "week",     label = "Semaine" },
+    { value = "month",    label = "Mois" },
+    { value = "year",     label = "Année" },
+    { value = "schedule", label = "Planning" },
+    { value = "custom",   label = "Vue personnalisée" },
 ]
 
 [[settings]]
@@ -114,9 +285,36 @@ key     = "day_start_hour"
 scope   = "user"
 type    = "enum"
 default = "8"
+category = "display"
 label   = "Heure de début de journée"
 description = "Heure sur laquelle les vues Jour et Semaine se positionnent."
 values  = ["0", "6", "7", "8", "9", "10", "12"]
+
+# ── Heures et lieu de travail ─────────────────────────────────────────────────
+# The per-day schedule (ranges + location) is a bespoke control (WorkingHoursField)
+# stored in the preference bag; the scalar-only manifest cannot express it.
+# `allow_working_location` is the instance-wide admin toggle (like Google Workspace's
+# admin console: "Allow users to set their daily working location", on by default).
+
+[[settings]]
+key     = "allow_working_location"
+scope   = "global"
+type    = "bool"
+default = true
+category = "working_location_admin"
+label   = "Autoriser le lieu de travail"
+description = "Permettre aux utilisateurs de définir leur lieu de travail quotidien (bureau, domicile…), affiché dans leur agenda."
+
+# ── Raccourcis clavier ────────────────────────────────────────────────────────
+
+[[settings]]
+key     = "keyboard_shortcuts"
+scope   = "user"
+type    = "bool"
+default = true
+category = "shortcuts"
+label   = "Activer les raccourcis clavier"
+description = "Appuyez sur le point d'interrogation (?) pour afficher la liste des raccourcis disponibles."
 
 [events]
 subscribed = [

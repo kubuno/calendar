@@ -64,6 +64,8 @@ export interface EventInstance {
   etag: string
   color: string | null
   reminders: EventReminder[]
+  /** RSVP status of the current user when invited ('declined', 'accepted'…). */
+  my_status?: string | null
 }
 
 export interface CreateEventDto {

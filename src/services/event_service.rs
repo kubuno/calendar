@@ -126,6 +126,37 @@ impl EventService {
             }
         }
 
+        // Participation status of the requesting user on the events they were
+        // invited to — one lookup for the whole window, so the client can honour
+        // the "show declined events" preference without a request per event.
+        let event_ids: Vec<Uuid> = {
+            let mut ids: Vec<Uuid> = instances.iter().map(|i| i.event_id).collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+        if !event_ids.is_empty() {
+            let rows: Vec<(Uuid, String)> = sqlx::query_as(
+                r#"
+                SELECT event_id, status
+                FROM calendar.attendees
+                WHERE user_id = $1 AND event_id = ANY($2)
+                "#,
+            )
+            .bind(user_id)
+            .bind(&event_ids)
+            .fetch_all(db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "chargement des statuts de participation");
+                e
+            })?;
+            let status_map: std::collections::HashMap<Uuid, String> = rows.into_iter().collect();
+            for inst in instances.iter_mut() {
+                inst.my_status = status_map.get(&inst.event_id).cloned();
+            }
+        }
+
         instances.sort_by_key(|i| i.starts_at);
         Ok(instances)
     }

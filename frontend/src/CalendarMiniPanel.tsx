@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { calendarApi, type EventInstance, type Calendar } from './api'
 import { useCalendarStore } from './store'
+import { useCalendarSettings, type WeekStart } from './calendarSettings'
 import { MonoText } from './MonoText'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -25,9 +26,9 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function miniCalendarGrid(month: Date): Date[] {
-  const start = startOfWeek(startOfMonth(month), { weekStartsOn: 0 })
-  const end   = endOfWeek(endOfMonth(month),     { weekStartsOn: 0 })
+function miniCalendarGrid(month: Date, weekStartsOn: WeekStart): Date[] {
+  const start = startOfWeek(startOfMonth(month), { weekStartsOn })
+  const end   = endOfWeek(endOfMonth(month),     { weekStartsOn })
   return eachDayOfInterval({ start, end })
 }
 
@@ -57,12 +58,13 @@ function MiniCalendar({
   onNextMonth: () => void
 }) {
   const { i18n } = useTranslation('calendar')
-  const days = useMemo(() => miniCalendarGrid(month), [month])
+  const { weekStartsOn } = useCalendarSettings()
+  const days = useMemo(() => miniCalendarGrid(month, weekStartsOn), [month, weekStartsOn])
   const weekHeaders = useMemo(() => {
     const loc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn: 0 })
+    const base = startOfWeek(new Date(), { weekStartsOn })
     return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: loc }))
-  }, [i18n.language])
+  }, [i18n.language, weekStartsOn])
 
   return (
     <div className="p-3">
@@ -247,7 +249,7 @@ function DayView({
               className="absolute left-0 w-11 z-10 flex justify-end pr-1.5 pt-1 pointer-events-none"
               style={{ top: 0 }}
             >
-              <span className="text-[8px] text-text-tertiary leading-none">{tzLabel}</span>
+              <span className="text-[10px] text-text-tertiary leading-none">{tzLabel}</span>
             </div>
           )}
 
@@ -260,7 +262,7 @@ function DayView({
             >
               <div className="w-11 shrink-0 flex justify-end pr-1.5 pt-0.5">
                 {h > 0 && (
-                  <span className="text-[9px] text-text-tertiary leading-none whitespace-nowrap">
+                  <span className="text-[10px] text-text-tertiary leading-none whitespace-nowrap">
                     {formatHour(h)}
                   </span>
                 )}
@@ -306,7 +308,7 @@ function DayView({
                   {height >= 22 && <>, <MonoText>{format(start, 'HH:mm')}</MonoText></>}
                 </p>
                 {height >= 34 && (
-                  <p className="text-[9px] leading-none" style={{ color: color + 'bb' }}>
+                  <p className="text-[10px] leading-none" style={{ color: color + 'bb' }}>
                     <MonoText>{format(start, 'HH:mm')}</MonoText> – <MonoText>{format(end, 'HH:mm')}</MonoText>
                   </p>
                 )}

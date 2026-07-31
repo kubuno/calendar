@@ -12,13 +12,18 @@
 //    default and a personal value; reverting stores a JSON null (treated as
 //    "no override" by the core).
 //
+// Changes are applied on the spot (no Save button): every control writes through
+// and the shared `['module-config', moduleId]` query is invalidated, so the views
+// reading `useCalendarSettings()` update immediately.
+//
 // NOTE: this lives in the calendar module as the pilot. Promote it to `@kubuno/sdk`
 // during the rollout so every module shares one implementation.
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, useAuthStore } from '@kubuno/sdk'
-import { Button, Input, Spinner, Toggle, Radio } from '@ui'
-import { Check, Save } from 'lucide-react'
+import { Input, Spinner, Checkbox, Dropdown } from '@ui'
+import { RotateCcw } from 'lucide-react'
 
 type Scope = 'global' | 'user' | 'overridable'
 type ValueType = 'bool' | 'int' | 'string' | 'enum'
@@ -54,86 +59,38 @@ function normOptions(values: EnumOption[] | null): { value: unknown; label: stri
   )
 }
 
-// ── A single control bound to a value ───────────────────────────────────────────
-
-function Control({ item, value, onChange, disabled }: {
-  item: SettingItem
-  value: unknown
-  onChange: (v: unknown) => void
-  disabled?: boolean
-}) {
-  if (item.type === 'bool') {
-    return (
-      <label className="flex items-center gap-2 cursor-pointer select-none">
-        <Toggle checked={!!value} onChange={() => onChange(!value)} disabled={disabled} />
-      </label>
-    )
-  }
-  if (item.type === 'enum') {
-    const opts = normOptions(item.values)
-    return (
-      <div className="flex flex-col items-start gap-2">
-        {opts.map(opt => (
-          <Radio
-            key={String(opt.value)}
-            checked={String(value) === String(opt.value)}
-            onChange={() => onChange(opt.value)}
-            label={opt.label}
-            disabled={disabled}
-          />
-        ))}
-      </div>
-    )
-  }
-  // int | string
-  return (
-    <Input
-      type={item.type === 'int' ? 'number' : 'text'}
-      value={value === null || value === undefined ? '' : String(value)}
-      onChange={e => onChange(item.type === 'int' ? Number(e.target.value) : e.target.value)}
-      disabled={disabled}
-      className="max-w-xs"
-    />
-  )
+/** Enum values are round-tripped as strings by <Dropdown>; restore the original type. */
+function coerceLike(sample: unknown, raw: string): unknown {
+  if (typeof sample === 'number')  return Number(raw)
+  if (typeof sample === 'boolean') return raw === 'true'
+  return raw
 }
 
-function Row({ label, description, children }: {
-  label: string; description?: string | null; children: React.ReactNode
-}) {
-  return (
-    <div className="flex items-start gap-8 py-4 border-b border-[#e8eaed] last:border-0">
-      <div className="w-60 flex-shrink-0">
-        <p className="text-sm text-[#202124] font-normal">{label}</p>
-        {description && <p className="text-xs text-text-tertiary mt-0.5 leading-relaxed">{description}</p>}
-      </div>
-      <div className="flex-1">{children}</div>
-    </div>
-  )
-}
-
-// ── The form ────────────────────────────────────────────────────────────────────
-
-export default function ModuleSettingsForm({ moduleId, mode }: {
+export default function ModuleSettingsForm({ moduleId, mode, categories }: {
   moduleId: string
   mode: 'admin' | 'user'
+  /** Render only these categories, in this order. Omit for all of them. */
+  categories?: string[]
 }) {
+  const { t } = useTranslation('calendar')
   const qc = useQueryClient()
   const { data, isLoading } = useQuery({
     queryKey: ['module-config', moduleId],
     queryFn:  () => api.get<ConfigResponse>(`/modules/${moduleId}/config`).then(r => r.data),
   })
 
-  // Pending edits, keyed by setting key. For `user` overridable rows we also track
-  // whether the row is "customized" (has an override) separately from its value.
-  const [edits, setEdits]   = useState<Record<string, unknown>>({})
-  const [savedFlag, setSaved] = useState(false)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const items = useMemo(() => {
     const all = data?.settings ?? []
-    return mode === 'admin'
+    const visible = mode === 'admin'
       ? all.filter(s => s.scope === 'global' || s.scope === 'overridable')
       : all.filter(s => s.editable_by_user)
-  }, [data, mode])
+    if (!categories) return visible
+    // Preserve the caller's category order, then the manifest order inside each.
+    return categories.flatMap(c => visible.filter(s => s.category === c))
+  }, [data, mode, categories])
 
   const save = useMutation({
     mutationFn: async (changes: Record<string, unknown>) => {
@@ -143,91 +100,132 @@ export default function ModuleSettingsForm({ moduleId, mode }: {
         for (const [k, v] of Object.entries(changes)) payload[`${moduleId}.${k}`] = v
         await api.patch('/admin/settings', payload)
       } else {
+        // `preferences` is merged at the ROOT level only (`preferences || $1`),
+        // so the module's whole bag must be resent or the keys left out would be
+        // dropped — including those written by other parts of the module.
+        const current = (useAuthStore.getState().user?.preferences?.[moduleId] ?? {}) as Record<string, unknown>
         const { data: res } = await api.patch<{ user: { preferences: Record<string, unknown> } }>(
-          '/me', { preferences: { [moduleId]: changes } },
+          '/me', { preferences: { [moduleId]: { ...current, ...changes } } },
         )
         if (res?.user) useAuthStore.getState().updateUser({ preferences: res.user.preferences })
       }
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['module-config', moduleId] })
-      setEdits({})
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['module-config', moduleId] }),
+    onError:   (e) => setError(e instanceof Error ? e.message : String(e)),
   })
 
+  const commit = (key: string, value: unknown) => {
+    setError(null)
+    setSavingKey(key)
+    save.mutate({ [key]: value }, { onSettled: () => setSavingKey(k => (k === key ? null : k)) })
+  }
+
   if (isLoading) return <div className="flex justify-center py-10"><Spinner size="md" /></div>
-  if (items.length === 0) {
-    return <p className="text-sm text-text-tertiary py-6">Aucun paramètre à afficher.</p>
+  if (items.length === 0) return null
+
+  // Value currently in effect for a row.
+  const shownValue = (s: SettingItem): unknown =>
+    mode === 'admin' ? (s.global ?? s.default) : (s.user ?? s.effective)
+
+  // In user mode an `overridable` row may be following the instance default.
+  const isOverridden = (s: SettingItem): boolean =>
+    s.scope !== 'overridable' || (s.user !== null && s.user !== undefined)
+
+  const labelOf = (s: SettingItem) =>
+    t(`setting_${s.key}`, { defaultValue: s.label ?? s.key })
+  const helpOf = (s: SettingItem) => {
+    const fallback = s.description ?? ''
+    const translated = t(`setting_${s.key}_help`, { defaultValue: fallback })
+    return translated.length > 0 ? translated : undefined
   }
 
-  // Resolved value currently shown for a row (pending edit wins).
-  const shownValue = (s: SettingItem): unknown => {
-    if (s.key in edits) return edits[s.key]
-    if (mode === 'admin') return s.global ?? s.default
-    return s.user ?? s.effective
+  const renderControl = (s: SettingItem) => {
+    const value    = shownValue(s)
+    const disabled = savingKey === s.key
+    if (s.type === 'enum') {
+      const opts = normOptions(s.values)
+      const sample = opts.find(o => o.value !== '' && o.value !== null)?.value
+      return (
+        <Dropdown
+          value={String(value ?? '')}
+          onChange={(v) => commit(s.key, coerceLike(sample, v))}
+          options={opts.map(o => ({
+            value: String(o.value),
+            // Option labels are translated when the module ships a key for them,
+            // otherwise the manifest's own wording is used.
+            label: t(`setting_${s.key}_opt_${String(o.value)}`, { defaultValue: o.label }),
+          }))}
+          disabled={disabled}
+          width="100%"
+          height={36}
+          className="max-w-sm"
+        />
+      )
+    }
+    return (
+      <Input
+        type={s.type === 'int' ? 'number' : 'text'}
+        defaultValue={value === null || value === undefined ? '' : String(value)}
+        onBlur={e => {
+          const raw = e.target.value
+          const next = s.type === 'int' ? Number(raw) : raw
+          if (String(next) !== String(value ?? '')) commit(s.key, next)
+        }}
+        disabled={disabled}
+        className="max-w-sm"
+      />
+    )
   }
-  // For user mode, is the row currently overridden (vs. using the instance default)?
-  const isOverridden = (s: SettingItem): boolean => {
-    if (s.scope !== 'overridable') return true // pure `user` rows are always "on"
-    if (s.key in edits) return edits[s.key] !== null
-    return s.user !== null && s.user !== undefined
-  }
-
-  const setEdit = (k: string, v: unknown) => setEdits(e => ({ ...e, [k]: v }))
-  const isDirty = Object.keys(edits).length > 0
 
   return (
-    <div>
-      <p className="text-xs text-text-tertiary mb-4">
-        {mode === 'admin'
-          ? 'Réglages appliqués à toute l\'instance (administrateurs).'
-          : 'Vos préférences personnelles. Les réglages marqués peuvent surcharger le défaut de l\'instance.'}
-      </p>
+    <div className="space-y-4">
+      {items.map(s => {
+        const overridable = s.scope === 'overridable' && mode === 'user'
+        const overridden  = isOverridden(s)
 
-      <div className="bg-white rounded-xl border border-border px-5">
-        {items.map(s => {
-          const overridable = s.scope === 'overridable'
-          const overridden  = isOverridden(s)
+        // Booleans read best as a plain checkbox row (label on the right).
+        if (s.type === 'bool') {
           return (
-            <Row key={s.key} label={s.label ?? s.key} description={s.description}>
-              {mode === 'user' && overridable && (
-                <label className="flex items-center gap-2 cursor-pointer select-none mb-2">
-                  <Toggle
-                    checked={overridden}
-                    onChange={() => {
-                      // Toggle override on/off. Off → store null (revert to instance default).
-                      setEdit(s.key, overridden ? null : (s.user ?? s.global ?? s.default))
-                    }}
-                  />
-                  <span className="text-xs text-text-secondary">
-                    {overridden
-                      ? 'Personnalisé'
-                      : `Réglage de l'instance (${String(s.global ?? s.default)})`}
-                  </span>
-                </label>
+            <div key={s.key}>
+              <Checkbox
+                checked={!!shownValue(s)}
+                onChange={(v) => commit(s.key, v)}
+                label={labelOf(s)}
+                description={helpOf(s)}
+                disabled={savingKey === s.key}
+              />
+              {overridable && overridden && (
+                <RevertLink onClick={() => commit(s.key, null)} label={t('setting_revert_instance', { defaultValue: 'Rétablir le réglage de l’instance' })} />
               )}
-              {(mode === 'admin' || !overridable || overridden) && (
-                <Control
-                  item={s}
-                  value={shownValue(s)}
-                  onChange={v => setEdit(s.key, v)}
-                  disabled={mode === 'user' && overridable && !overridden}
-                />
-              )}
-            </Row>
+            </div>
           )
-        })}
-      </div>
+        }
 
-      <div className="mt-4 flex items-center gap-3 justify-end">
-        <Button onClick={() => save.mutate(edits)} disabled={!isDirty || save.isPending}>
-          {savedFlag
-            ? <><Check size={14} className="mr-1.5 inline" />Enregistré</>
-            : <><Save size={15} className="mr-1.5 inline" />Enregistrer</>}
-        </Button>
-      </div>
+        return (
+          <div key={s.key} className="max-w-sm">
+            <label className="block text-xs text-text-tertiary mb-1">{labelOf(s)}</label>
+            {renderControl(s)}
+            {helpOf(s) && (
+              <p className="text-xs text-text-tertiary mt-1 leading-relaxed">{helpOf(s)}</p>
+            )}
+            {overridable && overridden && (
+              <RevertLink onClick={() => commit(s.key, null)} label={t('setting_revert_instance', { defaultValue: 'Rétablir le réglage de l’instance' })} />
+            )}
+          </div>
+        )
+      })}
+
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
+  )
+}
+
+function RevertLink({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick}
+      className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+      <RotateCcw size={11} />
+      {label}
+    </button>
   )
 }

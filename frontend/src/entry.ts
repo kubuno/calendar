@@ -7,7 +7,7 @@
  * `sdkVersion` lets it cleanly reject an incompatibility.
  */
 import { lazy } from 'react'
-import { Calendar } from 'lucide-react'
+import { Calendar, Calendar1, Columns3, LayoutGrid, List } from 'lucide-react'
 import {
   RouteRegistry,
   SlotRegistry,
@@ -24,12 +24,15 @@ import {
   SDK_VERSION,
 } from '@kubuno/sdk'
 import './index.css'
+import { ShareRecipientKinds } from './shareSdk'
 import './calendar.css'
 import './i18n'
 import CalendarLogo from './CalendarLogo'
 import { useCalendarStore } from './store'
 import CalendarCreateMenu from './CalendarCreateMenu'
 import CalendarSidebarBody from './CalendarSidebarBody'
+import CalendarSettingsNav from './settings/SettingsNav'
+import { CalendarHeaderNav, CalendarHeaderViews } from './CalendarHeaderSlots'
 import CalendarToolbar from './CalendarToolbar'
 import CalendarMiniPanel from './CalendarMiniPanel'
 import CalendarFilterPanel from './CalendarFilterPanel'
@@ -53,6 +56,12 @@ export function register() {
   // Instance-wide (admin) settings live at /calendar/settings, reached from the
   // admin Modules panel and a link on the user page.
   ModuleSettingsRegistry.register('calendar', '/calendar/user-settings')
+
+  // Calendar events can receive a share, so the core's share field says so.
+  ShareRecipientKinds?.add({
+    id: 'calendar-events', moduleId: 'calendar', order: 20,
+    label: "des évènements d'agenda",
+  })
 
   // Declare the notification activities shown in the core Settings → Notifications matrix.
   NotificationRegistry.register({
@@ -83,6 +92,14 @@ export function register() {
     NewActions:        CalendarCreateMenu,
     SidebarBody:       CalendarSidebarBody,
     collapsedBody: true,
+    // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
+    // mobile — one tab per calendar view, mirroring the desktop view switcher.
+    mobileTabs: [
+      { id: 'schedule', labelKey: 'calendar:view_schedule', Icon: List,       path: '/calendar/schedule' },
+      { id: 'day',      labelKey: 'calendar:view_day',      Icon: Calendar1,  path: '/calendar/day' },
+      { id: 'week',     labelKey: 'calendar:view_week',     Icon: Columns3,   path: '/calendar/week' },
+      { id: 'month',    labelKey: 'calendar:view_month',    Icon: LayoutGrid, path: '/calendar/month' },
+    ],
   })
 
   useToolbarStore.getState().register({
@@ -92,9 +109,31 @@ export function register() {
     noPadding:        true,
   })
 
+  // Desktop: the date navigation and the view switcher live in the SHELL header
+  // (left + right) rather than in a second toolbar band. Both components gate
+  // themselves to the calendar's view routes and to desktop widths.
+  SlotRegistry.register('header-leading', 'calendar', CalendarHeaderNav)
+  SlotRegistry.register('topbar-actions', 'calendar', CalendarHeaderViews)
+
+  // Settings pages carry their own breadcrumb: no date navigation / view switcher.
   useToolbarStore.getState().register({
     moduleId:    'calendar-settings',
     routePrefix: '/calendar/settings',
+  })
+  useToolbarStore.getState().register({
+    moduleId:    'calendar-user-settings',
+    routePrefix: '/calendar/user-settings',
+  })
+
+  // While the settings are open, the shell's left panel carries the settings
+  // navigation instead of the calendar's usual sidebar. The store resolves the
+  // MOST SPECIFIC route prefix, so this one wins over '/calendar' above.
+  // No `NewActions` here: the "Créer" button has no meaning on this page.
+  useSidebarStore.getState().register({
+    moduleId:      'calendar-user-settings',
+    routePrefix:   '/calendar/user-settings',
+    SidebarBody:   CalendarSettingsNav,
+    collapsedBody: true,
   })
 
   useSearchStore.getState().register({
@@ -115,7 +154,7 @@ export function register() {
   })
 
   // Inter-module services: let other modules drive the calendar UI without any
-  // hard dependency — the assistant (jarvis) opens the agenda on a given date,
+  // hard dependency — the assistant module opens the agenda on a given date,
   // chat asks the user to pick an event to insert into a conversation.
   ModuleServiceRegistry.publish('calendar', {
     // () => Promise<KubunoDataEnvelope | null> — opens the event picker and
@@ -156,6 +195,9 @@ export function register() {
   // Per-user settings live in the module (reached via the header gear). Instance-wide
   // (admin) settings are configured from the core admin console, not here.
   RouteRegistry.register('calendar/user-settings', CalendarSettingsPage)
+  // Deep link into one section of the settings page (a general section, the
+  // import/export pane, or `cal-<id>` for a given calendar).
+  RouteRegistry.register('calendar/user-settings/:section', CalendarSettingsPage)
   // View in the URL: /calendar/day, /calendar/week, /calendar/month, /calendar/year.
   // (the static routes above take precedence over this dynamic param in react-router)
   RouteRegistry.register('calendar/:view',      CalendarApp)

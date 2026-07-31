@@ -9,7 +9,9 @@ import {
 } from 'lucide-react'
 import { MoonIcon, moonPhase, moonPhaseName, moonIllumination } from './moon'
 import { SidebarNavItem, useConfirm } from '@kubuno/sdk'
-import { Checkbox, Radio, MenuDropdown, ConfirmDialog, type MenuItem } from '@ui'
+import { useCalendarSettings, type WeekStart } from './calendarSettings'
+import WorldClock from './WorldClock'
+import { Checkbox, Radio, Toggle, MenuDropdown, ConfirmDialog, type MenuItem } from '@ui'
 import CalendarImportModal from './CalendarImportModal'
 import CalendarEditModal from './CalendarEditModal'
 import CalendarShareModal from './CalendarShareModal'
@@ -65,10 +67,10 @@ function spaceActivates(action: () => void) {
   }
 }
 
-function buildGrid(month: Date): Date[] {
+function buildGrid(month: Date, weekStartsOn: WeekStart): Date[] {
   return eachDayOfInterval({
-    start: startOfWeek(startOfMonth(month), { weekStartsOn: 1 }),
-    end:   endOfWeek(endOfMonth(month),     { weekStartsOn: 1 }),
+    start: startOfWeek(startOfMonth(month), { weekStartsOn }),
+    end:   endOfWeek(endOfMonth(month),     { weekStartsOn }),
   })
 }
 
@@ -83,12 +85,13 @@ function MiniCalendar() {
   const { t, i18n } = useTranslation('calendar')
   const { currentDate, setCurrentDate, setViewMode } = useCalendarStore()
   const [miniMonth, setMiniMonth] = useState(() => new Date())
-  const days = useMemo(() => buildGrid(miniMonth), [miniMonth])
+  const { weekStartsOn } = useCalendarSettings()
+  const days = useMemo(() => buildGrid(miniMonth, weekStartsOn), [miniMonth, weekStartsOn])
   const weekdays = useMemo(() => {
     const loc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn: 1 })
+    const base = startOfWeek(new Date(), { weekStartsOn })
     return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: loc }))
-  }, [i18n.language])
+  }, [i18n.language, weekStartsOn])
   const navigate = useNavigate()
 
   const handleDayClick = (day: Date) => {
@@ -250,7 +253,7 @@ function CalendarList() {
     <div className="space-y-0.5">
       {/* Header: title + add trigger */}
       <div className="flex items-center justify-between px-2 pb-0.5">
-        <span className="text-[9px] font-bold text-text-tertiary uppercase tracking-widest">
+        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
           {t('my_calendars')}
         </span>
         <a
@@ -423,17 +426,15 @@ function WeatherSection() {
             >
               <Settings2 size={14} />
             </a>
-            <button
-              type="button"
+            {/* `role="switch"` keeps the previous announcement: the primitive is built on
+                a checkbox, which assistive technologies would otherwise read as one. */}
+            <Toggle
+              id="calendar-weather-toggle"
               role="switch"
-              aria-checked={weatherEnabled}
+              checked={weatherEnabled}
+              onChange={e => setWeatherEnabled(e.target.checked)}
               aria-label={weatherEnabled ? t('weather_disable') : t('weather_enable')}
-              onClick={() => setWeatherEnabled(!weatherEnabled)}
-              className={`flex items-center flex-shrink-0 h-5 w-9 rounded-full px-[2px] transition-colors
-                ${weatherEnabled ? 'bg-primary justify-end' : 'bg-[#bdc1c6] justify-start'}`}
-            >
-              <span className="h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />
-            </button>
+            />
           </div>
         </div>
 
@@ -601,6 +602,9 @@ export default function CalendarSidebarBody({ collapsed = false }: { collapsed?:
         <CalendarList />
       </div>
 
+      {/* Renders only when the user picked time zones in the settings. */}
+      <WorldClock />
+
       <div className="mx-3 my-2 h-px bg-border" />
 
       <BookingPagesSection />
@@ -628,17 +632,13 @@ function MoonSection() {
         <p className="text-[11px] font-bold text-text-tertiary uppercase tracking-widest flex items-center gap-1.5">
           <Moon size={12} /> {t('moon_section', { defaultValue: 'Lune' })}
         </p>
-        <button
-          type="button"
+        <Toggle
+          id="calendar-moon-toggle"
           role="switch"
-          aria-checked={moonEnabled}
+          checked={moonEnabled}
+          onChange={e => setMoonEnabled(e.target.checked)}
           aria-label={moonEnabled ? t('moon_disable', { defaultValue: 'Masquer les phases de la lune' }) : t('moon_enable', { defaultValue: 'Afficher les phases de la lune' })}
-          onClick={() => setMoonEnabled(!moonEnabled)}
-          className={`flex items-center flex-shrink-0 h-5 w-9 rounded-full px-[2px] transition-colors
-            ${moonEnabled ? 'bg-primary justify-end' : 'bg-[#bdc1c6] justify-start'}`}
-        >
-          <span className="h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />
-        </button>
+        />
       </div>
       {moonEnabled && (
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-text-secondary">

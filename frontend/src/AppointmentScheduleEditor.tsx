@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Button, Input, Dropdown, NumberInput, Textarea, Checkbox, Radio, DatePicker } from '@ui'
+import { Button, Input, Dropdown, NumberInput, Textarea, Checkbox, Radio, DatePicker, useIsMobile } from '@ui'
 import { useAuthStore } from '@kubuno/sdk'
 import {
   Clock, Plus, Trash2, Ban, Copy, MapPin, AlignLeft, ListChecks, Mail,
@@ -105,17 +105,11 @@ export default function AppointmentSchedulePage() {
   const [step, setStep] = useState<1 | 2>(1)
   const browserTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
 
-  // Two-pane layout is driven in JS: module responsive utilities (`lg:w-[600px]`)
-  // are overridden by the host's base utilities (utilities layer > kubuno-module),
-  // so a plain `lg:` variant can't shrink the `w-full` pane. See responsive-layer gotcha.
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const on = () => setIsMobile(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+  // Two-pane layout is driven in JS (`useIsMobile` from @ui): module responsive
+  // utilities (`lg:w-[600px]`) are overridden by the host's base utilities
+  // (utilities layer > kubuno-module), so a plain `lg:` variant can't shrink
+  // the `w-full` pane. See responsive-layer gotcha.
+  const isMobile = useIsMobile()
 
   const { data: loaded, isLoading } = useQuery({
     queryKey: ['appointment-schedule', editingId],

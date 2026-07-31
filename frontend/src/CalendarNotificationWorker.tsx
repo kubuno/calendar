@@ -8,6 +8,7 @@ import { useNotificationStore } from '@kubuno/sdk'
 import { useAuthStore } from '@kubuno/sdk'
 import { useWsStore } from '@kubuno/sdk'
 import { useQueryClient } from '@tanstack/react-query'
+import { useCalendarSettings } from './calendarSettings'
 
 const REMINDER_LABEL_KEYS: Record<number, string> = {
   5: 'notif_reminder_5min', 10: 'notif_reminder_10min', 15: 'notif_reminder_15min',
@@ -15,9 +16,38 @@ const REMINDER_LABEL_KEYS: Record<number, string> = {
   1440: 'notif_reminder_1day',
 }
 
+/** Short chime for a firing reminder — synthesised, so no asset to ship. */
+function playChime() {
+  try {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctor) return
+    const ctx = new Ctor()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.36)
+    osc.onended = () => ctx.close().catch(() => { /* already closed */ })
+  } catch { /* autoplay policy / no audio device */ }
+}
+
 export default function CalendarNotificationWorker() {
   const firedRef = useRef<Set<string>>(new Set())
   const isLoggedIn = useAuthStore(s => !!s.user)
+  const { notificationsMode, notificationSound, notifyOnlyIfAccepted } = useCalendarSettings()
+
+  // Desktop notifications need the browser's permission — asked for once, when
+  // the preference selects that mode.
+  useEffect(() => {
+    if (notificationsMode !== 'desktop') return
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') return
+    Notification.requestPermission().catch(() => { /* dismissed */ })
+  }, [notificationsMode])
 
   // Notifications temps réel : un événement partagé a été modifié (push WS ciblé).
   const wsMessages = useWsStore(s => s.messages)
@@ -43,6 +73,7 @@ export default function CalendarNotificationWorker() {
 
   useEffect(() => {
     if (!isLoggedIn) return
+    if (notificationsMode === 'off') return
 
     const check = async () => {
       const now        = new Date()
@@ -58,6 +89,11 @@ export default function CalendarNotificationWorker() {
       }
 
       for (const ev of events) {
+        // "Notify me only if I answered Yes or Maybe": events the user was
+        // invited to but has not accepted are skipped (their own events, which
+        // carry no RSVP, always notify).
+        if (notifyOnlyIfAccepted && ev.my_status
+            && ev.my_status !== 'accepted' && ev.my_status !== 'tentative') continue
         const reminders = ev.reminders ?? []
         for (const reminder of reminders) {
           const key = `${ev.event_id}-${reminder.minutes_before}`
@@ -75,15 +111,24 @@ export default function CalendarNotificationWorker() {
               ? i18n.t(labelKey, { ns: 'calendar' })
               : i18n.t('notif_reminder_minutes', { ns: 'calendar', count: reminder.minutes_before })
 
+            const body = ev.all_day
+              ? i18n.t('notif_all_day_body', { ns: 'calendar', date: format(eventStart, 'd MMM', { locale: getDateLocale() }) })
+              : i18n.t('notif_timed_body', { ns: 'calendar', time: format(eventStart, 'HH:mm'), label })
+
             useNotificationStore.getState().push({
               title:    ev.title,
-              body:     ev.all_day
-                ? i18n.t('notif_all_day_body', { ns: 'calendar', date: format(eventStart, 'd MMM', { locale: getDateLocale() }) })
-                : i18n.t('notif_timed_body', { ns: 'calendar', time: format(eventStart, 'HH:mm'), label }),
+              body,
               moduleId: 'calendar',
               icon:     'Calendar',
               link:     '/calendar',
             })
+
+            if (notificationsMode === 'desktop'
+                && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              try { new Notification(ev.title, { body, tag: key }) }
+              catch { /* unsupported outside a secure context */ }
+            }
+            if (notificationSound) playChime()
           }
         }
       }
@@ -92,7 +137,7 @@ export default function CalendarNotificationWorker() {
     check()
     const id = setInterval(check, 60_000)
     return () => clearInterval(id)
-  }, [isLoggedIn])
+  }, [isLoggedIn, notificationsMode, notificationSound, notifyOnlyIfAccepted])
 
   return null
 }

@@ -58,7 +58,12 @@ impl RecurrenceService {
 
         let from_tz  = rrule::Tz::UTC;
         let until_tz = rrule::Tz::UTC;
-        let from_dt  = from.with_timezone(&from_tz);
+        // Start the search `duration` before `from`, so an occurrence that STARTED
+        // before the window but still OVERLAPS it (multi-day / all-day recurring
+        // events, e.g. a monthly 27th→3rd event seen from the July grid) is kept —
+        // matching the overlap semantics used for non-recurring events. Any
+        // occurrence starting after `from - duration` necessarily ends after `from`.
+        let from_dt  = (from - duration).with_timezone(&from_tz);
         let until_dt = until.with_timezone(&until_tz);
 
         let occurrences = set
@@ -96,6 +101,7 @@ impl RecurrenceService {
                     ical_uid:     event.ical_uid.clone(),
                     etag:         event.etag.clone(),
                     color:        calendar_color.clone(),
+                    my_status:    None,
                 }
             })
             .collect()
@@ -124,6 +130,7 @@ impl RecurrenceService {
             ical_uid:     event.ical_uid.clone(),
             etag:         event.etag.clone(),
             color,
+            my_status:    None,
         }
     }
 }

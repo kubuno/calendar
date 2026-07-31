@@ -1,14 +1,9 @@
 import { create } from 'zustand'
 
-export type ViewMode = 'day' | 'week' | 'month' | 'year'
-
-// Secondary time zone (Day view) — personal preference persisted locally.
-const SECONDARY_TZ_KEY = 'kubuno:calendar:secondary-tz'
-function loadSecondaryTz(): string | null {
-  if (typeof localStorage === 'undefined') return null
-  const v = localStorage.getItem(SECONDARY_TZ_KEY)
-  return v && v.length > 0 ? v : null
-}
+// 'schedule' = vertical per-day event list ("Planning" view) — the default
+// mobile view, also reachable at /calendar/schedule on desktop.
+// 'custom'   = N-day strip, N coming from the `custom_view_days` preference.
+export type ViewMode = 'day' | 'week' | 'month' | 'year' | 'schedule' | 'custom'
 
 const MOON_KEY = 'kubuno:calendar:moon'
 function loadMoonEnabled(): boolean {
@@ -54,9 +49,6 @@ interface CalendarState {
   // Moon phases (markers on the day/week/month views)
   moonEnabled: boolean
 
-  // Vue Jour — fuseau horaire secondaire (null = colonne unique)
-  secondaryTimezone: string | null
-
   setCurrentDate:       (date: Date) => void
   setViewMode:          (mode: ViewMode) => void
   toggleCalendar:       (id: string) => void
@@ -68,7 +60,6 @@ interface CalendarState {
   setWeatherEnabled:    (v: boolean) => void
   setWeatherLocationId: (id: string | null) => void
   setMoonEnabled:       (v: boolean) => void
-  setSecondaryTimezone: (tz: string | null) => void
 }
 
 export const useCalendarStore = create<CalendarState>((set) => ({
@@ -85,8 +76,6 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   weatherLocationId: null,
 
   moonEnabled: loadMoonEnabled(),
-
-  secondaryTimezone: loadSecondaryTz(),
 
   setCurrentDate:   (currentDate) => set({ currentDate }),
   setViewMode:      (viewMode) => set({ viewMode }),
@@ -117,12 +106,5 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   setMoonEnabled: (moonEnabled) => {
     try { localStorage.setItem(MOON_KEY, moonEnabled ? 'on' : 'off') } catch { /* quota / SSR */ }
     set({ moonEnabled })
-  },
-  setSecondaryTimezone: (secondaryTimezone) => {
-    try {
-      if (secondaryTimezone) localStorage.setItem(SECONDARY_TZ_KEY, secondaryTimezone)
-      else localStorage.removeItem(SECONDARY_TZ_KEY)
-    } catch { /* quota / SSR */ }
-    set({ secondaryTimezone })
   },
 }))

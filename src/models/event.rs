@@ -59,6 +59,11 @@ pub struct EventInstance {
     pub ical_uid:     String,
     pub etag:         String,
     pub color:        Option<String>, // couleur du calendrier
+    /// Participation status of the requesting user when they are an attendee
+    /// ('accepted' | 'declined' | 'tentative' | 'needs-action'), else None.
+    /// Lets the client honour the "show declined events" display preference.
+    #[serde(default)]
+    pub my_status:    Option<String>,
 }
 
 #[derive(Debug, Deserialize, validator::Validate)]

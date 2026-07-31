@@ -4,12 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus, Pencil } from 'lucide-react'
 import { FloatingWindow, Button, Input, Spinner, AnchoredPopover, ColorSwatchPicker } from '@ui'
 import { calendarApi, type Calendar } from './api'
-
-/** Default palette suggested for a calendar (hues readable on light/dark). */
-const CALENDAR_COLORS = [
-  '#4D38DB', '#1a73e8', '#0b8043', '#188038', '#f4b400', '#f09300',
-  '#d93025', '#c2185b', '#8e24aa', '#616161', '#00897b', '#3949ab',
-]
+import { CALENDAR_COLORS } from './calendarColors'
 
 /**
  * Create / edit dialog for a calendar: name, colour, description. Editing a
