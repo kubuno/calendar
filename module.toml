@@ -1,7 +1,7 @@
 [module]
 id           = "calendar"
 display_name = "Calendar"
-version      = "0.1.4"
+version      = "0.1.5"
 description  = "Calendriers, événements, CalDAV, planification collaborative"
 author       = "Kubuno Contributors"
 license      = "AGPL-3.0"
