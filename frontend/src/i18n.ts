@@ -1,6 +1,8 @@
 import { registerModuleTranslations } from '@kubuno/sdk'
 
 const en = {
+  holidays_section: "Public holidays",
+  holidays_from_timezone: "From your time zone ({{zone}})",
   color_add: "Add", color_cancel: "Cancel", custom_color: "Custom", eyedropper: "Eyedropper",
   new_event: "New event",
   year_no_events: "No events",
@@ -417,6 +419,8 @@ const en = {
 }
 
 const fr = {
+  holidays_section: "Jours fériés",
+  holidays_from_timezone: "D'après votre fuseau horaire ({{zone}})",
   color_add: "Ajouter", color_cancel: "Annuler", custom_color: "Personnalisé", eyedropper: "Pipette",
   new_event: "Nouvel événement",
   year_no_events: "Aucun événement",

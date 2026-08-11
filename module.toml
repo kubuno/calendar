@@ -193,6 +193,24 @@ label   = "M'avertir uniquement si j'ai répondu « Oui » ou « Peut-être »"
 # ── Options d'affichage ───────────────────────────────────────────────────────
 
 [[settings]]
+key     = "show_holidays"
+scope   = "user"
+type    = "bool"
+default = true
+category = "display"
+label   = "Afficher les jours fériés"
+description = "Les jours fériés du territoire qui vous concerne apparaissent comme un agenda en lecture seule, activable dans la barre latérale."
+
+[[settings]]
+key     = "holiday_calendars"
+scope   = "user"
+type    = "string"
+default = ""
+category = "display"
+label   = "Territoires des jours fériés"
+description = "Codes séparés par des virgules (« FR », « FR-6AE,BE »). Laissé vide, le territoire est celui défini par l'administration, ou déduit de votre fuseau horaire."
+
+[[settings]]
 key     = "show_weekends"
 scope   = "user"
 type    = "bool"

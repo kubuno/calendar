@@ -6,6 +6,25 @@ import { create } from 'zustand'
 export type ViewMode = 'day' | 'week' | 'month' | 'year' | 'schedule' | 'custom'
 
 const MOON_KEY = 'kubuno:calendar:moon'
+
+// Which holiday calendars the person has unchecked.
+//
+// Persisted, unlike the other unchecked calendars: a real calendar's visibility
+// is a per-session glance ("hide this while I look at that"), whereas somebody
+// who turns the holidays off means it — and having them come back at every
+// reload would read as the switch not working.
+const HIDDEN_HOLIDAYS_KEY = 'kubuno:calendar:hidden-holidays'
+export const HOLIDAY_CALENDAR_PREFIX = 'holidays:'
+
+function loadHiddenHolidays(): string[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_HOLIDAYS_KEY) ?? '[]')
+    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
 function loadMoonEnabled(): boolean {
   if (typeof localStorage === 'undefined') return true
   return localStorage.getItem(MOON_KEY) !== 'off'
@@ -65,7 +84,7 @@ interface CalendarState {
 export const useCalendarStore = create<CalendarState>((set) => ({
   currentDate:       new Date(),
   viewMode:          'month',
-  hiddenCalendarIds: [],
+  hiddenCalendarIds: loadHiddenHolidays(),
   pendingCreateDate: null,
 
   searchQuery:   '',
@@ -82,11 +101,18 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   setPendingCreate: (pendingCreateDate) => set({ pendingCreateDate }),
 
   toggleCalendar: (id) =>
-    set((s) => ({
-      hiddenCalendarIds: s.hiddenCalendarIds.includes(id)
+    set((s) => {
+      const hiddenCalendarIds = s.hiddenCalendarIds.includes(id)
         ? s.hiddenCalendarIds.filter((i) => i !== id)
-        : [...s.hiddenCalendarIds, id],
-    })),
+        : [...s.hiddenCalendarIds, id]
+      try {
+        localStorage.setItem(
+          HIDDEN_HOLIDAYS_KEY,
+          JSON.stringify(hiddenCalendarIds.filter((i) => i.startsWith(HOLIDAY_CALENDAR_PREFIX))),
+        )
+      } catch { /* quota / SSR */ }
+      return { hiddenCalendarIds }
+    }),
 
   setSearchQuery: (searchQuery) => set({ searchQuery, searchApplied: searchQuery.trim().length > 0 }),
 

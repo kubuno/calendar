@@ -51,6 +51,10 @@ export interface CalendarSettings {
   notifyOnlyIfAccepted: boolean
   // Affichage
   showWeekends:       boolean
+  /** Public holidays of the applicable territory, as a read-only calendar. */
+  showHolidays:       boolean
+  /** Comma-separated calendar codes overriding what the core resolves. */
+  holidayCalendars:   string
   showDeclinedEvents: boolean
   showWeekNumbers:    boolean
   minEventHeight:     boolean
@@ -92,6 +96,8 @@ export const CALENDAR_SETTINGS_DEFAULTS: CalendarSettings = {
   notifyOnlyIfAccepted: false,
 
   showWeekends:       true,
+  showHolidays:       true,
+  holidayCalendars:   '',
   showDeclinedEvents: true,
   showWeekNumbers:    false,
   minEventHeight:     false,
@@ -203,6 +209,8 @@ export function useCalendarSettings(): CalendarSettings {
       notifyOnlyIfAccepted: asBool(get('notify_only_if_accepted'),  d.notifyOnlyIfAccepted),
 
       showWeekends:       asBool(get('show_weekends'),        d.showWeekends),
+      showHolidays:       asBool(get('show_holidays'),         d.showHolidays),
+      holidayCalendars:   asStr(get('holiday_calendars'),      d.holidayCalendars),
       showDeclinedEvents: asBool(get('show_declined_events'), d.showDeclinedEvents),
       showWeekNumbers:    asBool(get('show_week_numbers'),    d.showWeekNumbers),
       minEventHeight:     asBool(get('min_event_height'),     d.minEventHeight),

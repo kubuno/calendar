@@ -17,12 +17,17 @@ import {
   WidgetRegistry,
   WaffleAppRegistry,
   FaviconRegistry,
+  ExtensionRegistry,
+  type CalendarOverlayItem,
+  type CalendarOverlayProvider,
   useSidebarStore,
   useToolbarStore,
   useSearchStore,
   useRightPanelStore,
   SDK_VERSION,
 } from '@kubuno/sdk'
+import { format, parseISO } from 'date-fns'
+import { calendarApi } from './api'
 import './index.css'
 import { ShareRecipientKinds } from './shareSdk'
 import './calendar.css'
@@ -47,6 +52,27 @@ export const sdkVersion = SDK_VERSION
 
 export function register() {
   FaviconRegistry.register('calendar', '/calendar-logo.svg')
+
+  // Datepicker override: with calendar installed, the shared <DatePicker> grows a
+  // right-hand column listing the selected/hovered day's events. Neutral core
+  // channel via a string-literal key ('datepicker.day-panel') so no new SDK export
+  // is needed; reuses the CalendarOverlay item shape. The panel also folds in
+  // CALENDAR_OVERLAY items (tasks), so it shows « events OR tasks » for the day.
+  ExtensionRegistry.register('datepicker.day-panel', 'calendar', {
+    fetch: async (fromISO, toISO) => {
+      try {
+        const { events } = await calendarApi.listEvents(fromISO, toISO)
+        return events.map<CalendarOverlayItem>(e => ({
+          id:    `event-${e.id}`,
+          date:  format(parseISO(e.starts_at), 'yyyy-MM-dd'),
+          title: e.title || '(sans titre)',
+          color: e.color ?? '#1a73e8',
+        }))
+      } catch {
+        return []
+      }
+    },
+  } satisfies CalendarOverlayProvider)
 
   WaffleAppRegistry.register('calendar', 'Calendar', [
     { id: 'calendar', label: 'Calendar', Icon: CalendarLogo, path: '/calendar' },
@@ -147,7 +173,7 @@ export function register() {
 
   useRightPanelStore.getState().registerEntry({
     moduleId:       'calendar',
-    icon:           Calendar,
+    icon:           CalendarLogo,
     label:          'Calendar',
     panelComponent: CalendarMiniPanel,
     openPath:       '/calendar',

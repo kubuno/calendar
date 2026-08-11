@@ -27,6 +27,7 @@ import {
 } from 'date-fns'
 import { getDateLocale } from '@kubuno/sdk'
 import { calendarApi, appointmentApi, weatherApi, weatherIconUrl, type Calendar as CalendarT, type AppointmentSchedule } from './api'
+import { holidayCalendarId, useApplicableHolidayCalendars, HOLIDAY_COLOR } from './holidays'
 import { useCalendarStore } from './store'
 import { hashTo, hashId } from './hashRoute'
 import WeatherSettings from './WeatherSettings'
@@ -253,7 +254,7 @@ function CalendarList() {
     <div className="space-y-0.5">
       {/* Header: title + add trigger */}
       <div className="flex items-center justify-between px-2 pb-0.5">
-        <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest">
+        <span className="text-sm font-bold text-text-secondary">
           {t('my_calendars')}
         </span>
         <a
@@ -365,6 +366,66 @@ function CalendarList() {
   )
 }
 
+// ── Public holidays — one read-only calendar per applicable territory ────────
+//
+// The territories come from the core (`/holidays/applicable`), which answers
+// "where is this person" from the setting an administrator posted or, failing
+// that, from their time zone. When it was a guess, the row says so: somebody
+// shown Belgian holidays because their laptop is on Europe/Brussels needs to
+// see *why* before they can correct it.
+function HolidaysSection() {
+  const { t } = useTranslation('calendar')
+  const settings = useCalendarSettings()
+  const { hiddenCalendarIds, toggleCalendar } = useCalendarStore()
+
+  const { data } = useApplicableHolidayCalendars(settings.showHolidays)
+
+  if (!settings.showHolidays) return null
+  const calendars = data?.calendars ?? []
+  if (calendars.length === 0) return null
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-2 pt-2 pb-0.5">
+        <span className="text-sm font-bold text-text-secondary">
+          {t('holidays_section', { defaultValue: 'Jours fériés' })}
+        </span>
+      </div>
+
+      {calendars.map((cal) => {
+        const id      = holidayCalendarId(cal.code)
+        const visible = !hiddenCalendarIds.includes(id)
+        return (
+          <div
+            key={id}
+            className="group flex items-center gap-1 px-2 py-1 rounded-lg transition-colors" {...hoverBg(ROW_HOVER)}
+          >
+            <Checkbox
+              checked={visible}
+              onChange={() => toggleCalendar(id)}
+              color={HOLIDAY_COLOR}
+              label={cal.name}
+              className="flex-1 min-w-0 items-center"
+              labelClassName={`text-xs truncate ${visible ? 'text-text-primary' : 'text-text-tertiary'}`}
+            />
+            <Eye size={11} className="shrink-0 text-text-tertiary"
+              aria-label={t('cal_badge_readonly', { defaultValue: 'Lecture seule' })} />
+          </div>
+        )
+      })}
+
+      {data?.source === 'timezone' && (
+        <p className="px-3 pt-0.5 text-[10px] text-text-tertiary italic">
+          {t('holidays_from_timezone', {
+            defaultValue: "D'après votre fuseau horaire ({{zone}})",
+            zone: data.timezone,
+          })}
+        </p>
+      )}
+    </>
+  )
+}
+
 // ── Weather section ─────────────────────────────────────────────────────────────
 
 function WeatherSection() {
@@ -413,7 +474,7 @@ function WeatherSection() {
       <div className="px-2 py-2">
         {/* Header */}
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-[11px] font-bold text-text-tertiary uppercase tracking-widest flex items-center gap-1.5">
+          <p className="text-sm font-bold text-text-secondary flex items-center gap-1.5">
             <CloudSun size={12} /> {t('weather')}
           </p>
           <div className="flex items-center gap-1.5">
@@ -540,7 +601,7 @@ function BookingPagesSection() {
   return (
     <div className="px-3 pb-3">
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-bold text-text-tertiary uppercase tracking-widest">
+        <p className="text-sm font-bold text-text-secondary">
           {t('appt_section', { defaultValue: 'Pages de réservation' })}
         </p>
         <RouterLink to="/calendar/booking/new"
@@ -600,6 +661,10 @@ export default function CalendarSidebarBody({ collapsed = false }: { collapsed?:
 
       <div className="px-1 pb-3">
         <CalendarList />
+        {/* Right under the calendars, and looking exactly like one: a public
+            holiday list IS a calendar to the person reading it, and putting it
+            in a section of its own would ask them to learn that it is not. */}
+        <HolidaysSection />
       </div>
 
       {/* Renders only when the user picked time zones in the settings. */}
@@ -629,7 +694,7 @@ function MoonSection() {
   return (
     <div className="px-3 pb-3">
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-bold text-text-tertiary uppercase tracking-widest flex items-center gap-1.5">
+        <p className="text-sm font-bold text-text-secondary flex items-center gap-1.5">
           <Moon size={12} /> {t('moon_section', { defaultValue: 'Lune' })}
         </p>
         <Toggle

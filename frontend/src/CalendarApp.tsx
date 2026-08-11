@@ -43,6 +43,7 @@ import {
 } from './moon'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { APPT_PREFIX, buildAvailabilityEvents, keepPerSettings, VIEW_SHORTCUTS, type CtxMenuState } from './calendarUtils'
+import { HOLIDAY_EVENT_PREFIX, useHolidayEvents } from './holidays'
 import { CreateEventModal, EditEventModal } from './EventEditor'
 import { EventDetail } from './EventDetail'
 import { DayView } from './DayView'
@@ -179,6 +180,7 @@ export default function CalendarApp() {
   const handleEventContextMenu = useCallback((e: React.MouseEvent, ev: EventInstance) => {
     e.preventDefault()
     if (ev.event_id.startsWith(APPT_PREFIX)) return   // availability blocks aren't editable events
+    if (ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return   // a public holiday is not this instance's to edit
     setCtxMenu({ x: e.clientX, y: e.clientY, event: ev })
   }, [])
 
@@ -237,7 +239,7 @@ export default function CalendarApp() {
   }, [qc])
 
   const handleEventDrop = useCallback((ev: EventInstance, newStart: Date) => {
-    if (ev.event_id.startsWith(APPT_PREFIX)) return  // availability blocks are read-only
+    if (ev.event_id.startsWith(APPT_PREFIX) || ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return  // read-only
     if (Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000) return  // pas de changement
     const durationMs = parseISO(ev.ends_at).getTime() - parseISO(ev.starts_at).getTime()
     const newEnd = new Date(newStart.getTime() + durationMs)
@@ -246,7 +248,7 @@ export default function CalendarApp() {
   }, [applyMove])
 
   const handleEventResize = useCallback((ev: EventInstance, newStart: Date, newEnd: Date) => {
-    if (ev.event_id.startsWith(APPT_PREFIX)) return  // availability blocks are read-only
+    if (ev.event_id.startsWith(APPT_PREFIX) || ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return  // read-only
     const sameStart = Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000
     const sameEnd   = Math.abs(newEnd.getTime()   - parseISO(ev.ends_at).getTime())   < 60000
     if (sameStart && sameEnd) return  // pas de changement
@@ -311,7 +313,22 @@ export default function CalendarApp() {
       .filter(ev => !hiddenCalendarIds.includes(ev.calendar_id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleSig, rangeStart.getTime(), rangeEnd.getTime(), hiddenCalendarIds])
-  const events2 = useMemo(() => [...events, ...availabilityEvents], [events, availabilityEvents])
+  // ── Public holidays (core referential) ──
+  // Read-only, and read from the core: the calendar owns no holiday data and
+  // names no country — it asks what applies to this person and draws it.
+  const holidayEvents = useHolidayEvents(rangeStart, rangeEnd, {
+    enabled:  settings.showHolidays && !loadingCals,
+    override: settings.holidayCalendars,
+  })
+  const visibleHolidays = useMemo(
+    () => holidayEvents.filter(ev => !hiddenCalendarIds.includes(ev.calendar_id)),
+    [holidayEvents, hiddenCalendarIds],
+  )
+
+  const events2 = useMemo(
+    () => [...events, ...availabilityEvents, ...visibleHolidays],
+    [events, availabilityEvents, visibleHolidays],
+  )
 
   // Clicking an availability block opens its schedule editor rather than the
   // event detail popover (synthetic events have no backing event).
@@ -321,6 +338,9 @@ export default function CalendarApp() {
       navigate(`/calendar/booking/${id}`)   // edit the schedule on its dedicated page
       return
     }
+    // A holiday has no backing event: the detail popover would offer to edit
+    // and delete something that does not exist here.
+    if (ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return
     setSelectedEvent(ev)
   }
 
