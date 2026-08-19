@@ -42,7 +42,7 @@ import {
   moonPhaseName, principalPhaseOfDay, principalPhaseName,
 } from './moon'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
-import { APPT_PREFIX, buildAvailabilityEvents, keepPerSettings, VIEW_SHORTCUTS, type CtxMenuState } from './calendarUtils'
+import { APPT_PREFIX, buildAvailabilityEvents, isCalendarLocked, keepPerSettings, VIEW_SHORTCUTS, type CtxMenuState } from './calendarUtils'
 import { HOLIDAY_EVENT_PREFIX, useHolidayEvents } from './holidays'
 import { CreateEventModal, EditEventModal } from './EventEditor'
 import { EventDetail } from './EventDetail'
@@ -131,44 +131,6 @@ export default function CalendarApp() {
     setCreateDay(start)
   }, [])
 
-  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
-  // T = today · ←/→ = previous/next period · 1-5 = views · X = custom view ·
-  // C = create. Disabled entirely by the "keyboard shortcuts" preference.
-  useEffect(() => {
-    if (!settings.keyboardShortcuts) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const el = document.activeElement as HTMLElement | null
-      const tag = (el?.tagName || '').toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return
-      // An open editor already captures the keyboard (autofocused title field);
-      // as a safety net, also ignore while the create/edit modal is mounted.
-      if (createDay !== null || editingEvent) return
-      const k = e.key.toLowerCase()
-      const step = (dir: 1 | -1) => {
-        const d = viewMode === 'day' ? addDays(currentDate, dir)
-          : viewMode === 'custom' ? addDays(currentDate, settings.customViewDays * dir)
-          : viewMode === 'week' ? addDays(currentDate, 7 * dir)
-          : viewMode === 'month' ? addDays(startOfMonth(currentDate), dir * 32)
-          : addYears(currentDate, dir)
-        setCurrentDate(viewMode === 'month' ? startOfMonth(d) : d)
-      }
-      if (k === 't') { e.preventDefault(); setCurrentDate(new Date()) }
-      else if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1) }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
-      else if (k === 'c') { e.preventDefault(); setCreateDay(currentDate) }
-      // View shortcuts, Google-style: D/W/M/Y day-week-month-year, A schedule
-      // (agenda), X custom N-day. The 1-5 digits stay as aliases.
-      else if (VIEW_SHORTCUTS[k]) { e.preventDefault(); setViewMode(VIEW_SHORTCUTS[k]) }
-      else if (['1', '2', '3', '4', '5'].includes(k)) {
-        e.preventDefault()
-        setViewMode((['day', 'week', 'month', 'year', 'schedule'] as ViewMode[])[+k - 1])
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [viewMode, currentDate, setCurrentDate, setViewMode, createDay, editingEvent, settings.keyboardShortcuts])
-
   // Open the creation modal when an external trigger (e.g. sidebar) requests it
   useEffect(() => {
     if (pendingCreateDate) {
@@ -217,11 +179,17 @@ export default function CalendarApp() {
     })
   }, [qc, selectedEvent])
 
+  /** The one deletion path: a series asks for the scope first, a single event
+   *  goes straight through. Shared by the context menu and the Delete key. */
+  const requestDelete = useCallback((ev: EventInstance) => {
+    if (ev.is_recurring) setPendingDelete(ev)
+    else doDelete(ev, 'all')
+  }, [doDelete])
+
   const handleCtxDelete = useCallback(() => {
     if (!ctxMenu) return
-    if (ctxMenu.event.is_recurring) setPendingDelete(ctxMenu.event)
-    else doDelete(ctxMenu.event, 'all')
-  }, [ctxMenu, doDelete])
+    requestDelete(ctxMenu.event)
+  }, [ctxMenu, requestDelete])
 
   // ── Event drag-and-drop / resize (time changes) ──────────────────────────────
   // Explicit newStart + newEnd: covers moving (duration preserved) AND resizing
@@ -261,6 +229,59 @@ export default function CalendarApp() {
     queryFn:  calendarApi.listCalendars,
   })
   const calendars = calData?.calendars ?? []
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
+  // T = today · ←/→ = previous/next period · 1-5 = views · X = custom view ·
+  // C = create · Delete = delete the event the detail popover is showing.
+  // Disabled entirely by the "keyboard shortcuts" preference.
+  // `calData` stands in for `calendars` in the deps: the array is rebuilt on
+  // every render, the query result is not — the latter alone re-subscribes.
+  useEffect(() => {
+    if (!settings.keyboardShortcuts) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const el = document.activeElement as HTMLElement | null
+      const tag = (el?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return
+      // An open editor already captures the keyboard (autofocused title field);
+      // as a safety net, also ignore while the create/edit modal is mounted.
+      if (createDay !== null || editingEvent) return
+      const k = e.key.toLowerCase()
+      const step = (dir: 1 | -1) => {
+        const d = viewMode === 'day' ? addDays(currentDate, dir)
+          : viewMode === 'custom' ? addDays(currentDate, settings.customViewDays * dir)
+          : viewMode === 'week' ? addDays(currentDate, 7 * dir)
+          : viewMode === 'month' ? addDays(startOfMonth(currentDate), dir * 32)
+          : addYears(currentDate, dir)
+        setCurrentDate(viewMode === 'month' ? startOfMonth(d) : d)
+      }
+      // Delete runs the very handler behind the context menu's "Supprimer", on
+      // the selected event — the one whose detail popover is open. Skipped while
+      // a menu or a scope dialog is up (they own the keyboard), and on a
+      // read-only calendar, where the popover offers no deletion either.
+      if (e.key === 'Delete') {
+        if (!selectedEvent || ctxMenu || pendingDelete || pendingMove) return
+        if (isCalendarLocked(calendars.find(c => c.id === selectedEvent.calendar_id))) return
+        e.preventDefault()
+        requestDelete(selectedEvent)
+      }
+      else if (k === 't') { e.preventDefault(); setCurrentDate(new Date()) }
+      else if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1) }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
+      else if (k === 'c') { e.preventDefault(); setCreateDay(currentDate) }
+      // View shortcuts: D/W/M/Y day-week-month-year, A schedule (agenda),
+      // X custom N-day. The 1-5 digits stay as aliases.
+      else if (VIEW_SHORTCUTS[k]) { e.preventDefault(); setViewMode(VIEW_SHORTCUTS[k]) }
+      else if (['1', '2', '3', '4', '5'].includes(k)) {
+        e.preventDefault()
+        setViewMode((['day', 'week', 'month', 'year', 'schedule'] as ViewMode[])[+k - 1])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewMode, currentDate, setCurrentDate, setViewMode, createDay, editingEvent, // eslint-disable-line react-hooks/exhaustive-deps
+      settings.keyboardShortcuts, settings.customViewDays,
+      selectedEvent, ctxMenu, pendingDelete, pendingMove, requestDelete, calData])
 
   const rangeStart = useMemo(() => {
     if (viewMode === 'day')      return startOfDay(currentDate)
@@ -475,7 +496,7 @@ export default function CalendarApp() {
             { type: 'action', label: t('edit'),      icon: <Edit2 size={14} />, onClick: handleCtxEdit },
             { type: 'action', label: t('duplicate'), icon: <Copy size={14} />,  onClick: handleCtxDuplicate },
             { type: 'separator' },
-            { type: 'action', label: t('delete'),    icon: <Trash2 size={14} />, onClick: handleCtxDelete },
+            { type: 'action', label: t('delete'),    icon: <Trash2 size={14} />, shortcut: 'Suppr', onClick: handleCtxDelete },
           ]}
         />
       )}

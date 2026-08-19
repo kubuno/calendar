@@ -1,5 +1,6 @@
 import { api as apiClient } from '@kubuno/sdk'
 import { i18n } from '@kubuno/sdk'
+import { userTimezone } from './timezones'
 
 export interface Calendar {
   id: string
@@ -305,13 +306,19 @@ export function weatherIconUrl(code: number, isDay = true): string {
 }
 
 export const calendarApi = {
+  // A calendar is born in the zone of whoever created it, and the browser is the
+  // only place that knows which one that is — the core stores an account
+  // preference but exposes it to no module server. So the three routes that
+  // create a calendar carry it. The server validates it and keeps the instance
+  // setting for when it is missing or unusable; nothing here assumes it took.
   listCalendars: async (): Promise<{ calendars: Calendar[] }> => {
-    const { data } = await apiClient.get('/calendar/calendars')
+    // The first listing of an account also creates its default calendar.
+    const { data } = await apiClient.get('/calendar/calendars', { params: { tz: userTimezone() } })
     return data
   },
 
   createCalendar: async (dto: { name: string; color?: string; timezone?: string; description?: string }): Promise<{ calendar: Calendar }> => {
-    const { data } = await apiClient.post('/calendar/calendars', dto)
+    const { data } = await apiClient.post('/calendar/calendars', { ...dto, timezone: dto.timezone || userTimezone() })
     return data
   },
 
@@ -340,8 +347,8 @@ export const calendarApi = {
   },
 
   // ── Abonnements iCalendar distants ───────────────────────────────────────────
-  subscribeCalendar: async (dto: { name: string; url: string; color?: string }): Promise<{ calendar: Calendar }> => {
-    const { data } = await apiClient.post('/calendar/calendars/subscribe', dto)
+  subscribeCalendar: async (dto: { name: string; url: string; color?: string; timezone?: string }): Promise<{ calendar: Calendar }> => {
+    const { data } = await apiClient.post('/calendar/calendars/subscribe', { ...dto, timezone: dto.timezone || userTimezone() })
     return data
   },
 
@@ -440,7 +447,9 @@ export const calendarApi = {
       : null,
 
   // ── Common-slot search ───────────────────────────────────────────────────────
-  findCommonSlots: async (dto: { from: string; until: string; user_ids: string[] }): Promise<{ slots: AvailableSlot[] }> => {
+  /** `hidden_user_ids` names the participants whose busy times the instance did
+   *  not let this account read — they are absent from the computation, not free. */
+  findCommonSlots: async (dto: { from: string; until: string; user_ids: string[] }): Promise<{ slots: AvailableSlot[]; hidden_user_ids?: string[] }> => {
     const { data } = await apiClient.post('/calendar/availability', dto)
     return data
   },

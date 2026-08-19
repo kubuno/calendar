@@ -8,7 +8,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use crate::{
     handlers::{
         analytics, appointments, attendees, caldav, calendars, delta, events, health, import_export,
-        mcp, public, scheduling, time_blocks, weather,
+        mcp, policy, public, scheduling, time_blocks, weather,
     },
     middleware::require_auth,
     state::AppState,
@@ -22,6 +22,7 @@ pub fn build(state: AppState) -> Router {
         .route("/calendars/delta",  get(delta::calendars_delta))
         .route("/events/delta",     get(delta::events_delta))
         .route("/time-blocks/delta", get(delta::time_blocks_delta))
+        .route("/instance-policy",          get(policy::instance_policy))
         .route("/calendars",                get(calendars::list).post(calendars::create))
         .route("/calendars/subscribe",      post(calendars::subscribe))
         .route("/calendars/:id",            get(calendars::get).patch(calendars::update).delete(calendars::delete))

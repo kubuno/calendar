@@ -84,6 +84,40 @@ impl ICalendarService {
         cal.to_string()
     }
 
+    /// Same calendar, stripped down to when the owner is busy.
+    ///
+    /// Used by the public feed when the administration limited what a published
+    /// calendar discloses: the times still leave the instance — that is the whole
+    /// point of a free/busy feed — but the title, the description, the location
+    /// and the URL never do. Entries the owner marked as free (`busy = false`)
+    /// are left out entirely: they say nothing about availability and would only
+    /// disclose that *something* happens then.
+    pub fn calendar_to_busy_ics(events: &[Event], calendar_name: &str) -> String {
+        let mut cal = ICalCalendar::new();
+        cal.name(calendar_name);
+
+        for event in events.iter().filter(|e| e.busy) {
+            let mut ical_event = ICalEvent::new();
+            ical_event.uid(&event.ical_uid);
+            ical_event.summary("Occupé");
+            ical_event.starts(event.starts_at);
+            ical_event.ends(event.ends_at);
+            ical_event.timestamp(Utc::now());
+            // A recurring series still has to repeat, or the feed would show one
+            // busy slot where there are fifty.
+            if let Some(ref rrule) = event.rrule {
+                ical_event.add_property("RRULE", rrule.trim_start_matches("RRULE:"));
+            }
+            ical_event.add_property("SEQUENCE", event.sequence.to_string());
+            ical_event.add_property("CLASS", "PRIVATE");
+            ical_event.add_property("TRANSP", "OPAQUE");
+
+            cal.push(ical_event.done());
+        }
+
+        cal.to_string()
+    }
+
     /// Parse an iCalendar feed and return the extracted events.
     /// Retourne des tuples (ical_uid, summary, dtstart, dtend, description, location, rrule).
     pub fn parse_ics(ics_content: &str) -> Result<Vec<ParsedIcsEvent>> {

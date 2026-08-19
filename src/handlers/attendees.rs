@@ -67,6 +67,56 @@ pub async fn invite(
         return Err(CalendarError::Forbidden);
     }
 
+    let instance = state.instance();
+    let email = dto.email.trim().to_string();
+
+    // Ceiling on the guest list. The address already on the list does not count:
+    // the insert below is an upsert, so re-inviting someone adds nobody.
+    if instance.max_event_guests > 0 {
+        let others: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM calendar.attendees WHERE event_id = $1 AND email <> $2",
+        )
+        .bind(event_id)
+        .bind(&email)
+        .fetch_one(&state.db)
+        .await?;
+        if others >= instance.max_event_guests {
+            return Err(CalendarError::Validation(format!(
+                "Nombre maximal de participants atteint ({}) pour cet événement",
+                instance.max_event_guests
+            )));
+        }
+    }
+
+    // Guests from outside the instance. The declared domains answer for free;
+    // only an address that matches none of them costs a directory lookup, and an
+    // unanswered lookup refuses rather than guesses — a policy that opens itself
+    // whenever the network hiccups is not a policy.
+    if !instance.allow_external_guests && !instance.domain_is_internal(&email) {
+        let known = crate::config::directory_knows_email(
+            &state.http,
+            &state.settings.core.url,
+            &state.settings.core.internal_secret,
+            &email,
+        )
+        .await;
+        match known {
+            Some(true) => {}
+            Some(false) => {
+                return Err(CalendarError::Validation(
+                    "Les invités extérieurs à l'instance sont désactivés sur cette instance"
+                        .to_string(),
+                ))
+            }
+            None => {
+                return Err(CalendarError::Validation(
+                    "Impossible de vérifier si cette adresse appartient à l'instance — réessayez"
+                        .to_string(),
+                ))
+            }
+        }
+    }
+
     // Générer un token RSVP
     let rsvp_token: String = {
         use rand::Rng;
@@ -86,7 +136,7 @@ pub async fn invite(
         "#,
     )
     .bind(event_id)
-    .bind(&dto.email)
+    .bind(&email)
     .bind(&dto.display_name)
     .bind(&rsvp_token)
     .bind(expires_at)

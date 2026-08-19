@@ -3,6 +3,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
+    config::FreeBusyVisibility,
     errors::Result,
     models::scheduling::{AvailabilityQuery, AvailableSlot},
 };
@@ -10,11 +11,51 @@ use crate::{
 pub struct AvailabilityService;
 
 impl AvailabilityService {
+    /// The subset of `user_ids` whose busy times `requester` is allowed to read.
+    ///
+    /// Under [`FreeBusyVisibility::Everyone`] the answer is "all of them": that is
+    /// the instance saying availability is common knowledge. Under `SharedOnly`
+    /// the answer is the caller plus everyone who actually shared a calendar with
+    /// them — the same permission the sidebar already honours, applied to a route
+    /// that used to read anyone's calendar without asking.
+    pub async fn visible_users(
+        requester: Uuid,
+        user_ids: &[Uuid],
+        visibility: FreeBusyVisibility,
+        db: &PgPool,
+    ) -> Result<Vec<Uuid>> {
+        if visibility == FreeBusyVisibility::Everyone {
+            return Ok(user_ids.to_vec());
+        }
+        let sharers: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT DISTINCT c.owner_id
+            FROM calendar.calendars c
+            JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id
+            WHERE cs.shared_with = $1
+              AND c.owner_id = ANY($2)
+            "#,
+        )
+        .bind(requester)
+        .bind(user_ids.to_vec())
+        .fetch_all(db)
+        .await?;
+
+        Ok(user_ids
+            .iter()
+            .copied()
+            .filter(|u| *u == requester || sharers.contains(u))
+            .collect())
+    }
+
     /// Find the common free slots between several users.
     ///
     /// A single query loads every busy interval of the window (recurring
     /// series are expanded in memory), then a stepped sweep
     /// de 30 min calcule la proportion de participants disponibles (score).
+    ///
+    /// The caller is expected to have narrowed `query.user_ids` through
+    /// [`visible_users`] first: this function reads whatever it is given.
     pub async fn find_common_slots(
         query: AvailabilityQuery,
         db: &PgPool,

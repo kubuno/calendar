@@ -24,6 +24,7 @@ import {
   useToolbarStore,
   useSearchStore,
   useRightPanelStore,
+  navigate,
   SDK_VERSION,
 } from '@kubuno/sdk'
 import { format, parseISO } from 'date-fns'
@@ -34,7 +35,7 @@ import './calendar.css'
 import './i18n'
 import CalendarLogo from './CalendarLogo'
 import { useCalendarStore } from './store'
-import CalendarCreateMenu from './CalendarCreateMenu'
+import { newActionItems } from './newActions'
 import CalendarSidebarBody from './CalendarSidebarBody'
 import CalendarSettingsNav from './settings/SettingsNav'
 import { CalendarHeaderNav, CalendarHeaderViews } from './CalendarHeaderSlots'
@@ -79,8 +80,9 @@ export function register() {
   ])
 
   // The header gear button opens the per-user Calendar settings while in /calendar.
-  // Instance-wide (admin) settings live at /calendar/settings, reached from the
-  // admin Modules panel and a link on the user page.
+  // Instance-wide (admin) settings live in the core admin console
+  // (Modules ▸ Calendar, split into "Valeurs par défaut" and "Fonctionnalités"),
+  // not at a route inside the module.
   ModuleSettingsRegistry.register('calendar', '/calendar/user-settings')
 
   // Calendar events can receive a share, so the core's share field says so.
@@ -111,11 +113,18 @@ export function register() {
   WidgetRegistry.register({ id: 'calendar-events',  moduleId: 'calendar', Component: CalendarEventsWidget,  size: 'medium', order: 10 })
   WidgetRegistry.register({ id: 'calendar-weather', moduleId: 'calendar', Component: CalendarWeatherWidget, size: 'large',  order: 11 })
 
+  // "New" button menu: MenuItem[] DATA contributed to the shell's extension
+  // point (rendered by the project's MenuDropdown; `items` is re-evaluated on
+  // each open, so labels and store state stay fresh).
+  ExtensionRegistry.register('shell.new-actions', 'calendar', {
+    moduleId: 'calendar',
+    items: newActionItems,
+  })
+
   useSidebarStore.getState().register({
     moduleId:          'calendar',
     routePrefix:       '/calendar',
     newButtonLabelKey: 'calendar:create',
-    NewActions:        CalendarCreateMenu,
     SidebarBody:       CalendarSidebarBody,
     collapsedBody: true,
     // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
@@ -141,11 +150,9 @@ export function register() {
   SlotRegistry.register('header-leading', 'calendar', CalendarHeaderNav)
   SlotRegistry.register('topbar-actions', 'calendar', CalendarHeaderViews)
 
-  // Settings pages carry their own breadcrumb: no date navigation / view switcher.
-  useToolbarStore.getState().register({
-    moduleId:    'calendar-settings',
-    routePrefix: '/calendar/settings',
-  })
+  // The settings page carries its own breadcrumb: no date navigation / view
+  // switcher. Only `/calendar/user-settings` exists as a route — the old
+  // `/calendar/settings` toolbar entry pointed at nothing and was removed.
   useToolbarStore.getState().register({
     moduleId:    'calendar-user-settings',
     routePrefix: '/calendar/user-settings',
@@ -154,7 +161,8 @@ export function register() {
   // While the settings are open, the shell's left panel carries the settings
   // navigation instead of the calendar's usual sidebar. The store resolves the
   // MOST SPECIFIC route prefix, so this one wins over '/calendar' above.
-  // No `NewActions` here: the "Créer" button has no meaning on this page.
+  // No 'shell.new-actions' provider is registered for THIS moduleId, so the
+  // "Créer" button (meaningless on a settings page) is not shown here.
   useSidebarStore.getState().register({
     moduleId:      'calendar-user-settings',
     routePrefix:   '/calendar/user-settings',
@@ -191,11 +199,10 @@ export function register() {
       const dateStr = typeof arg === 'string' ? arg : arg?.date
       const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
       if (!Number.isNaN(d.getTime())) useCalendarStore.getState().setCurrentDate(d)
-      // Navigate into the calendar if we're elsewhere (react-router v6 listens
-      // to popstate, so pushState + a popstate event triggers the route change).
+      // Navigate into the calendar if we're elsewhere (the SDK helper drives the
+      // host router from outside React).
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/calendar')) {
-        window.history.pushState({}, '', '/calendar/day')
-        window.dispatchEvent(new PopStateEvent('popstate'))
+        navigate('/calendar/day')
       }
     },
   })

@@ -78,6 +78,7 @@ impl SubscriptionService {
     pub async fn subscribe(
         user_id: Uuid,
         dto: SubscribeCalendarDto,
+        instance: &crate::config::InstanceConfig,
         db: &PgPool,
     ) -> Result<Calendar> {
         let url = Self::validate_url(&dto.url)?;
@@ -90,9 +91,10 @@ impl SubscriptionService {
                 description: None,
                 color: dto.color.or_else(|| Some("#6B7280".to_string())),
                 cal_type: Some("subscription".to_string()),
-                timezone: None,
+                timezone: dto.timezone,
                 is_public: Some(false),
             },
+            instance,
             db,
         )
         .await?;

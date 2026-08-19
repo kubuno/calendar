@@ -96,11 +96,29 @@ pub async fn respond_poll(
 
 pub async fn find_common_slots(
     State(state): State<AppState>,
-    Extension(_user): Extension<CalendarUser>,
-    Json(query): Json<AvailabilityQuery>,
+    Extension(user): Extension<CalendarUser>,
+    Json(mut query): Json<AvailabilityQuery>,
 ) -> Result<Json<serde_json::Value>> {
+    // Whose busy times this account may cross-reference is an instance decision.
+    // The people it may not see are named back to the caller so the composer can
+    // say "availability not visible" instead of showing them as free.
+    let visible = AvailabilityService::visible_users(
+        user.id,
+        &query.user_ids,
+        state.instance().internal_free_busy,
+        &state.db,
+    )
+    .await?;
+    let hidden: Vec<Uuid> = query
+        .user_ids
+        .iter()
+        .copied()
+        .filter(|u| !visible.contains(u))
+        .collect();
+    query.user_ids = visible;
+
     let slots = AvailabilityService::find_common_slots(query, &state.db).await?;
-    Ok(Json(serde_json::json!({ "slots": slots })))
+    Ok(Json(serde_json::json!({ "slots": slots, "hidden_user_ids": hidden })))
 }
 
 pub async fn my_availability(

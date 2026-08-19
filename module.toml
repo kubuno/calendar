@@ -52,16 +52,52 @@ section  = "main"
 # `label`/`description` below are fallbacks: the frontend translates each row
 # through the `setting_<key>` / `setting_<key>_help` i18n keys when they exist.
 
+# ── Admin panel pages ─────────────────────────────────────────────────────────
+# Each becomes an entry of the admin menu (Modules → Calendar), at its own
+# address (/admin/modules/calendar/<id>). A setting's `group` places it on a
+# page; its `category` becomes a tab inside that page. Only instance-scoped
+# settings (global | overridable) reach the admin panel; the per-user ones stay
+# on the module's own settings page.
+
+[[setting_groups]]
+id          = "defaults"
+label       = "Valeurs par défaut"
+icon        = "SlidersHorizontal"
+position    = 1
+description  = "Ce que voit un nouvel utilisateur avant d'avoir rien réglé : fuseau, format d'heure, durée et rappel par défaut, premier jour de la semaine. Les réglages surchargeables restent modifiables par chacun."
+
+[[setting_groups]]
+id          = "sharing"
+label       = "Partage et visibilité"
+icon        = "Share2"
+position    = 2
+description = "Ce qui sort de l'instance et ce que les comptes voient les uns des autres : agendas publiés, niveau de détail d'un flux public, disponibilités internes, invités extérieurs."
+
+[[setting_groups]]
+id          = "features"
+label       = "Fonctionnalités"
+icon        = "ToggleRight"
+position    = 3
+description  = "Les fonctions d'agenda ouvertes ou fermées à l'échelle de l'instance."
+
+[[setting_groups]]
+id          = "limits"
+label       = "Limites et conservation"
+icon        = "Gauge"
+position    = 4
+description = "Plafonds appliqués par le serveur et durée de conservation des événements terminés."
+
 # ── Langue et région ──────────────────────────────────────────────────────────
 
 [[settings]]
 key     = "default_timezone"
 scope   = "global"
+group   = "defaults"
 type    = "enum"
 default = "Europe/Paris"
-category = "region"
-label   = "Fuseau horaire par défaut"
-description = "Fuseau appliqué aux nouveaux calendriers de l'instance."
+category = "Région"
+label   = "Fuseau horaire de repli"
+description = "Un nouvel agenda prend le fuseau horaire de la personne qui le crée. Ce réglage ne s'y substitue jamais : il ne sert que lorsque ce fuseau n'est pas connu — un agenda créé par le serveur, ou un appareil qui n'annonce rien d'exploitable."
 values  = ["Europe/Paris", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles", "Africa/Douala", "Asia/Dubai", "Asia/Tokyo", "UTC"]
 
 [[settings]]
@@ -69,7 +105,7 @@ key     = "date_format"
 scope   = "user"
 type    = "enum"
 default = "auto"
-category = "region"
+category = "Région"
 label   = "Format de date"
 description = "Écriture des dates numériques dans l'agenda."
 values  = [
@@ -83,9 +119,10 @@ values  = [
 [[settings]]
 key     = "time_format"
 scope   = "overridable"
+group   = "defaults"
 type    = "enum"
 default = "24h"
-category = "region"
+category = "Région"
 label   = "Format horaire"
 description = "Affichage des heures sur 24 h ou avec AM/PM."
 values  = [
@@ -100,7 +137,7 @@ key     = "secondary_timezone"
 scope   = "user"
 type    = "enum"
 default = ""
-category = "timezone"
+category = "Fuseau horaire"
 label   = "Fuseau horaire secondaire"
 description = "Seconde colonne d'heures dans les vues Jour et Semaine."
 values  = [
@@ -117,9 +154,10 @@ values  = [
 [[settings]]
 key     = "default_event_duration_min"
 scope   = "overridable"
+group   = "defaults"
 type    = "enum"
 default = 60
-category = "events"
+category = "Événements"
 label   = "Durée par défaut"
 description = "Durée appliquée à un nouvel événement."
 values  = [
@@ -136,16 +174,17 @@ key     = "speedy_meetings"
 scope   = "user"
 type    = "bool"
 default = false
-category = "events"
+category = "Événements"
 label   = "Réunions abrégées"
 description = "Terminer 5 minutes plus tôt pour les réunions de 30 minutes, ou 10 minutes plus tôt pour les réunions plus longues."
 
 [[settings]]
 key     = "default_reminder_min"
 scope   = "overridable"
+group   = "defaults"
 type    = "enum"
 default = 10
-category = "events"
+category = "Événements"
 label   = "Notification par défaut"
 description = "Rappel ajouté automatiquement aux nouveaux événements."
 values  = [
@@ -165,7 +204,7 @@ key     = "notifications_mode"
 scope   = "user"
 type    = "enum"
 default = "in_app"
-category = "notifications"
+category = "Notifications"
 label   = "Notifications"
 description = "Comment les rappels d'événements vous sont présentés."
 values  = [
@@ -179,7 +218,7 @@ key     = "notification_sound"
 scope   = "user"
 type    = "bool"
 default = true
-category = "notifications"
+category = "Notifications"
 label   = "Activer les notifications sonores"
 
 [[settings]]
@@ -187,7 +226,7 @@ key     = "notify_only_if_accepted"
 scope   = "user"
 type    = "bool"
 default = false
-category = "notifications"
+category = "Notifications"
 label   = "M'avertir uniquement si j'ai répondu « Oui » ou « Peut-être »"
 
 # ── Options d'affichage ───────────────────────────────────────────────────────
@@ -197,7 +236,7 @@ key     = "show_holidays"
 scope   = "user"
 type    = "bool"
 default = true
-category = "display"
+category = "Affichage"
 label   = "Afficher les jours fériés"
 description = "Les jours fériés du territoire qui vous concerne apparaissent comme un agenda en lecture seule, activable dans la barre latérale."
 
@@ -206,7 +245,7 @@ key     = "holiday_calendars"
 scope   = "user"
 type    = "string"
 default = ""
-category = "display"
+category = "Affichage"
 label   = "Territoires des jours fériés"
 description = "Codes séparés par des virgules (« FR », « FR-6AE,BE »). Laissé vide, le territoire est celui défini par l'administration, ou déduit de votre fuseau horaire."
 
@@ -215,7 +254,7 @@ key     = "show_weekends"
 scope   = "user"
 type    = "bool"
 default = true
-category = "display"
+category = "Affichage"
 label   = "Afficher les week-ends"
 
 [[settings]]
@@ -223,7 +262,7 @@ key     = "show_declined_events"
 scope   = "user"
 type    = "bool"
 default = true
-category = "display"
+category = "Affichage"
 label   = "Afficher les événements refusés"
 
 [[settings]]
@@ -231,7 +270,7 @@ key     = "show_week_numbers"
 scope   = "user"
 type    = "bool"
 default = false
-category = "display"
+category = "Affichage"
 label   = "Afficher le numéro des semaines"
 
 [[settings]]
@@ -239,7 +278,7 @@ key     = "min_event_height"
 scope   = "user"
 type    = "bool"
 default = false
-category = "display"
+category = "Affichage"
 label   = "Afficher les événements courts à la même taille que les événements d'une durée minimum de 30 minutes"
 
 [[settings]]
@@ -247,15 +286,16 @@ key     = "dim_past_events"
 scope   = "user"
 type    = "bool"
 default = true
-category = "display"
+category = "Affichage"
 label   = "Réduire la luminosité des événements passés"
 
 [[settings]]
 key     = "week_starts_on"
 scope   = "overridable"
+group   = "defaults"
 type    = "enum"
 default = "monday"
-category = "display"
+category = "Affichage"
 label   = "Premier jour de la semaine"
 description = "Jour affiché en première colonne des vues Mois et Semaine."
 values  = [
@@ -269,7 +309,7 @@ key     = "custom_view_days"
 scope   = "user"
 type    = "enum"
 default = 4
-category = "display"
+category = "Affichage"
 label   = "Définir la vue personnalisée"
 description = "Nombre de jours de la vue personnalisée (raccourci clavier X)."
 values  = [
@@ -286,7 +326,7 @@ key     = "default_view"
 scope   = "user"
 type    = "enum"
 default = "month"
-category = "display"
+category = "Affichage"
 label   = "Vue par défaut"
 description = "Affichage utilisé à l'ouverture de l'agenda."
 values  = [
@@ -303,7 +343,7 @@ key     = "day_start_hour"
 scope   = "user"
 type    = "enum"
 default = "8"
-category = "display"
+category = "Affichage"
 label   = "Heure de début de journée"
 description = "Heure sur laquelle les vues Jour et Semaine se positionnent."
 values  = ["0", "6", "7", "8", "9", "10", "12"]
@@ -314,12 +354,134 @@ values  = ["0", "6", "7", "8", "9", "10", "12"]
 # `allow_working_location` is the instance-wide admin toggle (like Google Workspace's
 # admin console: "Allow users to set their daily working location", on by default).
 
+# ── Partage et visibilité ─────────────────────────────────────────────────────
+# Toutes ces valeurs sont appliquées par le serveur du module (voir
+# src/config/instance.rs et les gardes qui la lisent) : refuser une publication,
+# amincir un flux public, restreindre les disponibilités, refuser un invité.
+
+[[settings]]
+key     = "allow_public_calendars"
+scope   = "global"
+group   = "sharing"
+type    = "bool"
+default = true
+category = "Partage externe"
+label   = "Autoriser la publication d'un agenda"
+description = "Un agenda publié expose un lien .ics accessible sans compte. Désactivé, les liens déjà distribués cessent de répondre et plus aucun agenda ne peut être publié."
+
+[[settings]]
+key     = "public_calendar_detail"
+scope   = "global"
+group   = "sharing"
+type    = "enum"
+default = "full"
+category = "Partage externe"
+label   = "Détail d'un agenda publié"
+description = "Ce qu'un flux public laisse voir aux personnes extérieures."
+values  = [
+    { value = "full", label = "Toutes les informations (titre, description, lieu)" },
+    { value = "busy", label = "Disponibilités seulement (créneaux occupés, sans détail)" },
+]
+
+[[settings]]
+key     = "internal_free_busy"
+scope   = "global"
+group   = "sharing"
+type    = "enum"
+default = "everyone"
+category = "Partage interne"
+label   = "Disponibilités entre comptes de l'instance"
+description = "Qui peut consulter les créneaux occupés d'une autre personne lors d'une recherche de disponibilité (jamais le détail des événements)."
+values  = [
+    { value = "everyone",    label = "Tout le monde dans l'instance" },
+    { value = "shared_only", label = "Uniquement les personnes qui m'ont partagé un agenda" },
+]
+
+[[settings]]
+key     = "allow_external_guests"
+scope   = "global"
+group   = "sharing"
+type    = "bool"
+default = true
+category = "Invitations externes"
+label   = "Autoriser les invités extérieurs"
+description = "Inviter une adresse qui n'appartient ni aux domaines de l'instance ni à un compte existant. Désactivé, l'invitation est refusée par le serveur."
+
+[[settings]]
+key     = "warn_external_guests"
+scope   = "global"
+group   = "sharing"
+type    = "bool"
+default = true
+category = "Invitations externes"
+label   = "Avertir avant d'inviter une adresse extérieure"
+description = "Affiche un avertissement dans la composition d'un événement lorsque l'adresse saisie n'est pas dans un domaine de l'instance."
+
+# ── Limites et conservation ───────────────────────────────────────────────────
+
+[[settings]]
+key     = "max_event_guests"
+scope   = "global"
+group   = "limits"
+type    = "int"
+default = 0
+min     = 0
+max     = 100000
+category = "Limites"
+label   = "Limite du nombre de participants par événement"
+description = "Aucune limite n'est imposée par défaut : c'est à vous d'en fixer une si votre instance en a besoin. Saisissez le nombre de participants au-delà duquel le serveur refuse l'ajout à un événement ; laissez 0 pour n'imposer aucune limite."
+
+[[settings]]
+key     = "max_calendars_per_user"
+scope   = "global"
+group   = "limits"
+type    = "int"
+default = 0
+min     = 0
+max     = 10000
+category = "Limites"
+label   = "Nombre maximal d'agendas par compte"
+description = "Plafond appliqué à la création d'un agenda et à l'abonnement à un agenda distant. Le premier agenda, créé automatiquement, n'est jamais refusé. 0 = illimité."
+
+[[settings]]
+key     = "event_retention_days"
+scope   = "global"
+group   = "limits"
+type    = "int"
+default = 0
+min     = 0
+max     = 3650
+category = "Conservation"
+label   = "Conservation des événements terminés (jours)"
+description = "Au-delà de ce délai, un événement terminé est supprimé définitivement par le serveur. Les séries récurrentes et les agendas synchronisés depuis une source distante ne sont jamais purgés. 0 = conserver indéfiniment."
+
+[[settings]]
+key     = "allow_calendar_subscriptions"
+scope   = "global"
+group   = "features"
+type    = "bool"
+default = true
+category = "Abonnements"
+label   = "Autoriser les abonnements à un agenda distant"
+description = "Un abonnement fait télécharger périodiquement par l'instance une adresse choisie par l'utilisateur. Désactivé, la synchronisation des abonnements existants s'arrête aussi."
+
+[[settings]]
+key     = "allow_appointment_schedules"
+scope   = "global"
+group   = "features"
+type    = "bool"
+default = true
+category = "Rendez-vous"
+label   = "Autoriser les pages de rendez-vous"
+description = "Une page de rendez-vous propose publiquement des créneaux réservables. Désactivé, les liens déjà partagés ne répondent plus."
+
 [[settings]]
 key     = "allow_working_location"
 scope   = "global"
+group   = "features"
 type    = "bool"
 default = true
-category = "working_location_admin"
+category = "Lieu de travail"
 label   = "Autoriser le lieu de travail"
 description = "Permettre aux utilisateurs de définir leur lieu de travail quotidien (bureau, domicile…), affiché dans leur agenda."
 
@@ -330,7 +492,7 @@ key     = "keyboard_shortcuts"
 scope   = "user"
 type    = "bool"
 default = true
-category = "shortcuts"
+category = "Raccourcis"
 label   = "Activer les raccourcis clavier"
 description = "Appuyez sur le point d'interrogation (?) pour afficher la liste des raccourcis disponibles."
 

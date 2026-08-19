@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Users, Copy, Check, Trash2, Globe, Search, RefreshCw } from 'lucide-react'
 import { FloatingWindow, Button, Dropdown, Spinner } from '@ui'
 import { calendarApi, type Calendar, type UserBrief } from './api'
+import { useInstancePolicy } from './instancePolicy'
 
 /**
  * Share dialog for a calendar: share with other Kubuno users (read / write),
@@ -15,6 +16,9 @@ export default function CalendarShareModal({ calendar, onClose }: {
 }) {
   const { t } = useTranslation('calendar')
   const qc = useQueryClient()
+  // Publishing a calendar is an instance decision; when it is closed the server
+  // refuses the toggle, so the section that offers it does not appear at all.
+  const policy = useInstancePolicy()
 
   // ── Existing shares (+ name resolution via /users/lookup) ───────────────────
   const { data: sharesData, isLoading: sharesLoading } = useQuery({
@@ -207,7 +211,8 @@ export default function CalendarShareModal({ calendar, onClose }: {
           )}
         </div>
 
-        {/* Lien public .ics */}
+        {/* Lien public .ics — masqué quand l'instance interdit la publication */}
+        {policy.allowPublicCalendars && (
         <div className="rounded-xl border border-border p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Globe size={15} className={isPublic ? 'text-primary' : 'text-text-tertiary'} />
@@ -237,6 +242,7 @@ export default function CalendarShareModal({ calendar, onClose }: {
             </div>
           )}
         </div>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

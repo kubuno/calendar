@@ -13,6 +13,32 @@ use crate::{
     state::AppState,
 };
 
+/// Bookable appointment pages hand a public URL to anyone: an administration
+/// that does not want that surface can close it. Publishing one is refused with
+/// a reason, since the owner asked for it out loud…
+fn assert_schedules_enabled(state: &AppState) -> Result<()> {
+    if state.instance().allow_appointment_schedules {
+        Ok(())
+    } else {
+        Err(crate::errors::CalendarError::Validation(
+            "Les pages de rendez-vous sont désactivées sur cette instance".to_string(),
+        ))
+    }
+}
+
+/// …while the public side answers "introuvable", the way a page that was never
+/// published does. Closing the feature has to close the links already shared,
+/// not only forbid new ones.
+fn assert_public_booking_enabled(state: &AppState) -> Result<()> {
+    if state.instance().allow_appointment_schedules {
+        Ok(())
+    } else {
+        Err(crate::errors::CalendarError::NotFound(
+            "Page de réservation introuvable".to_string(),
+        ))
+    }
+}
+
 // ── Owner (authenticated) ───────────────────────────────────────────────────
 
 pub async fn list(
@@ -29,6 +55,7 @@ pub async fn create(
     Json(dto): Json<SaveScheduleDto>,
 ) -> Result<(StatusCode, Json<serde_json::Value>)> {
     use validator::Validate;
+    assert_schedules_enabled(&state)?;
     dto.validate().map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
     let schedule = AppointmentService::save(user.id, None, dto, &state.db).await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "schedule": schedule }))))
@@ -50,6 +77,7 @@ pub async fn update(
     Json(dto): Json<SaveScheduleDto>,
 ) -> Result<Json<serde_json::Value>> {
     use validator::Validate;
+    assert_schedules_enabled(&state)?;
     dto.validate().map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
     let schedule = AppointmentService::save(user.id, Some(id), dto, &state.db).await?;
     Ok(Json(serde_json::json!({ "schedule": schedule })))
@@ -79,6 +107,7 @@ pub async fn public_info(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
+    assert_public_booking_enabled(&state)?;
     let schedule = AppointmentService::get_by_token(&token, &state.db).await?;
     Ok(Json(serde_json::json!({ "schedule": AppointmentService::to_public(&schedule) })))
 }
@@ -88,6 +117,7 @@ pub async fn public_slots(
     Path(token): Path<String>,
     Query(q): Query<SlotsQuery>,
 ) -> Result<Json<serde_json::Value>> {
+    assert_public_booking_enabled(&state)?;
     let schedule = AppointmentService::get_by_token(&token, &state.db).await?;
     let rules = AppointmentService::load_rules(schedule.id, &state.db).await?;
     let slots = AppointmentService::compute_slots(&schedule, &rules, q.from, q.until, &state.db).await?;
@@ -100,6 +130,7 @@ pub async fn public_book(
     Json(dto): Json<BookDto>,
 ) -> Result<(StatusCode, Json<serde_json::Value>)> {
     use validator::Validate;
+    assert_public_booking_enabled(&state)?;
     dto.validate().map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
     let booking = AppointmentService::book(&token, dto, &state.db).await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "booking": booking }))))
@@ -115,6 +146,7 @@ pub async fn public_page(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<axum::response::Html<String>> {
+    assert_public_booking_enabled(&state)?;
     let schedule = AppointmentService::get_by_token(&token, &state.db).await?;
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
     let title = esc(if schedule.title.is_empty() { "Prendre rendez-vous" } else { &schedule.title });

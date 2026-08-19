@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
+    config::InstanceConfig,
     errors::{CalendarError, Result},
     models::calendar::{Calendar, CalendarShare, CreateCalendarDto, ShareCalendarDto, UpdateCalendarDto},
 };
@@ -63,11 +64,64 @@ impl CalendarService {
         Ok(row)
     }
 
+    /// Refuses one more calendar when the account already sits at the ceiling the
+    /// administrator set (`0` = no ceiling).
+    ///
+    /// Called from the paths a person drives (create, subscribe) and NOT from the
+    /// automatic creation of the very first calendar: an account that cannot see
+    /// a single calendar has no working module, and a ceiling lowered afterwards
+    /// must never produce that.
+    pub async fn assert_can_create(
+        user_id: Uuid,
+        instance: &InstanceConfig,
+        db: &PgPool,
+    ) -> Result<()> {
+        if instance.max_calendars_per_user <= 0 {
+            return Ok(());
+        }
+        let owned: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM calendar.calendars WHERE owner_id = $1")
+                .bind(user_id)
+                .fetch_one(db)
+                .await?;
+        if owned >= instance.max_calendars_per_user {
+            return Err(CalendarError::Validation(format!(
+                "Nombre maximal d'agendas atteint ({}) — supprimez-en un ou contactez votre administration",
+                instance.max_calendars_per_user
+            )));
+        }
+        Ok(())
+    }
+
     /// Create a new calendar.
-    pub async fn create(user_id: Uuid, dto: CreateCalendarDto, db: &PgPool) -> Result<Calendar> {
+    ///
+    /// The calendar is stamped with the zone of the person creating it, the
+    /// instance setting acting only as the fallback when that zone is unknown —
+    /// see [`crate::services::timezone`] for where the creator's zone comes from
+    /// and why nothing here trusts it as given.
+    ///
+    /// The other instance setting that applies is the permission to publish a
+    /// calendar. Asking for a published calendar while the instance forbids it is
+    /// refused out loud rather than silently downgraded — a caller that believes
+    /// it published something must learn otherwise.
+    pub async fn create(
+        user_id: Uuid,
+        dto: CreateCalendarDto,
+        instance: &InstanceConfig,
+        db: &PgPool,
+    ) -> Result<Calendar> {
+        if dto.is_public == Some(true) && !instance.allow_public_calendars {
+            return Err(CalendarError::Validation(
+                "La publication d'un agenda est désactivée sur cette instance".to_string(),
+            ));
+        }
+
         let color    = dto.color.unwrap_or_else(|| "#4D38DB".to_string());
         let cal_type = dto.cal_type.unwrap_or_else(|| "personal".to_string());
-        let timezone = dto.timezone.unwrap_or_else(|| "UTC".to_string());
+        let timezone = crate::services::timezone::resolve_new_calendar_timezone(
+            dto.timezone.as_deref(),
+            &instance.default_timezone,
+        );
         let is_public = dto.is_public.unwrap_or(false);
 
         // Check whether this is the first calendar (→ default)
@@ -101,14 +155,42 @@ impl CalendarService {
     }
 
     /// Update a calendar.
-    pub async fn update(id: Uuid, user_id: Uuid, dto: UpdateCalendarDto, db: &PgPool) -> Result<Calendar> {
+    ///
+    /// A time zone named here is REFUSED when it is not a zone, where the same
+    /// value at creation would have fallen back: this one was chosen on purpose,
+    /// and quietly storing something else would tell the caller their change
+    /// took when it did not.
+    pub async fn update(
+        id: Uuid,
+        user_id: Uuid,
+        dto: UpdateCalendarDto,
+        instance: &InstanceConfig,
+        db: &PgPool,
+    ) -> Result<Calendar> {
+        if dto.is_public == Some(true) && !instance.allow_public_calendars {
+            return Err(CalendarError::Validation(
+                "La publication d'un agenda est désactivée sur cette instance".to_string(),
+            ));
+        }
+
+        let named_zone_is_unknown = dto
+            .timezone
+            .as_deref()
+            .is_some_and(|tz| !crate::services::timezone::is_iana_timezone(tz.trim()));
+        if named_zone_is_unknown {
+            return Err(CalendarError::Validation(
+                "Fuseau horaire inconnu : indiquez un identifiant IANA (Europe/Paris, America/New_York…)"
+                    .to_string(),
+            ));
+        }
+
         // Check ownership
         let cal = Self::get_owned(id, user_id, db).await?;
 
         let name       = dto.name.unwrap_or(cal.name);
         let description = dto.description.or(cal.description);
         let color      = dto.color.unwrap_or(cal.color);
-        let timezone   = dto.timezone.unwrap_or(cal.timezone);
+        let timezone   = dto.timezone.map(|tz| tz.trim().to_string()).unwrap_or(cal.timezone);
         let is_visible = dto.is_visible.unwrap_or(cal.is_visible);
         let is_public  = dto.is_public.unwrap_or(cal.is_public);
 

@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCalendarStore, type ViewMode } from './store'
+import { useInstancePolicy, isInternalAddress } from './instancePolicy'
+import { userTimezone } from './timezones'
 import {
   X, Calendar as CalendarIcon,
   Clock, MapPin, Search, Plus, Edit2, Copy, Trash2, Bell,
@@ -357,7 +359,20 @@ function GuestsPanel({ eventId }: { eventId: string }) {
     mutationFn: (aid: string) => calendarApi.removeAttendee(eventId, aid),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['event-attendees', eventId] }),
   })
-  const canAdd = email.trim().includes('@')
+  const policy = useInstancePolicy()
+  const typed  = email.trim()
+  // An address outside the instance's declared domains. With no domain declared
+  // the question has no local answer, and calling every colleague an outsider
+  // would be worse than saying nothing — the server still asks the directory
+  // and refuses on its own terms. So this only drives what the composer SAYS:
+  // a warning, or the reason the button is closed.
+  const isOutside = typed.includes('@')
+    && policy.internalDomains.length > 0
+    && !isInternalAddress(typed, policy.internalDomains)
+  const blocked   = isOutside && !policy.allowExternalGuests
+  const guestLimitReached =
+    policy.maxEventGuests > 0 && attendees.length >= policy.maxEventGuests
+  const canAdd = typed.includes('@') && !blocked && !guestLimitReached
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-1.5">
@@ -369,6 +384,26 @@ function GuestsPanel({ eventId }: { eventId: string }) {
           {t('guests_invite', { defaultValue: 'Inviter' })}
         </Button>
       </div>
+      {blocked && (
+        <p className="text-xs text-danger">
+          {t('guests_external_blocked', { defaultValue: 'Les invités extérieurs à l’instance sont désactivés sur cette instance.' })}
+        </p>
+      )}
+      {!blocked && isOutside && policy.warnExternalGuests && (
+        <p className="text-xs text-warning">
+          {t('guests_external_warning', { defaultValue: 'Cette adresse n’appartient pas à votre organisation : les détails de l’événement lui seront envoyés.' })}
+        </p>
+      )}
+      {guestLimitReached && (
+        <p className="text-xs text-danger">
+          {t('guests_limit_reached', { defaultValue: 'Nombre maximal de participants atteint ({{max}}).', max: policy.maxEventGuests })}
+        </p>
+      )}
+      {invite.isError && (
+        <p className="text-xs text-danger">
+          {invite.error instanceof Error ? invite.error.message : String(invite.error)}
+        </p>
+      )}
       {attendees.length > 0 && (
         <div className="space-y-1.5">
           {/* Response summary: 2 yes · 1 pending… */}
@@ -465,6 +500,9 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
   const [days, setDays] = useState('5')
   const [workHours, setWorkHours] = useState(true)
   const [slots, setSlots] = useState<import('./api').AvailableSlot[] | null>(null)
+  // Participants the instance did not let us cross-reference: they are left out
+  // of the computation, so the proposals must not be read as "everyone is free".
+  const [hiddenCount, setHiddenCount] = useState(0)
   const [searching, setSearching] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -494,7 +532,8 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
         user_ids: [me.id, ...participants.map(p => p.id)],
       })
       setSlots(r.slots)
-    } catch { setSlots([]) }
+      setHiddenCount(r.hidden_user_ids?.length ?? 0)
+    } catch { setSlots([]); setHiddenCount(0) }
     finally { setSearching(false) }
   }
 
@@ -584,6 +623,14 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
       </div>
 
       {/* Results */}
+      {hiddenCount > 0 && (
+        <p className="text-xs text-warning">
+          {t('schedule_hidden_participants', {
+            defaultValue: 'La disponibilité de {{n}} participant(s) n’est pas visible : ils ne sont pas pris en compte dans les créneaux proposés.',
+            n: hiddenCount,
+          })}
+        </p>
+      )}
       {proposals === null ? (
         <div className="text-center text-text-tertiary py-8">
           <Users size={28} className="mx-auto mb-3 opacity-40" />
@@ -778,7 +825,9 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
 
   const canSave  = title.trim().length > 0 && calId !== '' && !isPending
   const calColor = calendars.find(c => c.id === calId)?.color ?? '#4D38DB'
-  const tzName   = calendars.find(c => c.id === calId)?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  // Not a hook: this line sits past the component's early returns, and a hook
+  // added here would be the conditional one that breaks the render on a resize.
+  const tzName   = calendars.find(c => c.id === calId)?.timezone ?? userTimezone()
 
   const row = (icon: React.ReactNode, children: React.ReactNode) => (
     <div className="flex items-start gap-4">

@@ -10,7 +10,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 // ── Lecture de module.toml ─────────────────────────────────────────────────────
@@ -24,6 +24,25 @@ struct Manifest {
     /// Declarative settings manifest pushed to the core at registration.
     #[serde(default)]
     settings:      Vec<SettingDefRaw>,
+    /// Pages the admin panel is split into (`[[setting_groups]]`). Each becomes
+    /// an entry of the admin menu with its own address; a setting's `category`
+    /// becomes a tab inside its group.
+    #[serde(default)]
+    setting_groups: Vec<SettingGroupRaw>,
+}
+
+/// One `[[setting_groups]]` entry of module.toml, forwarded verbatim. `id` is a
+/// STABLE, UNTRANSLATED slug: it travels in the URL of the admin page.
+#[derive(Deserialize, Serialize)]
+struct SettingGroupRaw {
+    id:          String,
+    label:       String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    position:    Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 /// One `[[settings]]` entry from module.toml. Serialized verbatim into the
@@ -43,8 +62,28 @@ struct SettingDefRaw {
     description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     category:    Option<String>,
+    /// Id of a `[[setting_groups]]` entry: which admin page this belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group:       Option<String>,
     #[serde(default)]
     public:      bool,
+    // ── Presentation metadata, forwarded untouched (an older core ignores it) ──
+    #[serde(default)]
+    advanced:    bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    risk:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max:         Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unit:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    placeholder: Option<String>,
+    #[serde(default)]
+    multiline:   bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    depends_on:  Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -154,14 +193,48 @@ async fn main() -> Result<()> {
             .context("Migrations")?;
     }
 
+    let http = Client::new();
+
+    // Initial read of the admin-editable instance settings; fall back to the
+    // compiled defaults if the core is not reachable yet (the refresher below
+    // picks them up as soon as it is).
+    let instance = kubuno_calendar::config::fetch_instance(
+        &http, &settings.core.url, &settings.core.internal_secret,
+    )
+    .await
+    .unwrap_or_default();
+    let instance = Arc::new(RwLock::new(instance));
+
     let state = AppState {
         db:       pool,
         settings: Arc::new(settings.clone()),
         weather:  Arc::new(WeatherService::new()),
+        http:     http.clone(),
+        instance: instance.clone(),
     };
 
+    // Refresh the instance settings from the core every 60s so an admin edit
+    // takes effect without a restart. A failed read keeps the last known values.
+    {
+        let http_r     = http.clone();
+        let core_url   = settings.core.url.clone();
+        let secret     = settings.core.internal_secret.clone();
+        let instance_r = instance.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                if let Some(fresh) =
+                    kubuno_calendar::config::fetch_instance(&http_r, &core_url, &secret).await
+                {
+                    if let Ok(mut guard) = instance_r.write() {
+                        *guard = fresh;
+                    }
+                }
+            }
+        });
+    }
+
     // Registration with the core (with infinite retry)
-    let http = Client::new();
     register_with_core(&http, &settings).await;
 
     // Heartbeat every 30s
@@ -197,15 +270,30 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Retention cleaner: purges events finished long ago when the administrator
+    // set a retention. Idle (and silent) while the setting is left at "never".
+    {
+        let state2 = state.clone();
+        tokio::spawn(async move {
+            use kubuno_calendar::services::retention_service::RetentionService;
+            RetentionService::run_worker(state2).await;
+        });
+    }
+
     // Periodic sync of remote iCalendar subscriptions (hourly)
     {
-        let db = state.db.clone();
+        let state2 = state.clone();
         tokio::spawn(async move {
             use kubuno_calendar::services::subscription_service::SubscriptionService;
             // First pass 2 min after startup (lets the DB/network settle)
             tokio::time::sleep(Duration::from_secs(120)).await;
             loop {
-                SubscriptionService::sync_all(&db).await;
+                // Closing subscriptions must also stop the outbound traffic of
+                // the ones already created, otherwise the switch only stops new
+                // ones and the instance keeps fetching remote hosts.
+                if state2.instance().allow_calendar_subscriptions {
+                    SubscriptionService::sync_all(&state2.db).await;
+                }
                 tokio::time::sleep(Duration::from_secs(3600)).await;
             }
         });
@@ -257,6 +345,10 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         .unwrap_or_else(|| vec!["UserDeleted".into(), "ContactUpdated".into()]);
     let settings_schema: Value = manifest.as_ref()
         .map(|m| serde_json::to_value(&m.settings).unwrap_or_else(|_| json!([])))
+        .unwrap_or_else(|| json!([]));
+    // Admin-panel pages. An older core ignores the field and keeps a single page.
+    let setting_groups: Value = manifest.as_ref()
+        .map(|m| serde_json::to_value(&m.setting_groups).unwrap_or_else(|_| json!([])))
         .unwrap_or_else(|| json!([]));
 
     // MCP tools exposed to the assistant through the core gateway. The names
@@ -333,6 +425,7 @@ async fn register_with_core(http: &Client, settings: &Settings) {
         "subscribed_events": subscribed_events,
         "mcp_tools":         mcp_tools,
         "settings_schema":   settings_schema,
+        "setting_groups":    setting_groups,
     });
 
     for attempt in 1u32.. {

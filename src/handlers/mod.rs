@@ -8,6 +8,7 @@ pub mod events;
 pub mod health;
 pub mod import_export;
 pub mod mcp;
+pub mod policy;
 pub mod public;
 pub mod scheduling;
 pub mod time_blocks;

@@ -242,6 +242,15 @@ pub async fn calendar_feed(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<([(axum::http::HeaderName, String); 1], String)> {
+    let instance = state.instance();
+    // Closing publication has to close the feeds already out there, not just
+    // forbid new ones — a link handed out yesterday is exactly what the
+    // administration is taking back. Answering "introuvable" rather than
+    // "interdit" keeps the route from confirming that the token exists.
+    if !instance.allow_public_calendars {
+        return Err(CalendarError::NotFound("Calendrier introuvable".to_string()));
+    }
+
     let calendar = sqlx::query_as::<_, crate::models::calendar::Calendar>(
         "SELECT * FROM calendar.calendars WHERE caldav_token = $1 AND is_public = TRUE",
     )
@@ -257,7 +266,10 @@ pub async fn calendar_feed(
     .fetch_all(&state.db)
     .await?;
 
-    let ics = ICalendarService::calendar_to_ics(&events, &calendar.name);
+    let ics = match instance.public_calendar_detail {
+        crate::config::PublicDetail::Full     => ICalendarService::calendar_to_ics(&events, &calendar.name),
+        crate::config::PublicDetail::BusyOnly => ICalendarService::calendar_to_busy_ics(&events, &calendar.name),
+    };
 
     Ok(([
         (axum::http::header::CONTENT_TYPE, "text/calendar; charset=utf-8".to_string()),

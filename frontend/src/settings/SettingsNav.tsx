@@ -17,6 +17,7 @@ import { SidebarNavItem } from '@kubuno/sdk'
 import { calendarApi, type Calendar } from '../api'
 import CalendarEditModal from '../CalendarEditModal'
 import CalendarSubscribeModal from '../CalendarSubscribeModal'
+import { useInstancePolicy } from '../instancePolicy'
 import { GENERAL_SECTIONS } from './GeneralSettings'
 import { calendarSections } from './CalendarDetailSettings'
 
@@ -74,6 +75,7 @@ export default function SettingsNav({ collapsed = false }: { collapsed?: boolean
   const [addOpen, setAddOpen] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [showSubscribe, setShowSubscribe] = useState(false)
+  const policy = useInstancePolicy()
 
   const { data } = useQuery({ queryKey: ['calendar-calendars'], queryFn: calendarApi.listCalendars })
   const calendars = useMemo(() => data?.calendars ?? [], [data])
@@ -152,11 +154,13 @@ export default function SettingsNav({ collapsed = false }: { collapsed?: boolean
                        rounded-r-full hover:bg-[#e4ecf7] hover:text-primary transition-colors">
             <CalendarPlus size={13} />{t('cal_create_action', { defaultValue: 'Créer un agenda' })}
           </a>
-          <a href="#" onClick={e => { e.preventDefault(); setShowSubscribe(true) }}
-            className="flex items-center gap-2 pl-3 pr-2 py-1.5 text-text-secondary
-                       rounded-r-full hover:bg-[#e4ecf7] hover:text-primary transition-colors">
-            <Link2 size={13} />{t('subscribe_title', { defaultValue: 'S’abonner à une URL' })}
-          </a>
+          {policy.allowCalendarSubscriptions && (
+            <a href="#" onClick={e => { e.preventDefault(); setShowSubscribe(true) }}
+              className="flex items-center gap-2 pl-3 pr-2 py-1.5 text-text-secondary
+                         rounded-r-full hover:bg-[#e4ecf7] hover:text-primary transition-colors">
+              <Link2 size={13} />{t('subscribe_title', { defaultValue: 'S’abonner à une URL' })}
+            </a>
+          )}
           <a href="#" onClick={e => { e.preventDefault(); go('import-export') }}
             className="flex items-center gap-2 pl-3 pr-2 py-1.5 text-text-secondary
                        rounded-r-full hover:bg-[#e4ecf7] hover:text-primary transition-colors">

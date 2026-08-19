@@ -37,6 +37,7 @@ import { buildRrule, presetFromRrule, describeRrule } from './rrule'
 import { copyKubunoData, eventEnvelope, openLabelPicker } from './kubunoData'
 import RecurrenceCustomDialog from './RecurrenceCustomDialog'
 import { MonoText } from './MonoText'
+import { useUserTimezone } from './timezones'
 import {
   MoonIcon, PrincipalMoonIcon, moonPhase, moonIllumination,
   moonPhaseName, principalPhaseOfDay, principalPhaseName,
@@ -87,7 +88,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
   const now = useNowTick()
   const isMobile = useIsMobile()
   const secondaryTimezone = settings.secondaryTimezone
-  const localTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
+  const localTz = useUserTimezone()
   const tzOffsetLabel = (tz: string) => { try { return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(date).find(p => p.type === 'timeZoneName')?.value ?? '' } catch { return '' } }
   const tzHourLabel = (tz: string, h: number) => { const inst = new Date(date); inst.setHours(h, 0, 0, 0); try { return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' }).format(inst) } catch { return '' } }
   const fmtMin = (m: number) => {

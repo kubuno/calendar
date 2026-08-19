@@ -9,6 +9,7 @@ import {
   CalendarDays, UserCircle2, ChevronRight, X,
 } from 'lucide-react'
 import { calendarApi, appointmentApi, type AppointmentSchedule, type AvailabilityRule, type BookingFormField, type SaveScheduleDto } from './api'
+import { useUserTimezone } from './timezones'
 import { MonoText } from './MonoText'
 
 // ── Time helpers (minutes from midnight ⇄ "HH:MM") ──────────────────────────
@@ -103,7 +104,8 @@ export default function AppointmentSchedulePage() {
   const close = () => navigate('/calendar')
 
   const [step, setStep] = useState<1 | 2>(1)
-  const browserTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
+  // The zone a new schedule defaults to: the host's own, not the machine's.
+  const hostTz = useUserTimezone()
 
   // Two-pane layout is driven in JS (`useIsMobile` from @ui): module responsive
   // utilities (`lg:w-[600px]`) are overridden by the host's base utilities
@@ -127,7 +129,7 @@ export default function AppointmentSchedulePage() {
     const { weekly, overrides } = sched?.availability ? rulesToWeekly(sched.availability) : { weekly: structuredClone(DEFAULT_WEEKLY), overrides: [] }
     const defCal = calendars.find(c => c.is_default) ?? calendars[0]
     setDraft({
-      title: sched?.title ?? '', duration: sched?.duration_minutes ?? 60, timezone: sched?.timezone ?? browserTz,
+      title: sched?.title ?? '', duration: sched?.duration_minutes ?? 60, timezone: sched?.timezone ?? hostTz,
       weekly, overrides,
       windowType: sched?.window_type ?? 'rolling', maxDays: sched?.window_max_days ?? 60, minHours: sched?.window_min_hours ?? 4,
       startDate: sched?.window_start_date ?? null, endDate: sched?.window_end_date ?? null,

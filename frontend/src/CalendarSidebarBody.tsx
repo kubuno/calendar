@@ -16,6 +16,7 @@ import CalendarImportModal from './CalendarImportModal'
 import CalendarEditModal from './CalendarEditModal'
 import CalendarShareModal from './CalendarShareModal'
 import CalendarSubscribeModal from './CalendarSubscribeModal'
+import { useInstancePolicy } from './instancePolicy'
 import {
   format,
   startOfMonth, endOfMonth,
@@ -58,7 +59,7 @@ const hoverBg = (color: string) => ({
  * Row hover tint. Same value as the core's SidebarNavItem so this module's rows
  * highlight exactly like mail's — the left panel must feel like ONE sidebar.
  */
-const ROW_HOVER = 'color-mix(in srgb, var(--color-primary) 12%, white)'
+const ROW_HOVER = 'var(--kb-sidebar-hover, #e8eaed)'  // host-owned token: one hover colour product-wide
 
 
 /** Keyboard handler for anchors used as buttons: Space activates like Enter does. */
@@ -201,6 +202,7 @@ function CalendarList() {
   const [showImport, setShowImport] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [showSubscribe, setShowSubscribe] = useState(false)
+  const policy = useInstancePolicy()
   const [editing, setEditing] = useState<CalendarT | null>(null)
   const [sharing, setSharing] = useState<CalendarT | null>(null)
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
@@ -321,7 +323,11 @@ function CalendarList() {
         <MenuDropdown
           items={[
             { type: 'action', label: t('cal_create_title', { defaultValue: 'Nouvel agenda' }), icon: <Plus size={14} />, onClick: () => setShowCreate(true) },
-            { type: 'action', label: t('sub_title', { defaultValue: 'S’abonner à un agenda' }), icon: <Rss size={14} />, onClick: () => setShowSubscribe(true) },
+            // Mirroring a remote feed can be closed instance-wide; the server
+            // refuses it either way, so the entry is not offered.
+            ...(policy.allowCalendarSubscriptions
+              ? [{ type: 'action' as const, label: t('sub_title', { defaultValue: 'S’abonner à un agenda' }), icon: <Rss size={14} />, onClick: () => setShowSubscribe(true) }]
+              : []),
             { type: 'separator' },
             { type: 'action', label: t('import_sidebar_button', { defaultValue: 'Importer un fichier .ics' }), icon: <Upload size={14} />, onClick: () => setShowImport(true) },
           ] as MenuItem[]}

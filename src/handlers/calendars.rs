@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Extension,
     Json,
@@ -18,9 +18,24 @@ use crate::{
     state::AppState,
 };
 
+/// Query of the calendar list.
+#[derive(Debug, serde::Deserialize)]
+pub struct ListQuery {
+    /// The caller's own time zone, as their client reports it.
+    ///
+    /// Read for one purpose only: the very first listing of an account creates
+    /// its default calendar, and that calendar is the one nearly everybody
+    /// keeps. Without this the account's main calendar would be the single one
+    /// the new rule never reached — born in the instance's zone, which is the
+    /// whole problem. Absent or unusable, the instance setting still applies.
+    #[serde(default)]
+    pub tz: Option<String>,
+}
+
 pub async fn list(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
+    Query(query): Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let mut calendars = CalendarService::list(user.id, &state.db).await?;
 
@@ -34,9 +49,14 @@ pub async fn list(
                 description: None,
                 color:       Some("#4D38DB".to_string()),
                 cal_type:    Some("personal".to_string()),
-                timezone:    None,
+                // Bounded here rather than by the validator: this one arrives in
+                // the query string of a plain GET, which no DTO validates.
+                timezone:    query.tz.filter(|tz| {
+                    tz.len() <= crate::services::timezone::MAX_TIMEZONE_LEN
+                }),
                 is_public:   Some(false),
             },
+            &state.instance(),
             &state.db,
         )
         .await?;
@@ -55,7 +75,9 @@ pub async fn create(
     dto.validate()
         .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
 
-    let cal = CalendarService::create(user.id, dto, &state.db).await?;
+    let instance = state.instance();
+    CalendarService::assert_can_create(user.id, &instance, &state.db).await?;
+    let cal = CalendarService::create(user.id, dto, &instance, &state.db).await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "calendar": cal }))))
 }
 
@@ -74,7 +96,11 @@ pub async fn update(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateCalendarDto>,
 ) -> Result<Json<serde_json::Value>> {
-    let cal = CalendarService::update(id, user.id, dto, &state.db).await?;
+    use validator::Validate;
+    dto.validate()
+        .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
+
+    let cal = CalendarService::update(id, user.id, dto, &state.instance(), &state.db).await?;
     Ok(Json(serde_json::json!({ "calendar": cal })))
 }
 
@@ -125,7 +151,17 @@ pub async fn subscribe(
     dto.validate()
         .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
 
-    let cal = SubscriptionService::subscribe(user.id, dto, &state.db).await?;
+    let instance = state.instance();
+    // Mirroring a remote feed makes the instance fetch a URL a user chose; an
+    // administration that does not want that outbound traffic can close it.
+    if !instance.allow_calendar_subscriptions {
+        return Err(crate::errors::CalendarError::Validation(
+            "Les abonnements à un agenda distant sont désactivés sur cette instance".to_string(),
+        ));
+    }
+    CalendarService::assert_can_create(user.id, &instance, &state.db).await?;
+
+    let cal = SubscriptionService::subscribe(user.id, dto, &instance, &state.db).await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "calendar": cal }))))
 }
 
@@ -135,6 +171,11 @@ pub async fn refresh(
     Extension(user): Extension<CalendarUser>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
+    if !state.instance().allow_calendar_subscriptions {
+        return Err(crate::errors::CalendarError::Validation(
+            "Les abonnements à un agenda distant sont désactivés sur cette instance".to_string(),
+        ));
+    }
     let cal = CalendarService::get(id, user.id, &state.db).await?;
     if cal.owner_id != user.id {
         return Err(crate::errors::CalendarError::Forbidden);

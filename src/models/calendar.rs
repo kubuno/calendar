@@ -38,15 +38,23 @@ pub struct CreateCalendarDto {
     #[validate(length(min = 7, max = 7))]
     pub color:       Option<String>,
     pub cal_type:    Option<String>,
+    /// The creator's own time zone, as their client reports it. An IANA
+    /// identifier; anything else falls back to the instance setting rather than
+    /// being stored (see `services::timezone`). The length bound is the cheap
+    /// half of that check — it runs before anything looks the value up.
+    #[validate(length(max = 64))]
     pub timezone:    Option<String>,
     pub is_public:   Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, validator::Validate)]
 pub struct UpdateCalendarDto {
     pub name:        Option<String>,
     pub description: Option<String>,
     pub color:       Option<String>,
+    /// Unlike the creation field, this one is a deliberate choice: an
+    /// unrecognised zone is refused rather than quietly ignored.
+    #[validate(length(max = 64))]
     pub timezone:    Option<String>,
     pub is_visible:  Option<bool>,
     pub is_public:   Option<bool>,
@@ -75,4 +83,7 @@ pub struct SubscribeCalendarDto {
     pub url:   String,
     #[validate(length(min = 7, max = 7))]
     pub color: Option<String>,
+    /// The subscriber's own time zone, same contract as `CreateCalendarDto`.
+    #[validate(length(max = 64))]
+    pub timezone: Option<String>,
 }

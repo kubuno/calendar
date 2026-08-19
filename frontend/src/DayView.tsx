@@ -37,6 +37,7 @@ import { buildRrule, presetFromRrule, describeRrule } from './rrule'
 import { copyKubunoData, eventEnvelope, openLabelPicker } from './kubunoData'
 import RecurrenceCustomDialog from './RecurrenceCustomDialog'
 import { MonoText } from './MonoText'
+import { useUserTimezone } from './timezones'
 import {
   MoonIcon, PrincipalMoonIcon, moonPhase, moonIllumination,
   moonPhaseName, principalPhaseOfDay, principalPhaseName,
@@ -139,9 +140,9 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
   // Side-by-side layout of the overlaps.
   const layout = useMemo(() => layoutDayEvents(dayEvs), [dayEvs])
 
-  // Secondary timezone (personal preference) + local timezone for the dual hour column.
+  // Secondary timezone (personal preference) + the reader's own for the dual hour column.
   const secondaryTimezone = settings.secondaryTimezone
-  const localTz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return 'UTC' } }, [])
+  const localTz = useUserTimezone()
   const tzOffsetLabel = (tz: string) => {
     try {
       const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(date)

@@ -10,6 +10,7 @@ import { useAuthStore, useConfirm } from '@kubuno/sdk'
 import { calendarApi, type Calendar, type UserBrief } from '../api'
 import { CALENDAR_COLORS } from '../calendarColors'
 import { Section, Field } from './parts'
+import { useInstancePolicy } from '../instancePolicy'
 
 /** Anchors of this page, in render order. */
 export function calendarSections(cal: Calendar, isOwner: boolean): string[] {
@@ -248,6 +249,9 @@ export default function CalendarDetailSettings({ calendar }: { calendar: Calenda
   const username = me?.username ?? ''
   const caldavUrl = `${baseUrl}/api/v1/calendar/caldav/${username}/${calendar.caldav_token}/`
   const feedUrl   = calendarApi.publicFeedUrl(calendar)
+  // Publishing may be closed instance-wide; the server refuses the flag either
+  // way, so the checkbox gives way to the reason rather than to a failing click.
+  const policy    = useInstancePolicy()
 
   return (
     <div>
@@ -334,15 +338,23 @@ export default function CalendarDetailSettings({ calendar }: { calendar: Calenda
 
       <Section id="permissions" title={t('settings_section_permissions', { defaultValue: 'Autorisations d’accès aux événements' })}>
         <div className="max-w-xl space-y-3">
-          <Checkbox
-            checked={calendar.is_public}
-            onChange={(v) => patch({ is_public: v })}
-            disabled={!isOwner}
-            label={t('settings_make_public', { defaultValue: 'Rendre disponible publiquement' })}
-            description={t('settings_make_public_help', { defaultValue: 'Toute personne disposant du lien peut consulter cet agenda en lecture seule.' })}
-          />
-          {calendar.is_public && (
-            <CopyField label={t('share_public_link', { defaultValue: 'Lien public (lecture seule)' })} value={feedUrl} />
+          {policy.allowPublicCalendars ? (
+            <>
+              <Checkbox
+                checked={calendar.is_public}
+                onChange={(v) => patch({ is_public: v })}
+                disabled={!isOwner}
+                label={t('settings_make_public', { defaultValue: 'Rendre disponible publiquement' })}
+                description={t('settings_make_public_help', { defaultValue: 'Toute personne disposant du lien peut consulter cet agenda en lecture seule.' })}
+              />
+              {calendar.is_public && (
+                <CopyField label={t('share_public_link', { defaultValue: 'Lien public (lecture seule)' })} value={feedUrl} />
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-text-tertiary">
+              {t('settings_public_disabled', { defaultValue: 'La publication d’un agenda est désactivée sur cette instance.' })}
+            </p>
           )}
         </div>
       </Section>

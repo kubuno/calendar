@@ -14,6 +14,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format as fmtDateFns } from 'date-fns'
 import { api, useAuthStore, getDateLocale } from '@kubuno/sdk'
+import { useInstancePolicy } from './instancePolicy'
 
 export type TimeFormat        = '24h' | '12h'
 export type NotificationsMode = 'off' | 'in_app' | 'desktop'
@@ -174,6 +175,11 @@ export function useCalendarConfigQuery() {
 
 export function useCalendarSettings(): CalendarSettings {
   const { data } = useCalendarConfigQuery()
+  // Instance-wide switches do NOT come from the route above: the core hides
+  // `global` settings from accounts without the settings privilege, so for an
+  // ordinary user they would always read as their factory default. The module
+  // publishes the ones its screens act on itself.
+  const policy = useInstancePolicy()
   // Free-form preferences (arrays) share the module's JSONB bag but not the
   // declarative manifest, so they come straight from the authenticated user.
   const prefs = useAuthStore(s => s.user?.preferences?.calendar) as Record<string, unknown> | undefined
@@ -222,12 +228,12 @@ export function useCalendarSettings(): CalendarSettings {
 
       workingHoursEnabled,
       workSchedule,
-      workingLocationAllowed: asBool(get('allow_working_location'), d.workingLocationAllowed),
+      workingLocationAllowed: policy.allowWorkingLocation,
 
       keyboardShortcuts: asBool(get('keyboard_shortcuts'), d.keyboardShortcuts),
       worldClock,
     }
-  }, [data, prefs])
+  }, [data, prefs, policy])
 }
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
