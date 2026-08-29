@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchStore } from '@kubuno/sdk'
 import { useCalendarStore, type CalendarSearchFilters } from './store'
 import { DatePicker, Dropdown, Input } from '@ui'
 
@@ -35,7 +37,33 @@ const labelClass = 'text-sm text-text-secondary w-32 shrink-0 text-right'
 
 export default function CalendarFilterPanel({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation('calendar')
-  const { searchFilters, setSearchFilters, applySearch, clearSearch } = useCalendarStore()
+  const { searchFilters, setSearchFilters, applySearch, clearSearch, setSearchQuery } = useCalendarStore()
+
+  // ── Two-way sync with the shell search bar (platform rule) ──────────────────
+  // The calendar's search has no text operators: the bar's query is plain free
+  // text matched against event titles and descriptions — exactly what the
+  // « Objet » field does. So that field mirrors the bar: opening the panel
+  // pre-fills it with the current query, and editing it rewrites the bar's text
+  // live (running the search like typing does). The other fields (location,
+  // excluded words, dates, scope) are state filters with no query-text
+  // representation — deliberately NOT serialized into the bar (no invented
+  // operators).
+  const query    = useSearchStore(s => s.query)
+  const setQuery = useSearchStore(s => s.setQuery)
+  // Remembers the last query WE pushed so its echo doesn't clobber the field.
+  const lastBuilt = useRef<string | null>(null)
+  useEffect(() => {
+    if (query === lastBuilt.current) return
+    setSearchFilters({ subject: query })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
+
+  const setSubject = (v: string) => {
+    setSearchFilters({ subject: v })
+    lastBuilt.current = v
+    setQuery(v)          // rewrite the bar's text live
+    setSearchQuery(v)    // run the live search, like typing in the bar does
+  }
 
   const handleSearch = () => {
     applySearch()
@@ -44,6 +72,8 @@ export default function CalendarFilterPanel({ onClose }: { onClose: () => void }
 
   const handleReset = () => {
     clearSearch()
+    lastBuilt.current = ''
+    setQuery('')
     onClose()
   }
 
@@ -67,7 +97,7 @@ export default function CalendarFilterPanel({ onClose }: { onClose: () => void }
             className={fieldClass}
             placeholder={t('filter_subject_ph')}
             value={searchFilters.subject}
-            onChange={e => setSearchFilters({ subject: e.target.value })}
+            onChange={e => setSubject(e.target.value)}
           />
         </div>
       </div>
