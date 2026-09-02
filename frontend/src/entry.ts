@@ -52,7 +52,7 @@ import { registerDataCardRenderer } from './kubunoData'
 export const sdkVersion = SDK_VERSION
 
 export function register() {
-  FaviconRegistry.register('calendar', '/calendar-logo.svg')
+  FaviconRegistry.register('calendar', '/calendar-logo.png')
 
   // Datepicker override: with calendar installed, the shared <DatePicker> grows a
   // right-hand column listing the selected/hovered day's events. Neutral core
@@ -204,6 +204,47 @@ export function register() {
       if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/calendar')) {
         navigate('/calendar/day')
       }
+    },
+
+    // Create an event from another module (mail's "Add to calendar" on a rich
+    // card, an assistant action…) without that module knowing the user's
+    // calendars: we resolve the default calendar here. `startsAt`/`endsAt` are
+    // ISO strings; a missing end defaults to +1h (or the whole day for all-day).
+    createEvent: async (input: {
+      title: string
+      startsAt: string
+      endsAt?: string
+      description?: string
+      location?: string
+      url?: string
+      allDay?: boolean
+    }) => {
+      const { calendars } = await calendarApi.listCalendars()
+      // Only a calendar the user can write to (owner/write) is a valid target —
+      // a read-only shared calendar would 403. Prefer a writable DEFAULT, then
+      // an owned one, then any writable calendar.
+      const writable = calendars.filter(c => c.my_permission === 'owner' || c.my_permission === 'write' || c.my_permission == null)
+      const target =
+        writable.find(c => c.is_default && c.my_permission === 'owner')
+        ?? writable.find(c => c.my_permission === 'owner')
+        ?? writable.find(c => c.is_default)
+        ?? writable[0]
+      if (!target) throw new Error('no writable calendar')
+      const start = new Date(input.startsAt)
+      const end = input.endsAt
+        ? new Date(input.endsAt)
+        : new Date(start.getTime() + (input.allDay ? 24 * 3600e3 : 3600e3))
+      const { event } = await calendarApi.createEvent({
+        calendar_id: target.id,
+        title:       input.title,
+        description: input.description,
+        location:    input.location,
+        url:         input.url,
+        starts_at:   start.toISOString(),
+        ends_at:     end.toISOString(),
+        all_day:     input.allDay ?? false,
+      })
+      return event
     },
   })
 

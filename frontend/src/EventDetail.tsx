@@ -266,7 +266,7 @@ export function EventDetail({
           <button
             type="button"
             onClick={() => { onClose(); navigate(meetingLink) }}
-            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-white text-sm font-medium hover:bg-primary-hover transition-colors"
           >
             <Video size={16} /> {t('join_video_meeting', { defaultValue: 'Rejoindre la réunion vidéo' })}
           </button>

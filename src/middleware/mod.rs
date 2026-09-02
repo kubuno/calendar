@@ -20,33 +20,32 @@ pub type CalendarUserExt = axum::Extension<CalendarUser>;
 
 /// Middleware : extrait X-Kubuno-User-Id, X-Kubuno-User-Role, X-Kubuno-User-Email.
 /// Ces headers sont injectés par le proxy du core — on leur fait confiance.
+/// This module's id, used as the token audience.
+const MODULE_ID: &str = "calendar";
+
+/// Authenticate the caller from the signed `X-Kubuno-Auth` token the core mints
+/// with this module's internal secret (see `kubuno-modauth`), instead of
+/// trusting the plain `X-Kubuno-User-*` headers — which any process reaching this
+/// module's loopback port could otherwise forge to impersonate any user.
 pub async fn require_auth(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> std::result::Result<Response, CalendarError> {
-    let user_id = req
+    let token = req
         .headers()
-        .get("x-kubuno-user-id")
+        .get(kubuno_modauth::TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or(CalendarError::Unauthorized)?;
 
-    let role = req
-        .headers()
-        .get("x-kubuno-user-role")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("user")
-        .to_string();
-
-    let email = req
-        .headers()
-        .get("x-kubuno-user-email")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
+    let user = kubuno_modauth::verify(
+        state.settings.core.internal_secret.as_bytes(),
+        token,
+        MODULE_ID,
+    )
+    .map_err(|_| CalendarError::Unauthorized)?;
 
     req.extensions_mut()
-        .insert(CalendarUser { id: user_id, role, email });
+        .insert(CalendarUser { id: user.id, role: user.role, email: user.email });
     Ok(next.run(req).await)
 }

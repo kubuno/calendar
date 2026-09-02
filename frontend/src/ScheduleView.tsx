@@ -91,7 +91,7 @@ export function ScheduleView({ rangeStart, rangeEnd, events, calendars, overlayB
           <CalendarIcon size={40} className="opacity-20 mb-3" />
           <p className="text-xs">{t('schedule_empty')}</p>
           <button onClick={() => onDayCreate(rangeStart)}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
             <Plus size={15} /> {t('create')}
           </button>
         </div>

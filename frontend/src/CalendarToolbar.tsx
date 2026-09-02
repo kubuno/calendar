@@ -158,7 +158,7 @@ export function CalendarViewSwitcher() {
       {/* Same trigger style as the chat status pill to its right: a borderless
           rounded-full button with a soft hover, not a bordered box. */}
       <button onClick={open} aria-haspopup="menu"
-        className="flex items-center gap-1.5 h-8 px-2.5 rounded-full transition-colors hover:bg-black/5">
+        className="flex items-center gap-1.5 h-8 px-2.5 rounded-md transition-colors hover:bg-black/5">
         <span className="text-sm text-text-primary">{viewLabel(viewMode, settings.customViewDays, t)}</span>
         <ChevronDown className="w-3.5 h-3.5 text-text-tertiary" />
       </button>
