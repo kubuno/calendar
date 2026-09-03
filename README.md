@@ -5,7 +5,9 @@
 
 <div align="center">
 
-# 📅 Kubuno Calendar
+<img src=".github/logo.png" alt="Kubuno Calendar logo" width="128" height="128">
+
+# Kubuno Calendar
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-edition_2021-orange.svg)

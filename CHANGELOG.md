@@ -11,6 +11,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+
+- **The README now opens with the module's logo.** The public README on
+  GitHub now shows the module's designer logo (the same PNG shown as the
+  browser tab icon and in the applications menu) at the top of the page — the
+  repository landing now matches the icon a signed-in user sees inside the
+  platform. The image ships in-repo, under `.github/logo.png`, so it renders
+  even when the repo is browsed offline.
+
 - **New Calendar logo** — a violet hexagon with a white calendar grid, used
   as the browser-tab icon and in the applications menu. It is now raster (PNG)
   designer artwork.
