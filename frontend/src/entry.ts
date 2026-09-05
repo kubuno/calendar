@@ -218,6 +218,7 @@ export function register() {
       location?: string
       url?: string
       allDay?: boolean
+      status?: string
     }) => {
       const { calendars } = await calendarApi.listCalendars()
       // Only a calendar the user can write to (owner/write) is a valid target —
@@ -243,6 +244,7 @@ export function register() {
         starts_at:   start.toISOString(),
         ends_at:     end.toISOString(),
         all_day:     input.allDay ?? false,
+        status:      input.status,
       })
       return event
     },

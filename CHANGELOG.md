@@ -12,23 +12,6 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 
 
-
-
-- **The RPM package now names the same maintainer as the Debian one.** Its
-  changelog entry read `Kubuno Contributors <contact@kubuno.io>`, an address on
-  a domain the project does not use; it now reads
-  `Martinien OLINGA <kubuno@martinienolinga.com>`, matching the `.deb`. Nothing
-  about what the package installs changes.
-
-- **The package maintainer address moved to the project's own domain.** The
-  Debian package's `Maintainer` field now reads
-  `Martinien OLINGA <kubuno@martinienolinga.com>`. Nothing about what the
-  package installs changes.
-
-- **Security reports now go to `security@martinienolinga.com`.** The address
-  published in `SECURITY.md` moved to the project's own domain; the previous
-  one is retired. Reporting through GitHub Security Advisories is unaffected.
-
 - **The README now opens with the module's logo.** The public README on
   GitHub now shows the module's designer logo (the same PNG shown as the
   browser tab icon and in the applications menu) at the top of the page — the
@@ -64,6 +47,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   the first time it was attempted — a script failure, not a build failure. The
   builder now falls back to 7-Zip, then to PowerShell.
 ### Added
+
+- **`createEvent` accepts a `status`** (confirmed/tentative) so callers can
+  reflect an invitation RSVP when adding the event.
 
 - **`createEvent` inter-module service.** Other modules (mail's "Add to
   calendar" on a rich card, for one) can now create an event without knowing the
