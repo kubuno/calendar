@@ -54,6 +54,7 @@ pub async fn import_ics(
             status:      None,
             visibility:  None,
             busy:        Some(true),
+            attendees:   None,
         };
 
         match EventService::import_event(user.id, create_dto, &ical_uid, &state.db).await {

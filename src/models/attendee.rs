@@ -16,10 +16,23 @@ pub struct Attendee {
     pub invited_at:      DateTime<Utc>,
     pub responded_at:    Option<DateTime<Utc>>,
     pub comment:         Option<String>,
+    /// Event `SEQUENCE` at which this attendee was last notified (the invitation
+    /// the Mail module sent). Used to reject RSVP replies that answer a
+    /// superseded invitation. `None` until a first invitation is sent.
+    pub last_notified_sequence: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, validator::Validate)]
 pub struct InviteAttendeeDto {
+    #[validate(email)]
+    pub email:        String,
+    pub display_name: Option<String>,
+}
+
+/// One guest supplied inline when an event is created (see `CreateEventDto`).
+/// The organizer never appears here — the server adds their own attendee row.
+#[derive(Debug, Clone, Deserialize, validator::Validate)]
+pub struct AttendeeInputDto {
     #[validate(email)]
     pub email:        String,
     pub display_name: Option<String>,

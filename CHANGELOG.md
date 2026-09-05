@@ -9,7 +9,40 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Added
+
+- **Meeting invitations are now e-mailed to your guests.** When you create an
+  event with guests — and you can now add them right from the creation dialog,
+  no longer only after saving — Kubuno asks the Mail module to send each guest a
+  proper invitation carrying an iCalendar (`.ics`) attachment. Updating the
+  meeting re-sends it, and cancelling (deleting) the meeting sends a
+  cancellation. When a guest accepts, declines or answers "maybe" from their
+  mail client, their response is reflected back on the event automatically.
+
+- **You now see the meetings you were invited to in your own calendar**, even
+  when the organizer never shared their calendar with you — an invitation is its
+  own reason to show the event.
+
+- **New administrator setting "Send invitations by e-mail" (on by default).**
+  Turn it off and guests are still recorded on the event, but no mail leaves the
+  instance.
+
 ### Changed
+
+- **A guest is now linked to their Kubuno account** when their address matches
+  one, and the organizer appears in the guest list as the meeting's host. The
+  per-guest "send by e-mail" (`mailto:`) shortcut is gone, since the invitation
+  is now sent for you.
+
+### Fixed
+
+- **Stale RSVP replies no longer overwrite a fresher answer.** A reply that
+  answers an out-of-date invitation (one superseded by a later change to the
+  meeting) is ignored.
+
+- Removed two internal event notifications (`EventUpdated`/`EventDeleted`) that
+  were malformed and silently rejected on every event edit and deletion since
+  the module shipped.
 
 
 - **The README now opens with the module's logo.** The public README on

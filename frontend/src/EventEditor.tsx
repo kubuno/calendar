@@ -8,7 +8,7 @@ import { userTimezone } from './timezones'
 import {
   X, Calendar as CalendarIcon,
   Clock, MapPin, Search, Plus, Edit2, Copy, Trash2, Bell,
-  Mail, Share2, AlignLeft, Check, User as UserIcon,
+  Share2, AlignLeft, Check, User as UserIcon,
   MoreVertical, Printer, Link2, Lock, Globe,
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
@@ -340,6 +340,81 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
   )
 }
 
+// ── Attendees panel (creation) ────────────────────────────────────────────────
+// Collects the guest list before the event exists; the addresses ride along in
+// the create request (`attendees`) and the server sends the invitations.
+function CreateGuestsPanel({
+  guests,
+  onChange,
+}: {
+  guests: { email: string; display_name?: string }[]
+  onChange: (g: { email: string; display_name?: string }[]) => void
+}) {
+  const { t } = useTranslation('calendar')
+  const [email, setEmail] = useState('')
+  const policy = useInstancePolicy()
+  const typed  = email.trim()
+  const isOutside = typed.includes('@')
+    && policy.internalDomains.length > 0
+    && !isInternalAddress(typed, policy.internalDomains)
+  const blocked = isOutside && !policy.allowExternalGuests
+  const already = guests.some(g => g.email.toLowerCase() === typed.toLowerCase())
+  const guestLimitReached = policy.maxEventGuests > 0 && guests.length >= policy.maxEventGuests
+  const canAdd = typed.includes('@') && !blocked && !already && !guestLimitReached
+  const add = () => {
+    if (!canAdd) return
+    onChange([...guests, { email: typed }])
+    setEmail('')
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-1.5">
+        <Input type="email" placeholder={t('guests_add', { defaultValue: 'Ajouter des invités' })}
+          value={email} onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          className="w-full" />
+        <Button type="button" size="sm" disabled={!canAdd} onClick={add}>
+          {t('guests_invite', { defaultValue: 'Inviter' })}
+        </Button>
+      </div>
+      {blocked && (
+        <p className="text-xs text-danger">
+          {t('guests_external_blocked', { defaultValue: 'Les invités extérieurs à l’instance sont désactivés sur cette instance.' })}
+        </p>
+      )}
+      {!blocked && isOutside && policy.warnExternalGuests && (
+        <p className="text-xs text-warning">
+          {t('guests_external_warning', { defaultValue: 'Cette adresse n’appartient pas à votre organisation : les détails de l’événement lui seront envoyés.' })}
+        </p>
+      )}
+      {guestLimitReached && (
+        <p className="text-xs text-danger">
+          {t('guests_limit_reached', { defaultValue: 'Nombre maximal de participants atteint ({{max}}).', max: policy.maxEventGuests })}
+        </p>
+      )}
+      {guests.length > 0 && (
+        <div className="space-y-1.5">
+          {guests.map(g => (
+            <div key={g.email} className="group flex items-center gap-2 text-sm">
+              <span className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center text-xs shrink-0">
+                {g.email[0]?.toUpperCase()}
+              </span>
+              <span className="flex-1 min-w-0 truncate">{g.email}</span>
+              <button type="button" onClick={() => onChange(guests.filter(x => x.email !== g.email))}
+                className="p-1 text-text-tertiary hover:text-danger" aria-label={t('delete')}>
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <p className="text-xs text-text-tertiary pt-1">
+            {t('guests_will_be_invited', { defaultValue: 'Les invitations seront envoyées à l’enregistrement.' })}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Attendees panel (editing) ─────────────────────────────────────────────────
 function GuestsPanel({ eventId }: { eventId: string }) {
   const { t } = useTranslation('calendar')
@@ -440,21 +515,16 @@ function GuestsPanel({ eventId }: { eventId: string }) {
                     {a.is_organizer ? t('organizer', { defaultValue: 'organisateur' }) : statusLabel}
                   </span>
                 </span>
+                {/* The invitation e-mail is now sent automatically by the
+                    server (via the Mail module); the copy-link stays as a
+                    fallback for sharing the RSVP page out of band. */}
                 {!a.is_organizer && rsvpUrl && (
-                  <>
-                    <button type="button"
-                      onClick={() => { navigator.clipboard.writeText(rsvpUrl).catch(() => {}) }}
-                      title={t('rsvp_copy_link', { defaultValue: 'Copier le lien d’invitation' })}
-                      className="p-1 text-text-tertiary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Link2 size={13} />
-                    </button>
-                    <a
-                      href={`mailto:${a.email}?subject=${encodeURIComponent(t('rsvp_mail_subject', { defaultValue: 'Invitation' }))}&body=${encodeURIComponent(t('rsvp_mail_body', { defaultValue: 'Bonjour,\n\nVous êtes invité(e). Merci de répondre ici : ' }) + rsvpUrl)}`}
-                      title={t('rsvp_send_mail', { defaultValue: 'Envoyer l’invitation par e-mail' })}
-                      className="p-1 text-text-tertiary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Mail size={13} />
-                    </a>
-                  </>
+                  <button type="button"
+                    onClick={() => { navigator.clipboard.writeText(rsvpUrl).catch(() => {}) }}
+                    title={t('rsvp_copy_link', { defaultValue: 'Copier le lien d’invitation' })}
+                    className="p-1 text-text-tertiary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Link2 size={13} />
+                  </button>
                 )}
                 {!a.is_organizer && (
                   <button type="button" onClick={() => remove.mutate(a.id)} className="p-1 text-text-tertiary hover:text-danger" aria-label={t('delete')}>
@@ -735,6 +805,9 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
   })
   const [allDay,     setAllDay]     = useState(ev?.all_day ?? false)
   const [location,   setLocation]   = useState(ev?.location ?? '')
+  // Guests collected before the event exists (creation only). On an existing
+  // event guests are managed live through GuestsPanel.
+  const [pendingGuests, setPendingGuests] = useState<{ email: string; display_name?: string }[]>([])
   const [addingMeeting, setAddingMeeting] = useState(false)
   const [desc,       setDesc]       = useState(ev?.description ?? '')
   const meetingProvider = getMeetingProvider()
@@ -803,6 +876,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
         return calendarApi.createEvent({ ...base,
           rrule: effectiveRrule,
           ...(color && color !== calColor ? { color } : {}),
+          ...(pendingGuests.length ? { attendees: pendingGuests } : {}),
         })
       }
       return calendarApi.updateEvent(ev!.event_id, { ...base,
@@ -972,7 +1046,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
               {mode === 'edit' && ev ? (
                 <GuestsPanel eventId={ev.event_id} />
               ) : (
-                <p className="text-sm text-text-tertiary">{t('guests_after_create', { defaultValue: "Enregistrez l'événement pour ajouter des invités." })}</p>
+                <CreateGuestsPanel guests={pendingGuests} onChange={setPendingGuests} />
               )}
             </div>
           </div>

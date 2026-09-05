@@ -130,6 +130,7 @@ pub async fn create_event(
         status:      None,
         visibility:  None,
         busy:        None,
+        attendees:   None,
     };
     let event = EventService::create(user.id, dto, &state.db).await?;
     Ok(Json(serde_json::json!({

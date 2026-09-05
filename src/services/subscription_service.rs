@@ -181,6 +181,7 @@ impl SubscriptionService {
                 status: None,
                 visibility: None,
                 busy: Some(true),
+                attendees: None,
             };
             match EventService::import_event(owner_id, dto, &ical_uid, db).await {
                 Ok(Some(true)) => imported += 1,

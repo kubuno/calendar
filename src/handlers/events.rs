@@ -9,9 +9,13 @@ use uuid::Uuid;
 use crate::{
     errors::Result,
     events::publisher,
+    handlers::attendees,
     middleware::CalendarUser,
     models::event::{CreateEventDto, EventsQuery, RecurrenceScope, UpdateEventDto},
-    services::{event_service::EventService, icalendar_service::ICalendarService},
+    services::{
+        event_service::EventService,
+        icalendar_service::{ICalendarService, ItipMethod},
+    },
     state::AppState,
 };
 
@@ -48,6 +52,13 @@ pub async fn create(
     dto.validate()
         .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
 
+    // Guests supplied inline on creation, kept aside before the DTO is consumed.
+    let guests = dto.attendees.clone().unwrap_or_default();
+    for g in &guests {
+        g.validate()
+            .map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
+    }
+
     let event = EventService::create(user.id, dto, &state.db).await?;
 
     // Publier l'event vers le core (best-effort)
@@ -57,6 +68,30 @@ pub async fn create(
     tokio::spawn(async move {
         publisher::publish_event_created(&state2, event_id, user_id).await;
     });
+
+    // Record the guests and, when the instance enables it, ask the Mail module
+    // to send the invitations.
+    if !guests.is_empty() {
+        let invited =
+            attendees::insert_guests(&state, event.id, user.id, &user.email, &guests).await?;
+        if state.instance().send_email_invitations && !invited.is_empty() {
+            attendees::mark_notified(&state.db, event.id, event.sequence).await?;
+            let state2 = state.clone();
+            let event2 = event.clone();
+            let organizer_email = user.email.clone();
+            tokio::spawn(async move {
+                publisher::publish_invite(
+                    &state2,
+                    ItipMethod::Request,
+                    &event2,
+                    &organizer_email,
+                    None,
+                    &invited,
+                )
+                .await;
+            });
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "event": event }))))
 }
@@ -87,6 +122,30 @@ pub async fn update(
             publisher::publish_event_modified(&state2, id, user_id, &title, "updated").await;
         });
     }
+
+    // Re-send the invitation to the guests (SEQUENCE was bumped by the update),
+    // so an updated meeting reaches its attendees. Best-effort.
+    if state.instance().send_email_invitations {
+        let guests = attendees::fetch_guests(&state.db, event.id).await?;
+        if !guests.is_empty() {
+            attendees::mark_notified(&state.db, event.id, event.sequence).await?;
+            let state2 = state.clone();
+            let event2 = event.clone();
+            let organizer_email = user.email.clone();
+            tokio::spawn(async move {
+                publisher::publish_invite(
+                    &state2,
+                    ItipMethod::Request,
+                    &event2,
+                    &organizer_email,
+                    None,
+                    &guests,
+                )
+                .await;
+            });
+        }
+    }
+
     Ok(Json(serde_json::json!({ "event": event })))
 }
 
@@ -96,13 +155,47 @@ pub async fn delete(
     Path(id): Path<Uuid>,
     Query(q): Query<DeleteQuery>,
 ) -> Result<StatusCode> {
-    let state2 = state.clone();
-    let user_id = user.id;
+    // Snapshot the event and its guest list BEFORE the delete: the CASCADE wipes
+    // the attendees, and a cancellation needs them. Only a full removal of the
+    // event warrants a cancellation e-mail — trimming a recurrence ("this and
+    // following") is not a cancellation of the meeting.
+    let send_invitations = state.instance().send_email_invitations;
+    let snapshot = if send_invitations {
+        match EventService::get(id, user.id, &state.db).await {
+            Ok(ev) => {
+                let full_delete = matches!(q.scope, RecurrenceScope::All)
+                    || ev.rrule.is_none()
+                    || (matches!(q.scope, RecurrenceScope::This) && q.occurrence.is_none());
+                if full_delete {
+                    let guests = attendees::fetch_guests(&state.db, id).await.unwrap_or_default();
+                    if guests.is_empty() { None } else { Some((ev, guests)) }
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
     EventService::delete(id, user.id, q.scope, q.occurrence, &state.db).await?;
 
-    tokio::spawn(async move {
-        publisher::publish_event_deleted(&state2, id, user_id).await;
-    });
+    if let Some((event, guests)) = snapshot {
+        let state2 = state.clone();
+        let organizer_email = user.email.clone();
+        tokio::spawn(async move {
+            publisher::publish_invite(
+                &state2,
+                ItipMethod::Cancel,
+                &event,
+                &organizer_email,
+                None,
+                &guests,
+            )
+            .await;
+        });
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }

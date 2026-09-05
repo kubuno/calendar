@@ -49,3 +49,49 @@ pub async fn require_auth(
         .insert(CalendarUser { id: user.id, role: user.role, email: user.email });
     Ok(next.run(req).await)
 }
+
+/// Guard of the `/internal/*` sub-router (event delivery from the core): the
+/// core, and nothing else.
+///
+/// Unlike every other route of this module, an internal one is not reached
+/// through the core's proxy and carries no signed `X-Kubuno-Auth` token. What
+/// authenticates it is the shared secret the core handed this process at startup
+/// (`KUBUNO_INTERNAL_SECRET`), presented verbatim in `X-Internal-Secret`.
+///
+/// An **empty** configured secret refuses everything: a module started outside
+/// the supervisor would otherwise accept any request sending an empty header.
+/// The comparison is constant-time.
+pub async fn require_internal_secret(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> std::result::Result<Response, CalendarError> {
+    let expected = state.settings.core.internal_secret.as_str();
+    if expected.is_empty() {
+        tracing::error!(
+            "calendar: core.internal_secret vide — route interne refusée. \
+             Renseignez KUBUNO_INTERNAL_SECRET."
+        );
+        return Err(CalendarError::Unauthorized);
+    }
+
+    let provided = req
+        .headers()
+        .get("x-internal-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
+        return Err(CalendarError::Unauthorized);
+    }
+    Ok(next.run(req).await)
+}
+
+/// Byte comparison whose duration does not depend on where the first difference
+/// is. The length check leaks the length, which is not a secret.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}

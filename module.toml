@@ -417,6 +417,16 @@ category = "Invitations externes"
 label   = "Avertir avant d'inviter une adresse extérieure"
 description = "Affiche un avertissement dans la composition d'un événement lorsque l'adresse saisie n'est pas dans un domaine de l'instance."
 
+[[settings]]
+key     = "send_email_invitations"
+scope   = "global"
+group   = "sharing"
+type    = "bool"
+default = true
+category = "Invitations par e-mail"
+label   = "Envoyer les invitations par e-mail"
+description = "À la création, la modification ou l'annulation d'un événement comportant des invités, le serveur demande au module Courrier d'envoyer les invitations (fichier iCalendar joint). Désactivé, les invités sont enregistrés mais aucun courrier n'est envoyé."
+
 # ── Limites et conservation ───────────────────────────────────────────────────
 
 [[settings]]
@@ -500,9 +510,12 @@ description = "Appuyez sur le point d'interrogation (?) pour afficher la liste d
 subscribed = [
     "UserDeleted",
     "ContactUpdated",
+    # RSVP replies relayed by the Mail module (attendee accepted / declined / …).
+    "mail.invite_reply",
 ]
 publishes = [
     "EventCreated",
-    "EventUpdated",
-    "EventDeleted",
+    # Meeting invitations / cancellations, consumed by the Mail module to send
+    # the invitation e-mails (module→module data channel, no user push).
+    "calendar.invite",
 ]

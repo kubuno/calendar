@@ -7,6 +7,7 @@ pub mod calendars;
 pub mod events;
 pub mod health;
 pub mod import_export;
+pub mod internal_events;
 pub mod mcp;
 pub mod policy;
 pub mod public;

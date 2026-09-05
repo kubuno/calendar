@@ -45,6 +45,10 @@ pub struct InstanceConfig {
     pub allow_external_guests: bool,
     /// Whether the composer warns before adding such a guest (when allowed).
     pub warn_external_guests: bool,
+    /// Whether the server asks the Mail module to send invitation e-mails when a
+    /// meeting with guests is created, updated or cancelled. Off, guests are
+    /// still recorded but no mail leaves the instance.
+    pub send_email_invitations: bool,
     /// Whose busy times feed the common-slot finder.
     pub internal_free_busy: FreeBusyVisibility,
     /// Ceiling on the number of guests of a single event. `0` = no ceiling, and
@@ -76,6 +80,7 @@ impl Default for InstanceConfig {
             public_calendar_detail:      PublicDetail::Full,
             allow_external_guests:       true,
             warn_external_guests:        true,
+            send_email_invitations:      true,
             internal_free_busy:          FreeBusyVisibility::Everyone,
             max_event_guests:            0,
             max_calendars_per_user:      0,
@@ -121,6 +126,7 @@ impl InstanceConfig {
             },
             allow_external_guests: bool_of("allow_external_guests", d.allow_external_guests),
             warn_external_guests:  bool_of("warn_external_guests",  d.warn_external_guests),
+            send_email_invitations: bool_of("send_email_invitations", d.send_email_invitations),
             internal_free_busy: match str_of("internal_free_busy") {
                 Some("shared_only") => FreeBusyVisibility::SharedOnly,
                 Some("everyone")    => FreeBusyVisibility::Everyone,
@@ -159,7 +165,7 @@ impl InstanceConfig {
     /// exist yet. The directory lookup in [`guest_is_internal`] covers the rest.
     pub fn domain_is_internal(&self, email: &str) -> bool {
         match Self::domain_of(email) {
-            Some(domain) => self.internal_domains.iter().any(|d| *d == domain),
+            Some(domain) => self.internal_domains.contains(&domain),
             None => false,
         }
     }
@@ -286,6 +292,60 @@ pub async fn directory_knows_email(
             })
             .unwrap_or(false),
     )
+}
+
+/// Resolves an address to the id of the instance account that owns it, exactly.
+///
+/// Shares the directory endpoint with [`directory_knows_email`], but returns the
+/// matching user's `id` so an attendee row can be linked to the account (which is
+/// what lets an invited user see the event in their own calendar). `None` when
+/// the address belongs to no account, the lookup failed, or the answer was
+/// unreadable — the caller then leaves `user_id` NULL (an external guest).
+pub async fn directory_user_id(
+    http: &reqwest::Client,
+    core_url: &str,
+    secret: &str,
+    email: &str,
+) -> Option<uuid::Uuid> {
+    let url = format!("{core_url}/internal/directory/users");
+    let resp = http
+        .get(&url)
+        .query(&[("q", email), ("limit", "10")])
+        .header("X-Internal-Secret", secret)
+        .send()
+        .await
+        .map_err(|e| tracing::warn!(error = %e, "Annuaire : résolution d'un identifiant"))
+        .ok()?;
+
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "Annuaire : résolution refusée par le core");
+        return None;
+    }
+
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| tracing::warn!(error = %e, "Annuaire : réponse illisible"))
+        .ok()?;
+
+    let needle = email.trim().to_ascii_lowercase();
+    // The directory matches loosely (ILIKE '%…%'); keep only the exact address
+    // and read its id back.
+    body.get("users").and_then(Value::as_array).and_then(|users| {
+        users.iter().find_map(|u| {
+            let matches = u
+                .get("email")
+                .and_then(Value::as_str)
+                .map(|e| e.trim().to_ascii_lowercase() == needle)
+                .unwrap_or(false);
+            if !matches {
+                return None;
+            }
+            u.get("id")
+                .and_then(Value::as_str)
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        })
+    })
 }
 
 #[cfg(test)]

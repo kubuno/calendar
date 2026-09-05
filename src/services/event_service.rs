@@ -52,7 +52,13 @@ impl EventService {
             cal_colors.iter().map(|c| c.id).collect()
         };
 
-        if cal_ids.is_empty() {
+        // Events the user was invited to are shown even when their calendar was
+        // never shared: an invitation is its own grant of visibility. This only
+        // applies to an unfiltered listing — filtering by a specific calendar
+        // must not pull in meetings that live in someone else's.
+        let include_invited = query.calendar_id.is_none();
+
+        if cal_ids.is_empty() && !include_invited {
             return Ok(vec![]);
         }
 
@@ -61,7 +67,12 @@ impl EventService {
         let base_events: Vec<Event> = sqlx::query_as::<_, Event>(
             r#"
             SELECT * FROM calendar.events
-            WHERE calendar_id = ANY($1)
+            WHERE (
+                    calendar_id = ANY($1)
+                    OR ($5 AND id IN (
+                        SELECT event_id FROM calendar.attendees WHERE user_id = $4
+                    ))
+                  )
               AND parent_event_id IS NULL
               AND (
                   -- Plain events within the window
@@ -76,6 +87,8 @@ impl EventService {
         .bind(&cal_ids)
         .bind(from)
         .bind(until)
+        .bind(user_id)
+        .bind(include_invited)
         .fetch_all(db)
         .await?;
 
@@ -83,7 +96,12 @@ impl EventService {
         let exception_events: Vec<Event> = sqlx::query_as::<_, Event>(
             r#"
             SELECT * FROM calendar.events
-            WHERE calendar_id = ANY($1)
+            WHERE (
+                    calendar_id = ANY($1)
+                    OR ($5 AND id IN (
+                        SELECT event_id FROM calendar.attendees WHERE user_id = $4
+                    ))
+                  )
               AND parent_event_id IS NOT NULL
               AND starts_at < $3 AND ends_at > $2
             "#,
@@ -91,6 +109,8 @@ impl EventService {
         .bind(&cal_ids)
         .bind(from)
         .bind(until)
+        .bind(user_id)
+        .bind(include_invited)
         .fetch_all(db)
         .await?;
 
@@ -169,8 +189,9 @@ impl EventService {
             FROM calendar.events e
             JOIN calendar.calendars c ON c.id = e.calendar_id
             LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $2
+            LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
             WHERE e.id = $1
-              AND (c.owner_id = $2 OR cs.shared_with = $2 OR c.is_public = TRUE)
+              AND (c.owner_id = $2 OR cs.shared_with = $2 OR c.is_public = TRUE OR a.id IS NOT NULL)
             LIMIT 1
             "#,
         )
@@ -375,6 +396,7 @@ impl EventService {
                     status:      dto.status.or(Some(event.status)),
                     visibility:  dto.visibility.or(Some(event.visibility)),
                     busy:        dto.busy.or(Some(event.busy)),
+                    attendees:   None,
                 };
                 let created = Self::create(user_id, new_dto, db).await?;
                 sqlx::query("UPDATE calendar.events SET parent_event_id = $2 WHERE id = $1")
@@ -480,6 +502,7 @@ impl EventService {
                     status:       dto.status.or(Some(event.status)),
                     visibility:   dto.visibility.or(Some(event.visibility)),
                     busy:         dto.busy.or(Some(event.busy)),
+                    attendees:    None,
                 };
                 Self::create(user_id, new_dto, db).await
             }

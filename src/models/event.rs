@@ -87,6 +87,11 @@ pub struct CreateEventDto {
     pub status:       Option<String>,
     pub visibility:   Option<String>,
     pub busy:         Option<bool>,
+    /// Guests to invite immediately on creation. The server inserts a row for
+    /// each, resolves those matching an instance account, and — when the
+    /// instance allows it — asks the Mail module to send the invitations.
+    #[serde(default)]
+    pub attendees:    Option<Vec<crate::models::attendee::AttendeeInputDto>>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -8,9 +8,9 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use crate::{
     handlers::{
         analytics, appointments, attendees, caldav, calendars, delta, events, health, import_export,
-        mcp, policy, public, scheduling, time_blocks, weather,
+        internal_events, mcp, policy, public, scheduling, time_blocks, weather,
     },
-    middleware::require_auth,
+    middleware::{require_auth, require_internal_secret},
     state::AppState,
 };
 
@@ -85,6 +85,18 @@ pub fn build(state: AppState) -> Router {
         .route("/public/appointments/:token/app.js",     get(appointments::public_page_js))
         .with_state(state.clone());
 
+    // Internal routes (core → module event delivery). Reached directly by the
+    // core, not through its proxy, so guarded by the shared internal secret and
+    // never by the per-user token. The core POSTs to `/ipc/events` (its
+    // convention) with `X-Internal-Secret`. The documented `/events` fallback is
+    // deliberately not registered here: it would collide with the authenticated
+    // `POST /events` CRUD route, and the core only falls back to it on a 404 from
+    // `/ipc/events`, which this router never returns.
+    let internal = Router::new()
+        .route("/ipc/events", post(internal_events::handle_event))
+        .layer(middleware::from_fn_with_state(state.clone(), require_internal_secret))
+        .with_state(state.clone());
+
     // Health check
     let system = Router::new()
         .route("/health", get(health::health))
@@ -95,6 +107,7 @@ pub fn build(state: AppState) -> Router {
 
     Router::new()
         .merge(system)
+        .merge(internal)
         .merge(public_routes)
         .nest("/", authed)
         .merge(caldav_routes)

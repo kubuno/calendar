@@ -54,6 +54,98 @@ impl ICalendarService {
         cal.to_string()
     }
 
+    /// Build an iTIP `VCALENDAR` (`METHOD:REQUEST` or `METHOD:CANCEL`) for a
+    /// meeting invitation, carrying the organizer and the guest list.
+    ///
+    /// This is deliberately **not** [`Self::event_to_ics`]: that one feeds the
+    /// public free/busy feed and CalDAV and must never disclose who is invited,
+    /// whereas this one exists precisely to carry the `ORGANIZER`/`ATTENDEE`
+    /// lines the Mail module turns into an invitation. It is written by hand
+    /// rather than through the `icalendar` builder so the exact iTIP shape the
+    /// Mail module parses is guaranteed (folding, escaping, `METHOD`, `PARTSTAT`).
+    ///
+    /// `attendees` is the guest list as `(email, display_name)`; the organizer is
+    /// never repeated there.
+    pub fn event_to_itip(
+        event: &Event,
+        organizer_email: &str,
+        organizer_name: Option<&str>,
+        attendees: &[(String, Option<String>)],
+        method: ItipMethod,
+    ) -> String {
+        let method_str = match method {
+            ItipMethod::Request => "REQUEST",
+            ItipMethod::Cancel  => "CANCEL",
+        };
+
+        let mut lines: Vec<String> = Vec::new();
+        lines.push("BEGIN:VCALENDAR".into());
+        lines.push("PRODID:-//Kubuno//Calendar//EN".into());
+        lines.push("VERSION:2.0".into());
+        lines.push("CALSCALE:GREGORIAN".into());
+        lines.push(format!("METHOD:{method_str}"));
+        lines.push("BEGIN:VEVENT".into());
+        lines.push(format!("UID:{}", escape_text(&event.ical_uid)));
+        lines.push(format!("DTSTAMP:{}", format_utc_stamp(Utc::now())));
+        lines.push(format!("SEQUENCE:{}", event.sequence));
+
+        if event.all_day {
+            lines.push(format!("DTSTART;VALUE=DATE:{}", format_date(event.starts_at)));
+            // For an all-day event iCalendar's DTEND is the exclusive end date;
+            // Kubuno stores an inclusive-ish instant, so emit the day after the
+            // last covered day.
+            lines.push(format!("DTEND;VALUE=DATE:{}", format_date(event.ends_at)));
+        } else {
+            lines.push(format!("DTSTART:{}", format_utc_stamp(event.starts_at)));
+            lines.push(format!("DTEND:{}", format_utc_stamp(event.ends_at)));
+        }
+
+        lines.push(format!("SUMMARY:{}", escape_text(&event.title)));
+        if let Some(ref loc) = event.location {
+            lines.push(format!("LOCATION:{}", escape_text(loc)));
+        }
+        if let Some(ref desc) = event.description {
+            lines.push(format!("DESCRIPTION:{}", escape_text(desc)));
+        }
+
+        // ORGANIZER
+        match organizer_name.map(str::trim).filter(|n| !n.is_empty()) {
+            Some(name) => lines.push(format!(
+                "ORGANIZER;CN={}:mailto:{}",
+                escape_param(name),
+                escape_text(organizer_email)
+            )),
+            None => lines.push(format!("ORGANIZER:mailto:{}", escape_text(organizer_email))),
+        }
+
+        // ATTENDEE, one per guest.
+        for (email, name) in attendees {
+            let cn = match name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+                Some(n) => format!(";CN={}", escape_param(n)),
+                None    => String::new(),
+            };
+            lines.push(format!(
+                "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE{cn}:mailto:{}",
+                escape_text(email)
+            ));
+        }
+
+        if matches!(method, ItipMethod::Cancel) {
+            lines.push("STATUS:CANCELLED".into());
+        }
+
+        lines.push("END:VEVENT".into());
+        lines.push("END:VCALENDAR".into());
+
+        // Fold each logical line and join with CRLF, as RFC 5545 requires.
+        let mut out = String::new();
+        for line in lines {
+            out.push_str(&fold_line(&line));
+            out.push_str("\r\n");
+        }
+        out
+    }
+
     /// Convert a whole calendar (list of events) into .ics.
     pub fn calendar_to_ics(events: &[Event], calendar_name: &str) -> String {
         let mut cal = ICalCalendar::new();
@@ -168,6 +260,82 @@ impl ICalendarService {
 
         Ok(events)
     }
+}
+
+/// Which iTIP method a generated invitation carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItipMethod {
+    /// A new or updated meeting invitation.
+    Request,
+    /// A cancellation of a previously sent invitation.
+    Cancel,
+}
+
+/// UTC timestamp in iCalendar basic form: `20260905T140000Z`.
+fn format_utc_stamp(dt: chrono::DateTime<Utc>) -> String {
+    dt.format("%Y%m%dT%H%M%SZ").to_string()
+}
+
+/// Date-only value for all-day events: `20260905`.
+fn format_date(dt: chrono::DateTime<Utc>) -> String {
+    dt.format("%Y%m%d").to_string()
+}
+
+/// Escapes a property TEXT value per RFC 5545 §3.3.11: backslash, semicolon,
+/// comma and newlines. Carriage returns are dropped (a bare CR is not valid in
+/// a value and folding re-adds CRLF around logical lines).
+fn escape_text(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            ';'  => out.push_str("\\;"),
+            ','  => out.push_str("\\,"),
+            '\n' => out.push_str("\\n"),
+            '\r' => {}
+            _    => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Escapes a parameter value (e.g. a `CN`). A value carrying `"`, `;`, `,` or
+/// `:` must be double-quoted; an embedded double quote cannot be represented, so
+/// it is dropped. Newlines are stripped.
+fn escape_param(value: &str) -> String {
+    let cleaned: String = value.chars().filter(|c| *c != '"' && *c != '\r' && *c != '\n').collect();
+    if cleaned.contains([';', ',', ':']) {
+        format!("\"{cleaned}\"")
+    } else {
+        cleaned
+    }
+}
+
+/// Folds one logical line to at most 75 octets per physical line, inserting
+/// `CRLF` + a single space between fragments, and never splitting a multi-byte
+/// UTF-8 character across the boundary (RFC 5545 §3.1). The returned string
+/// carries the interior fold breaks but no trailing `CRLF`.
+fn fold_line(line: &str) -> String {
+    const LIMIT: usize = 75;
+    if line.len() <= LIMIT {
+        return line.to_string();
+    }
+    let mut out = String::with_capacity(line.len() + line.len() / LIMIT * 3);
+    let mut count = 0usize; // octets written on the current physical line
+    let mut first = true;
+    for ch in line.chars() {
+        let ch_len = ch.len_utf8();
+        // A continuation line starts with a space that counts toward its budget.
+        let budget = if first { LIMIT } else { LIMIT - 1 };
+        if count + ch_len > budget {
+            out.push_str("\r\n ");
+            count = 1; // the leading space
+            first = false;
+        }
+        out.push(ch);
+        count += ch_len;
+    }
+    out
 }
 
 #[derive(Debug)]

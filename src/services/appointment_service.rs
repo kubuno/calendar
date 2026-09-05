@@ -434,6 +434,7 @@ impl AppointmentService {
                 status: Some("confirmed".to_string()),
                 visibility: Some("public".to_string()),
                 busy: Some(true),
+                attendees: None,
             },
             db,
         )

@@ -86,6 +86,9 @@ export interface CreateEventDto {
   status?: string
   visibility?: string
   busy?: boolean
+  /** Guests to invite immediately on creation. The server records each one and,
+   *  when the instance allows it, sends the invitation e-mails. */
+  attendees?: { email: string; display_name?: string }[]
 }
 
 export interface ImportResult {
