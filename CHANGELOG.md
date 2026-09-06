@@ -10,6 +10,8 @@ number at release time, and CI publishes that section as the GitHub Release note
 ## [Unreleased]
 
 ### Added
+- **Invitation e-mails carry Yes / No / Maybe buttons.** Each guest receives their own answer link, so someone outside the instance can reply from their mail client without an account. Answering records the response on the event straight away.
+- **New administrator setting "Public URL of the instance"** (Calendar → Sharing). It is the address invitation answer links are built on; left empty, invitations simply carry no buttons and guests answer from their own calendar.
 
 - **Meeting invitations are now e-mailed to your guests.** When you create an
   event with guests — and you can now add them right from the creation dialog,

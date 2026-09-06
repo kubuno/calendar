@@ -418,6 +418,16 @@ label   = "Avertir avant d'inviter une adresse extérieure"
 description = "Affiche un avertissement dans la composition d'un événement lorsque l'adresse saisie n'est pas dans un domaine de l'instance."
 
 [[settings]]
+key     = "public_url"
+scope   = "global"
+group   = "sharing"
+type    = "string"
+default = ""
+category = "Invitations par e-mail"
+label   = "URL publique de l'instance"
+description = "Adresse par laquelle l'instance est jointe depuis l'extérieur (par exemple https://cloud.exemple.fr). Elle sert à construire les boutons Oui / Non / Peut-être des e-mails d'invitation, pour qu'un invité puisse répondre depuis n'importe quelle messagerie. Laissée vide, l'invitation ne porte pas ces boutons et l'invité répond depuis son propre agenda."
+
+[[settings]]
 key     = "send_email_invitations"
 scope   = "global"
 group   = "sharing"

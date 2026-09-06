@@ -49,6 +49,10 @@ pub struct InstanceConfig {
     /// meeting with guests is created, updated or cancelled. Off, guests are
     /// still recorded but no mail leaves the instance.
     pub send_email_invitations: bool,
+    /// Public URL of this instance (no trailing slash), used to build the
+    /// answer links carried by invitation e-mails. Empty = no links: a guest
+    /// then answers from their own calendar client, through the attached file.
+    pub public_url: String,
     /// Whose busy times feed the common-slot finder.
     pub internal_free_busy: FreeBusyVisibility,
     /// Ceiling on the number of guests of a single event. `0` = no ceiling, and
@@ -81,6 +85,7 @@ impl Default for InstanceConfig {
             allow_external_guests:       true,
             warn_external_guests:        true,
             send_email_invitations:      true,
+            public_url:                  String::new(),
             internal_free_busy:          FreeBusyVisibility::Everyone,
             max_event_guests:            0,
             max_calendars_per_user:      0,
@@ -127,6 +132,7 @@ impl InstanceConfig {
             allow_external_guests: bool_of("allow_external_guests", d.allow_external_guests),
             warn_external_guests:  bool_of("warn_external_guests",  d.warn_external_guests),
             send_email_invitations: bool_of("send_email_invitations", d.send_email_invitations),
+            public_url: str_of("public_url").unwrap_or("").trim().trim_end_matches('/').to_string(),
             internal_free_busy: match str_of("internal_free_busy") {
                 Some("shared_only") => FreeBusyVisibility::SharedOnly,
                 Some("everyone")    => FreeBusyVisibility::Everyone,

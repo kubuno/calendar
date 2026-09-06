@@ -95,9 +95,44 @@ pub async fn publish_invite(
 
     let ics = ICalendarService::event_to_itip(event, organizer_email, organizer_name, attendees, method);
 
+    // Each guest answers through their OWN link: the token is the one minted for
+    // them when they were invited, so the public page knows who is answering
+    // without asking anyone to sign in. No public URL configured, no links —
+    // the guest then answers from their calendar client, through the .ics.
+    let base = state.instance().public_url.clone();
+    let tokens: std::collections::HashMap<String, String> = if base.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        sqlx::query_as::<_, (String, Option<String>)>(
+            "SELECT LOWER(email), rsvp_token FROM calendar.attendees \
+             WHERE event_id = $1 AND is_organizer = FALSE",
+        )
+        .bind(event.id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "invitations : lecture des jetons de réponse");
+            Vec::new()
+        })
+        .into_iter()
+        .filter_map(|(email, token)| token.map(|t| (email, t)))
+        .collect()
+    };
+
     let attendees_json: Vec<serde_json::Value> = attendees
         .iter()
-        .map(|(email, name)| json!({ "email": email, "name": name }))
+        .map(|(email, name)| {
+            let link = |answer: &str| {
+                tokens.get(&email.to_lowercase()).map(|t| {
+                    format!("{base}/api/v1/calendar/public/rsvp/{t}/page?answer={answer}")
+                })
+            };
+            json!({
+                "email": email,
+                "name":  name,
+                "rsvp":  { "yes": link("accepted"), "no": link("declined"), "maybe": link("tentative") },
+            })
+        })
         .collect();
 
     let payload = json!({

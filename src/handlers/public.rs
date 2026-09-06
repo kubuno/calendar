@@ -85,10 +85,37 @@ pub async fn rsvp_respond(
 
 /// Standalone RSVP page (minimal HTML, no shell nor authentication): the guest
 /// opens the received link, sees the event and answers Yes / Maybe / No.
+/// An answer carried by the link itself, so the three buttons of an invitation
+/// e-mail land on a page that has already recorded the choice.
+#[derive(serde::Deserialize)]
+pub struct RsvpPageQuery {
+    pub answer: Option<String>,
+}
+
 pub async fn rsvp_page(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<RsvpPageQuery>,
 ) -> Result<axum::response::Html<String>> {
+    // «?answer=…» comes from a button in the invitation e-mail: record it before
+    // rendering, so the guest sees the answer already taken into account. An
+    // unknown value is ignored rather than refused — the page still opens.
+    if let Some(answer) = q.answer.as_deref() {
+        if ["accepted", "declined", "tentative"].contains(&answer) {
+            if let Err(e) = sqlx::query(
+                "UPDATE calendar.attendees SET status = $2, responded_at = NOW() \
+                 WHERE rsvp_token = $1 AND (rsvp_expires_at IS NULL OR rsvp_expires_at > NOW())",
+            )
+            .bind(&token)
+            .bind(answer)
+            .execute(&state.db)
+            .await
+            {
+                tracing::error!(error = %e, "rsvp : enregistrement de la réponse par lien");
+            }
+        }
+    }
+
     // Reuse the same validation as rsvp_info.
     let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
         r#"
