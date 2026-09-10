@@ -1,5 +1,4 @@
-import { api as apiClient } from '@kubuno/sdk'
-import { i18n } from '@kubuno/sdk'
+import { api as apiClient, i18n } from '@kubuno/sdk'
 import { userTimezone } from './timezones'
 
 export interface Calendar {

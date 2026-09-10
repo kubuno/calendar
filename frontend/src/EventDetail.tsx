@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toDate, formatDate, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -75,7 +66,6 @@ export function EventDetail({
   const meetingLink = event.location ? event.location.match(MEETING_LINK_RE)?.[0] ?? null : null
   const cal  = calendars.find(c => c.id === event.calendar_id)
   const color = event.color ?? cal?.color ?? '#4D38DB'
-  const loc   = getDateLocale(i18n.language)
   const [copied, setCopied] = useState(false)
   const [moreMenu, setMoreMenu] = useState<MenuDropdownPos | null>(null)
   // Deleting a series: ask for the scope (occurrence / following / all).
@@ -93,13 +83,13 @@ export function EventDetail({
     else delMut('all')
   }
 
-  const start = parseISO(event.starts_at)
+  const start = toDate(event.starts_at)
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   const dateText = cap(event.all_day
-    ? format(start, 'EEEE d MMMM yyyy', { locale: loc })
-    : `${format(start, 'EEEE d MMMM', { locale: loc })} · ${t('detail_from_to', {
-        from: format(start, tPattern),
-        to:   format(parseISO(event.ends_at), tPattern),
+    ? formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : `${formatDate(start, 'weekdayDate')} · ${t('detail_from_to', {
+        from: formatDate(start, tPattern),
+        to:   formatDate(toDate(event.ends_at), tPattern),
         defaultValue: `De {{from}} à {{to}}`,
       })}`)
   const recurrenceText = event.is_recurring ? describeRrule(event.rrule, i18n.language, start) : null
@@ -159,7 +149,7 @@ export function EventDetail({
   // Human-readable duration (e.g. "1 h", "30 min", "1 h 30").
   const durationText = (() => {
     if (event.all_day) return t('detail_all_day', { defaultValue: 'Toute la journée' })
-    const mins = Math.max(0, Math.round((parseISO(event.ends_at).getTime() - start.getTime()) / 60000))
+    const mins = Math.max(0, Math.round((toDate(event.ends_at).getTime() - start.getTime()) / 60000))
     const h = Math.floor(mins / 60), m = mins % 60
     return [h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ') || '0 min'
   })()

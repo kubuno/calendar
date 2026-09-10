@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toISODate, isoWeek, toDate, formatDate, addDays, startOfDay, startOfWeek, isSameDay, isToday, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -62,7 +53,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
   const { t, i18n } = useTranslation('calendar')
   const settings  = useCalendarSettings()
   const tPattern  = timePattern(settings.timeFormat)
-  const weekStart = dayCount ? startOfDay(date) : startOfWeek(date, { weekStartsOn: settings.weekStartsOn })
+  const weekStart = dayCount ? startOfDay(date) : startOfWeek(date, settings.weekStartsOn )
   const days      = useMemo(() => {
     const all = Array.from({ length: dayCount ?? 7 }, (_, i) => addDays(weekStart, i))
     // Hiding week-ends only makes sense for the full week strip.
@@ -75,12 +66,12 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
   // Timed grid excludes banner events (all-day / multi-day): those render in the
   // continuous banner row under the headers instead.
   const eventsForDay = (day: Date) =>
-    events.filter(ev => !isBannerEvent(ev) && isSameDay(parseISO(ev.starts_at), day))
+    events.filter(ev => !isBannerEvent(ev) && isSameDay(toDate(ev.starts_at), day))
 
   const [dragging, setDragging] = useState<EventInstance | null>(null)
   const [ghost, setGhost] = useState<{ dayKey: string; min: number } | null>(null)
   const draggingRef = useRef<EventInstance | null>(null)   // ref synchrone (cf. DayView)
-  const ghostHeight = dragging ? Math.max(((parseISO(dragging.ends_at).getTime() - parseISO(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
+  const ghostHeight = dragging ? Math.max(((toDate(dragging.ends_at).getTime() - toDate(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
 
   // Helpers shared with the Day view: timezones, font (DM Sans), real-time current time.
   const PX_PER_HOUR = 40
@@ -93,9 +84,9 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
   const tzHourLabel = (tz: string, h: number) => { const inst = new Date(date); inst.setHours(h, 0, 0, 0); try { return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' }).format(inst) } catch { return '' } }
   const fmtMin = (m: number) => {
     const d = new Date(date); d.setHours(Math.floor(m / 60), m % 60, 0, 0)
-    return format(d, tPattern)
+    return formatDate(d, tPattern)
   }
-  const minOf = (iso: string) => { const d = parseISO(iso); return d.getHours() * 60 + d.getMinutes() }
+  const minOf = (iso: string) => { const d = toDate(iso); return d.getHours() * 60 + d.getMinutes() }
   const nowTop = (now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600) * PX_PER_HOUR
 
   // Vertical resize (top/bottom handles → start/end) — per day.
@@ -168,7 +159,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
       {withNow && showNowWeek && (
         <div className="absolute right-1 z-30 -translate-y-1/2 px-1 py-px rounded bg-danger text-white text-[10px] font-semibold pointer-events-none"
           style={{ top: nowTop, fontFamily: MONO }}>
-          <MonoText>{format(now, tPattern)}</MonoText>
+          <MonoText>{formatDate(now, tPattern)}</MonoText>
         </div>
       )}
     </div>
@@ -195,21 +186,21 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
         )}
         <div className="text-[10px] text-text-tertiary text-center self-end pb-2 truncate" title={localTz}>
           {settings.showWeekNumbers
-            ? t('week_number_short', { defaultValue: 'S{{n}}', n: format(days[0] ?? weekStart, 'I') })
+            ? t('week_number_short', { defaultValue: 'S{{n}}', n: isoWeek(days[0] ?? weekStart) })
             : tzOffsetLabel(localTz)}
         </div>
         {days.map(day => {
           const weekend = isWeekend(day)
-          const wx      = weatherByDate.get(format(day, 'yyyy-MM-dd')) ?? null
+          const wx      = weatherByDate.get(toISODate(day)) ?? null
           return (
             <div key={day.toISOString()}
               className={`py-2 text-center ${weekend ? 'bg-surface-1' : ''}`}>
               <div className={`text-xs uppercase ${weekend ? 'text-text-tertiary' : 'text-text-secondary'}`}>
-                {format(day, 'EEE', { locale: getDateLocale(i18n.language) })}
+                {formatDate(day, 'weekdayShort')}
               </div>
               <div className={`w-8 h-8 mx-auto flex items-center justify-center rounded-full text-sm font-medium
                                ${isToday(day) ? 'bg-primary text-white' : weekend ? 'text-text-tertiary' : 'text-text-primary'}`}>
-                {format(day, 'd')}
+                {formatDate(day, { day: 'numeric' })}
               </div>
               {/* Compact weather + moon-phase marker (principal-phase days) */}
               {(wx || moonDay(day)) && (
@@ -240,7 +231,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="grid" style={{ minHeight: '960px', gridTemplateColumns: gridCols }}>
           {secondaryTimezone && gutter(h => tzHourLabel(secondaryTimezone, h))}
-          {gutter(h => { const d = new Date(date); d.setHours(h, 0, 0, 0); return format(d, hourPattern(settings.timeFormat)) }, true)}
+          {gutter(h => { const d = new Date(date); d.setHours(h, 0, 0, 0); return formatDate(d, hourPattern(settings.timeFormat)) }, true)}
           {days.map(day => {
             const weekend  = isWeekend(day)
             const dayEvs0  = eventsForDay(day)
@@ -279,8 +270,8 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
                   </div>
                 )}
                 {dayEvs.map(ev => {
-                  const start  = parseISO(ev.starts_at)
-                  const end    = parseISO(ev.ends_at)
+                  const start  = toDate(ev.starts_at)
+                  const end    = toDate(ev.ends_at)
                   const cal    = calMap.get(ev.calendar_id)
                   const color  = ev.color ?? cal?.color ?? '#4D38DB'
                   const past   = settings.dimPastEvents && end < now
@@ -329,7 +320,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
                 })}
                 {/* Availability bands (appointment schedules) — read-only */}
                 {apptEvs.map(ev => {
-                  const start = parseISO(ev.starts_at), end = parseISO(ev.ends_at)
+                  const start = toDate(ev.starts_at), end = toDate(ev.ends_at)
                   const sMin = start.getHours() * 60 + start.getMinutes()
                   const eMin = end.getHours() * 60 + end.getMinutes()
                   return <AvailabilityStrip key={ev.id} ev={ev} sMin={sMin} compact={isMobile}

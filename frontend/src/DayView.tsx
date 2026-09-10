@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toISODate, toDate, formatDate, isSameDay, isToday, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -63,24 +54,24 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
   const hours    = Array.from({ length: 24 }, (_, i) => i)
   const calMap   = useMemo(() => new Map(calendars.map(c => [c.id, c])), [calendars])
   const weekend  = isWeekend(date)
-  const dayEvs0  = events.filter(ev => !isBannerEvent(ev) && isSameDay(parseISO(ev.starts_at), date))
+  const dayEvs0  = events.filter(ev => !isBannerEvent(ev) && isSameDay(toDate(ev.starts_at), date))
   const apptEvs  = dayEvs0.filter(ev => ev.event_id.startsWith(APPT_PREFIX))
   const dayEvs   = dayEvs0.filter(ev => !ev.event_id.startsWith(APPT_PREFIX))
   const apptPad  = apptEvs.length ? APPT_GUTTER : 0
-  const dateKey  = format(date, 'yyyy-MM-dd')
+  const dateKey  = toISODate(date)
   const wx       = weatherByDate.get(dateKey) ?? null
   const [dragging, setDragging] = useState<EventInstance | null>(null)
   const [ghostMin, setGhostMin] = useState<number | null>(null)
   // Synchronous ref: onDragOver/onDrop don't depend on `dragging` re-render timing
   // (otherwise the first dragovers see null, skip preventDefault, and the drop never lands).
   const draggingRef = useRef<EventInstance | null>(null)
-  const ghostHeight = dragging ? Math.max(((parseISO(dragging.ends_at).getTime() - parseISO(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
+  const ghostHeight = dragging ? Math.max(((toDate(dragging.ends_at).getTime() - toDate(dragging.starts_at).getTime()) / 3600000) * 40, 20) : 0
 
   // Vertical resize of an event (top/bottom handles → start/end).
   const PX_PER_HOUR = 40
   const [resize, setResize] = useState<{ id: string; startMin: number; endMin: number } | null>(null)
   const resizingRef = useRef(false)   // bloque le drag HTML5 pendant un resize
-  const minOf = (iso: string) => { const d = parseISO(iso); return d.getHours() * 60 + d.getMinutes() }
+  const minOf = (iso: string) => { const d = toDate(iso); return d.getHours() * 60 + d.getMinutes() }
   const startResize = (ev: EventInstance, edge: 'top' | 'bottom') => (e: React.PointerEvent) => {
     e.stopPropagation(); e.preventDefault()
     resizingRef.current = true
@@ -107,7 +98,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
   }
   const fmtMin = (m: number) => {
     const d = new Date(date); d.setHours(Math.floor(m / 60), m % 60, 0, 0)
-    return format(d, tPattern)
+    return formatDate(d, tPattern)
   }
 
   // Creation by dragging on an empty grid area (single click = 1 h).
@@ -188,7 +179,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
       {withNow && showNow && (
         <div className="absolute right-1 z-30 -translate-y-1/2 px-1 py-px rounded bg-danger text-white text-[10px] font-semibold pointer-events-none"
           style={{ top: nowTop, fontFamily: MONO }}>
-          <MonoText>{format(now, tPattern)}</MonoText>
+          <MonoText>{formatDate(now, tPattern)}</MonoText>
         </div>
       )}
     </div>
@@ -203,7 +194,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
       {/* Header */}
       <div className={`border-b border-border shrink-0 py-3 text-center ${weekend ? 'bg-surface-1' : ''}`}>
         <div className={`text-sm font-medium capitalize ${isToday(date) ? 'text-primary' : weekend ? 'text-text-tertiary' : 'text-text-primary'}`}>
-          {format(date, 'EEEE d MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+          {formatDate(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </div>
         {/* Today's weather + moon */}
         {(wx || moonOn) && (
@@ -256,7 +247,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
           {/* Secondary-timezone column (left) */}
           {secondaryTimezone && gutter(h => tzHourLabel(secondaryTimezone, h))}
           {/* Local-timezone column (adjacent to the grid) */}
-          {gutter(h => { const d = new Date(date); d.setHours(h, 0, 0, 0); return format(d, hourPattern(settings.timeFormat)) }, true)}
+          {gutter(h => { const d = new Date(date); d.setHours(h, 0, 0, 0); return formatDate(d, hourPattern(settings.timeFormat)) }, true)}
           <div className="relative"
             onPointerDown={startCreate}
             onDragOver={e => { if (!draggingRef.current) return; e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const y = e.clientY - rect.top; let m = Math.round((y / 40 * 60) / 15) * 15; m = Math.max(0, Math.min(24 * 60 - 15, m)); setGhostMin(m) }}
@@ -286,8 +277,8 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
               </div>
             )}
             {dayEvs.map(ev => {
-              const start  = parseISO(ev.starts_at)
-              const end    = parseISO(ev.ends_at)
+              const start  = toDate(ev.starts_at)
+              const end    = toDate(ev.ends_at)
               const cal    = calMap.get(ev.calendar_id)
               const color  = ev.color ?? cal?.color ?? '#4D38DB'
               const past   = settings.dimPastEvents && end < now
@@ -343,7 +334,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
             })}
             {/* Availability bands (appointment schedules) — read-only */}
             {apptEvs.map(ev => {
-              const start = parseISO(ev.starts_at), end = parseISO(ev.ends_at)
+              const start = toDate(ev.starts_at), end = toDate(ev.ends_at)
               const sMin = start.getHours() * 60 + start.getMinutes()
               const eMin = end.getHours() * 60 + end.getMinutes()
               return <AvailabilityStrip key={ev.id} ev={ev} sMin={sMin}

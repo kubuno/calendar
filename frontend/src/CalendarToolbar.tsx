@@ -2,11 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
-import {
-  format, startOfWeek,
-  addDays, addMonths, addYears, subMonths, subYears,
-} from 'date-fns'
-import { getDateLocale, api, useAuthStore, ExtensionRegistry } from '@kubuno/sdk'
+import { formatDate, addDays, addMonths, subMonths, startOfWeek, addYears, subYears, api, useAuthStore, ExtensionRegistry } from '@kubuno/sdk'
 import { useCalendarStore, type ViewMode } from './store'
 import { useCalendarSettings } from './calendarSettings'
 import { CALENDAR_VIEW_OPTION, type CalendarViewOption } from './viewOptions'
@@ -58,18 +54,18 @@ export function CalendarNav({ mobile = false }: { mobile?: boolean }) {
 
   const title = useMemo(() => {
     if (viewMode === 'day')
-      return format(currentDate, 'EEEE d MMMM yyyy', { locale: getDateLocale(i18n.language) })
+      return formatDate(currentDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     if (viewMode === 'custom')
       return t('toolbar_range', {
         defaultValue: '{{from}} – {{to}}',
-        from: format(currentDate, 'd MMM', { locale: getDateLocale(i18n.language) }),
-        to:   format(addDays(currentDate, customViewDays - 1), 'd MMM yyyy', { locale: getDateLocale(i18n.language) }),
+        from: formatDate(currentDate, { day: 'numeric', month: 'short' }),
+        to:   formatDate(addDays(currentDate, customViewDays - 1), { day: 'numeric', month: 'short', year: 'numeric' }),
       })
     if (viewMode === 'week')
-      return t('toolbar_week_of', { date: format(startOfWeek(currentDate, { weekStartsOn }), 'd MMMM yyyy', { locale: getDateLocale(i18n.language) }) })
+      return t('toolbar_week_of', { date: formatDate(startOfWeek(currentDate, weekStartsOn), 'dateLong') })
     if (viewMode === 'year')
-      return format(currentDate, 'yyyy')
-    return format(currentDate, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })  // month + schedule
+      return formatDate(currentDate, { year: 'numeric' })
+    return formatDate(currentDate, 'monthYear')  // month + schedule
   }, [viewMode, currentDate, t, i18n.language, weekStartsOn, customViewDays])
 
   return (

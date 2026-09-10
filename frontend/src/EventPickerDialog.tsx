@@ -12,9 +12,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { create } from 'zustand'
-import { addDays, format, isSameDay, parseISO } from 'date-fns'
+import { formatDate, toDate, addDays, isSameDay } from '@kubuno/sdk'
 import { CalendarDays, MapPin, Search, Video } from 'lucide-react'
-import { getDateLocale } from '@kubuno/sdk'
 import { Button, FloatingWindow, Spinner } from '@ui'
 import { calendarApi, type EventInstance } from './api'
 import { MonoText } from './MonoText'
@@ -57,7 +56,6 @@ export function pickEvent(): Promise<KubunoDataEnvelope | null> {
 function EventPickerInner({ onClose }: { onClose: (envelope: KubunoDataEnvelope | null) => void }) {
   const { t, i18n } = useTranslation('calendar')
   const [search, setSearch] = useState('')
-  const loc = getDateLocale(i18n.language)
 
   // Frozen at mount: keeps the query key (and the window) stable while open.
   const [range] = useState(() => {
@@ -81,7 +79,7 @@ function EventPickerInner({ onClose }: { onClose: (envelope: KubunoDataEnvelope 
 
     const out: { day: Date; events: EventInstance[] }[] = []
     for (const e of events) {
-      const day = parseISO(e.starts_at)
+      const day = toDate(e.starts_at)
       const last = out[out.length - 1]
       if (last && isSameDay(last.day, day)) last.events.push(e)
       else out.push({ day, events: [e] })
@@ -133,7 +131,7 @@ function EventPickerInner({ onClose }: { onClose: (envelope: KubunoDataEnvelope 
               {groups.map(({ day, events }) => (
                 <div key={day.toISOString()}>
                   <p className="px-1 pb-1 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
-                    {cap(format(day, 'EEEE d MMMM', { locale: loc }))}
+                    {cap(formatDate(day, 'weekdayDate'))}
                   </p>
                   <div className="space-y-0.5">
                     {events.map(e => {
@@ -166,7 +164,7 @@ function EventPickerInner({ onClose }: { onClose: (envelope: KubunoDataEnvelope 
                           <span className="text-xs text-text-secondary flex-shrink-0">
                             {e.all_day
                               ? t('detail_all_day', { defaultValue: 'Toute la journée' })
-                              : <MonoText>{format(parseISO(e.starts_at), 'HH:mm')}</MonoText>}
+                              : <MonoText>{formatDate(toDate(e.starts_at), 'time')}</MonoText>}
                           </span>
                         </button>
                       )

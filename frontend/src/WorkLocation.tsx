@@ -1,7 +1,7 @@
 // Working-hours location band (Google-style): a coloured pill at the run start
 // followed by a thin line joining same-location days. Shared by Day/Week/Month.
 import { useTranslation } from 'react-i18next'
-import { getDay } from 'date-fns'
+import { toDate } from '@kubuno/sdk'
 import { Home, Building, Building2, MapPin } from 'lucide-react'
 import { workDayFor, type CalendarSettings, type WorkLocation } from './calendarSettings'
 
@@ -18,13 +18,13 @@ export const WORK_LOCATION_META: Record<WorkLocation, { icon: React.ReactNode; k
  *  Independent of the hours toggle: the location is a separate concept. */
 export function workLocationOf(date: Date, settings: CalendarSettings): WorkLocation | null {
   if (!settings.workingLocationAllowed) return null
-  const day = workDayFor(settings.workSchedule, getDay(date))
+  const day = workDayFor(settings.workSchedule, toDate(date).getDay())
   return day && day.location !== 'unspecified' ? day.location : null
 }
 
 /** The user-entered place for a day, when its location is Other office / Elsewhere. */
 export function customLocationOf(date: Date, settings: CalendarSettings): string | undefined {
-  const day = workDayFor(settings.workSchedule, getDay(date))
+  const day = workDayFor(settings.workSchedule, toDate(date).getDay())
   if (!day || (day.location !== 'other_office' && day.location !== 'elsewhere')) return undefined
   return day.custom && day.custom.trim() ? day.custom : undefined
 }

@@ -10,12 +10,11 @@
 // the Day/Week views, and the location shows in those views' day headers.
 import { useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { format, addDays, startOfWeek } from 'date-fns'
+import { formatDate, addDays, startOfWeek } from '@kubuno/sdk'
 import {
   Building2, Building, Home, Ban, MapPin, Plus, X, Copy, HelpCircle,
 } from 'lucide-react'
 import { Checkbox, Dropdown, Tooltip, useIsMobile } from '@ui'
-import { getDateLocale } from '@kubuno/sdk'
 import { useModulePrefs } from '../userPrefs'
 import {
   useCalendarSettings, defaultWorkSchedule, workDayFor,
@@ -74,14 +73,13 @@ export default function WorkingHoursField() {
   // Weekday cells for the pill row, and the ordered list of active work days,
   // both starting on the user's first day of week.
   const week = useMemo(() => {
-    const base = startOfWeek(new Date(), { weekStartsOn })
-    const loc  = getDateLocale(i18n.language)
+    const base = startOfWeek(new Date(), weekStartsOn)
     return Array.from({ length: 7 }, (_, i) => {
       const dt = addDays(base, i)
       return {
         weekday: dt.getDay(),
-        initial: format(dt, 'EEEEE', { locale: loc }).toUpperCase(),
-        full:    format(dt, 'EEEE',  { locale: loc }),
+        initial: formatDate(dt, 'weekdayNarrow').toUpperCase(),
+        full:    formatDate(dt, 'weekday'),
       }
     })
   }, [weekStartsOn, i18n.language])

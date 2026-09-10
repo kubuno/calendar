@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toISODate, isoWeek, toDate, formatDate, addDays, startOfWeek, isSameDay, isSameMonth, isToday, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -72,24 +63,23 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
   const weeks   = Math.max(1, Math.ceil(days.length / perWeek))
   const calMap  = useMemo(() => new Map(calendars.map(c => [c.id, c])), [calendars])
   const weekdaysShort = useMemo(() => {
-    const loc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn: settings.weekStartsOn })
+    const base = startOfWeek(new Date(), settings.weekStartsOn )
     return Array.from({ length: 7 }, (_, i) => addDays(base, i))
       .filter(d => settings.showWeekends || !isWeekend(d))
-      .map(d => format(d, 'EEE', { locale: loc }))
+      .map(d => formatDate(d, 'weekdayShort'))
   }, [i18n.language, settings.weekStartsOn, settings.showWeekends])
   // Week number of each rendered row, when the display option asks for it.
   const monthCols = `${settings.showWeekNumbers ? '2.25rem ' : ''}repeat(${perWeek}, minmax(0, 1fr))`
   const weekNumbers = useMemo(() =>
     Array.from({ length: weeks }, (_, r) => days[r * perWeek])
       .filter(Boolean)
-      .map(d => format(d, 'I')),
+      .map(d => isoWeek(d)),
     [days, weeks, perWeek])
 
   // Banner events (all-day / multi-day) are drawn as continuous bars spanning the
   // week; they are excluded from the per-day chip list to avoid a double render.
   const eventsForDay = (day: Date) =>
-    events.filter(ev => !isBannerEvent(ev) && isSameDay(parseISO(ev.starts_at), day))
+    events.filter(ev => !isBannerEvent(ev) && isSameDay(toDate(ev.starts_at), day))
 
   // Per-week banner layout: each week's banner events laid into rows. Each segment
   // is rendered as ONE element spanning its columns (in an overlay above the day
@@ -151,7 +141,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
       {/* Month title — visible ONLY in print (the toolbar, which carries the
           title on screen, is hidden when printing). */}
       <div className="print-only mb-2 text-center text-xl font-bold text-black">
-        {format(month, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+        {formatDate(month, 'monthYear')}
       </div>
       {/* Weekday headers (preceded by the week-number gutter when enabled) */}
       <div className="grid border-b border-border" style={{ gridTemplateColumns: monthCols }}>
@@ -180,14 +170,14 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
           const inMonth = isSameMonth(day, month)
           const today   = isToday(day)
           const weekend = isWeekend(day)
-          const wx      = inMonth ? (weatherByDate.get(format(day, 'yyyy-MM-dd')) ?? null) : null
+          const wx      = inMonth ? (weatherByDate.get(toISODate(day)) ?? null) : null
 
           return (
             <Fragment key={day.toISOString()}>
             {weekCell}
             <div onClick={() => (isMobile ? onDayOpen(day) : onDayClick(day))}
               onDragOver={e => e.preventDefault()}
-              onDrop={e => { const id = e.dataTransfer.getData('text/plain'); const found = events.find(x => x.id === id); if (found) { const os = parseISO(found.starts_at); const ns = new Date(day); ns.setHours(os.getHours(), os.getMinutes(), 0, 0); onEventDrop(found, ns) } }}
+              onDrop={e => { const id = e.dataTransfer.getData('text/plain'); const found = events.find(x => x.id === id); if (found) { const os = toDate(found.starts_at); const ns = new Date(day); ns.setHours(os.getHours(), os.getMinutes(), 0, 0); onEventDrop(found, ns) } }}
               className={`border-r border-b border-border p-1 cursor-pointer min-h-0 overflow-hidden
                           transition-colors hover:bg-primary/5 print:min-h-[96px] print:break-inside-avoid
                           ${!inMonth ? 'bg-surface-2' : weekend ? 'bg-surface-1/60' : ''}`}>
@@ -200,7 +190,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                                     : weekend
                                     ? 'text-text-tertiary'
                                     : 'text-text-primary'}`}>
-                  {format(day, 'd')}
+                  {formatDate(day, { day: 'numeric' })}
                 </span>
                 {/* Moon-phase marker + compact weather in the cell (desktop only) */}
                 {!isMobile && (wx || (inMonth && moonDay(day))) && (
@@ -246,7 +236,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                 {dayEvs.slice(0, isMobile ? 3 : 4).map(ev => {
                   const cal    = calMap.get(ev.calendar_id)
                   const color  = ev.color ?? cal?.color ?? '#4D38DB'
-                  const past   = settings.dimPastEvents && parseISO(ev.ends_at) < now
+                  const past   = settings.dimPastEvents && toDate(ev.ends_at) < now
                   const locked = isCalendarLocked(cal)
                   // Same block style as the day/week views: solid (white text)
                   // for upcoming, tinted (colored text) for past.
@@ -263,7 +253,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                                  ${isMobile ? 'text-[10px] px-1 py-px' : 'text-xs px-1.5 py-0.5'}`}>
                       {!ev.all_day && !isMobile && (
                         <span className="shrink-0 opacity-85 text-[11px]">
-                          <MonoText>{format(parseISO(ev.starts_at), tPattern)}</MonoText>
+                          <MonoText>{formatDate(toDate(ev.starts_at), tPattern)}</MonoText>
                         </span>
                       )}
                       <span className="truncate min-w-0 font-medium">{ev.title}</span>
@@ -278,7 +268,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                 {/* Items overlaid by other modules (generic extension point) —
                     same block style as events: solid (to do) or tinted +
                     colored text (done). */}
-                {(overlayByDate.get(format(day, 'yyyy-MM-dd')) ?? []).slice(0, 2).map(it => {
+                {(overlayByDate.get(toISODate(day)) ?? []).slice(0, 2).map(it => {
                   const tcolor = it.color ?? '#80868b'
                   const chip = (
                     <div

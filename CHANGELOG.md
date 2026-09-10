@@ -31,6 +31,16 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Dates and times are now written by the platform in the reader's language.**
+  Calendar's date and time formatting moved to the in-house Intl API in
+  `@kubuno/sdk`, and the `date-fns` dependency is gone. Day, month and weekday
+  names, week numbers and the 12 h/24 h clock now follow each reader's language
+  and regional conventions instead of a fixed pattern.
+
+- Internal: the translations file was split into one file per language under
+  `frontend/src/i18n/` (was a single 4,600-line module), for maintainability. No
+  user-facing change — the exact same strings are registered.
+
 - **A guest is now linked to their Kubuno account** when their address matches
   one, and the organizer appears in the guest list as the meeting's host. The
   per-guest "send by e-mail" (`mailto:`) shortcut is gone, since the invitation

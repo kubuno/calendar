@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, type KeyboardEvent } from 'react'
+import { formatDate, toDate, addDays, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isToday, eachDayOfInterval, toISODate, SidebarNavItem, useConfirm } from '@kubuno/sdk'
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
@@ -8,7 +9,6 @@ import {
   CalendarClock, Link2,
 } from 'lucide-react'
 import { MoonIcon, moonPhase, moonPhaseName, moonIllumination } from './moon'
-import { SidebarNavItem, useConfirm } from '@kubuno/sdk'
 import { useCalendarSettings, type WeekStart } from './calendarSettings'
 import WorldClock from './WorldClock'
 import { Checkbox, Radio, Toggle, MenuDropdown, ConfirmDialog, type MenuItem } from '@ui'
@@ -17,16 +17,6 @@ import CalendarEditModal from './CalendarEditModal'
 import CalendarShareModal from './CalendarShareModal'
 import CalendarSubscribeModal from './CalendarSubscribeModal'
 import { useInstancePolicy } from './instancePolicy'
-import {
-  format,
-  startOfMonth, endOfMonth,
-  startOfWeek, endOfWeek,
-  eachDayOfInterval,
-  isSameMonth, isSameDay, isToday,
-  addMonths, subMonths, addDays,
-  getDay,
-} from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
 import { calendarApi, appointmentApi, weatherApi, weatherIconUrl, type Calendar as CalendarT, type AppointmentSchedule } from './api'
 import { holidayCalendarId, useApplicableHolidayCalendars, HOLIDAY_COLOR } from './holidays'
 import { useCalendarStore } from './store'
@@ -70,14 +60,14 @@ function spaceActivates(action: () => void) {
 }
 
 function buildGrid(month: Date, weekStartsOn: WeekStart): Date[] {
-  return eachDayOfInterval({
-    start: startOfWeek(startOfMonth(month), { weekStartsOn }),
-    end:   endOfWeek(endOfMonth(month),     { weekStartsOn }),
-  })
+  return eachDayOfInterval(
+    startOfWeek(startOfMonth(month), weekStartsOn),
+    endOfWeek(endOfMonth(month), weekStartsOn),
+  )
 }
 
 function isWeekend(d: Date) {
-  const day = getDay(d)
+  const day = toDate(d).getDay()
   return day === 0 || day === 6
 }
 
@@ -90,9 +80,8 @@ function MiniCalendar() {
   const { weekStartsOn } = useCalendarSettings()
   const days = useMemo(() => buildGrid(miniMonth, weekStartsOn), [miniMonth, weekStartsOn])
   const weekdays = useMemo(() => {
-    const loc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn })
-    return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: loc }))
+    const base = startOfWeek(new Date(), weekStartsOn)
+    return Array.from({ length: 7 }, (_, i) => formatDate(addDays(base, i), 'weekdayNarrow'))
   }, [i18n.language, weekStartsOn])
   const navigate = useNavigate()
 
@@ -112,7 +101,7 @@ function MiniCalendar() {
           onKeyDown={spaceActivates(() => setMiniMonth(startOfMonth(new Date())))}
           className={`text-sm font-semibold text-text-secondary hover:text-primary capitalize transition-colors ${ACTION_FOCUS}`}
         >
-          {format(miniMonth, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+          {formatDate(miniMonth, 'monthYear')}
         </a>
         <div className="flex gap-0.5">
           <a
@@ -165,7 +154,7 @@ function MiniCalendar() {
             <button
               key={day.toISOString()}
               onClick={() => handleDayClick(day)}
-              title={format(day, 'd MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+              title={formatDate(day, 'dateLong')}
               className="flex items-center justify-center py-0.5"
             >
               <span
@@ -182,7 +171,7 @@ function MiniCalendar() {
                     : 'text-text-primary hover:bg-surface-2'}
                 `}
               >
-                {format(day, 'd')}
+                {formatDate(day, { day: 'numeric' })}
               </span>
             </button>
           )
@@ -441,7 +430,7 @@ function WeatherSection() {
     weatherLocationId, setWeatherLocationId,
   } = useCalendarStore()
   const [showSettings, setShowSettings] = useState(false)
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const todayStr = toISODate(new Date())
 
   const { data: locData } = useQuery({
     queryKey: ['weather-locations'],

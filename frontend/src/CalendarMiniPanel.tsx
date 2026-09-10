@@ -3,13 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { MenuDropdown, type MenuDropdownPos } from '@ui'
-import {
-  format, addDays, subDays, startOfDay, endOfDay, isToday,
-  parseISO, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths,
-} from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
-import type { Locale } from 'date-fns/locale'
+import { formatDate, toDate, addDays, addMonths, subDays, subMonths, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, isSameMonth, isToday, eachDayOfInterval } from '@kubuno/sdk'
 import {
   ChevronLeft, ChevronRight, ChevronDown, MoreVertical, Check,
   Calendar as CalendarIcon,
@@ -27,9 +21,9 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function miniCalendarGrid(month: Date, weekStartsOn: WeekStart): Date[] {
-  const start = startOfWeek(startOfMonth(month), { weekStartsOn })
-  const end   = endOfWeek(endOfMonth(month),     { weekStartsOn })
-  return eachDayOfInterval({ start, end })
+  const start = startOfWeek(startOfMonth(month), weekStartsOn)
+  const end   = endOfWeek(endOfMonth(month), weekStartsOn)
+  return eachDayOfInterval(start, end)
 }
 
 function formatHour(h: number): string {
@@ -39,8 +33,8 @@ function formatHour(h: number): string {
   return `${h - 12} PM`
 }
 
-function formatDateHeader(date: Date, locale: Locale): string {
-  const raw = format(date, 'EEE d MMM', { locale })
+function formatDateHeader(date: Date): string {
+  const raw = formatDate(date, { weekday: 'short', day: 'numeric', month: 'short' })
   // "lun. 1 juin" → "Lun., 1 juin"
   const spaceIdx = raw.indexOf(' ')
   return raw.charAt(0).toUpperCase() + raw.slice(1, spaceIdx) + ',' + raw.slice(spaceIdx)
@@ -61,9 +55,8 @@ function MiniCalendar({
   const { weekStartsOn } = useCalendarSettings()
   const days = useMemo(() => miniCalendarGrid(month, weekStartsOn), [month, weekStartsOn])
   const weekHeaders = useMemo(() => {
-    const loc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn })
-    return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: loc }))
+    const base = startOfWeek(new Date(), weekStartsOn)
+    return Array.from({ length: 7 }, (_, i) => formatDate(addDays(base, i), 'weekdayNarrow'))
   }, [i18n.language, weekStartsOn])
 
   return (
@@ -71,7 +64,7 @@ function MiniCalendar({
       {/* Month header */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-semibold text-text-primary capitalize">
-          {format(month, 'MMMM yyyy', { locale: getDateLocale(i18n.language) })}
+          {formatDate(month, 'monthYear')}
         </span>
         <div className="flex gap-0.5">
           <button
@@ -121,7 +114,7 @@ function MiniCalendar({
                   : 'text-text-tertiary hover:bg-surface-2'
                 }`}
             >
-              {format(d, 'd')}
+              {formatDate(d, { day: 'numeric' })}
             </button>
           )
         })}
@@ -230,7 +223,7 @@ function DayView({
                     key={ev.id}
                     event={ev}
                     onClick={goToFull}
-                    continues={parseISO(ev.ends_at) > dayEnd}
+                    continues={toDate(ev.ends_at) > dayEnd}
                   />
                 ))}
               </div>
@@ -284,8 +277,8 @@ function DayView({
 
           {/* Timed events */}
           {timedEvents.map(ev => {
-            const start  = parseISO(ev.starts_at)
-            const end    = parseISO(ev.ends_at)
+            const start  = toDate(ev.starts_at)
+            const end    = toDate(ev.ends_at)
             const top    = (start.getHours() + start.getMinutes() / 60) * HOUR_HEIGHT
             const height = Math.max(((end.getTime() - start.getTime()) / 3_600_000) * HOUR_HEIGHT, 18)
             const color  = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#4D38DB'
@@ -305,11 +298,11 @@ function DayView({
               >
                 <p className="text-[10px] font-semibold leading-tight truncate" style={{ color }}>
                   {ev.title}
-                  {height >= 22 && <>, <MonoText>{format(start, 'HH:mm')}</MonoText></>}
+                  {height >= 22 && <>, <MonoText>{formatDate(start, 'time')}</MonoText></>}
                 </p>
                 {height >= 34 && (
                   <p className="text-[10px] leading-none" style={{ color: color + 'bb' }}>
-                    <MonoText>{format(start, 'HH:mm')}</MonoText> – <MonoText>{format(end, 'HH:mm')}</MonoText>
+                    <MonoText>{formatDate(start, 'time')}</MonoText> – <MonoText>{formatDate(end, 'time')}</MonoText>
                   </p>
                 )}
               </button>
@@ -342,8 +335,8 @@ function PlanningView({
   return (
     <div className="flex-1 overflow-y-auto">
       {planGroups.map(([dateStr, evs]) => {
-        const d = parseISO(dateStr + 'T00:00:00')
-        const label = format(d, 'EEEE d MMMM', { locale: getDateLocale(i18n.language) })
+        const d = toDate(dateStr + 'T00:00:00')
+        const label = formatDate(d, 'weekdayDate')
         const labelCap = label.charAt(0).toUpperCase() + label.slice(1)
         return (
           <div key={dateStr}>
@@ -355,7 +348,7 @@ function PlanningView({
             <div className="divide-y divide-border/40">
               {evs.map(ev => {
                 const color = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#4D38DB'
-                const start = parseISO(ev.starts_at)
+                const start = toDate(ev.starts_at)
                 return (
                   <button
                     key={ev.id}
@@ -369,7 +362,7 @@ function PlanningView({
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-text-primary truncate">{ev.title}</p>
                       {!ev.all_day && (
-                        <p className="text-[10px] text-text-tertiary"><MonoText>{format(start, 'HH:mm')}</MonoText></p>
+                        <p className="text-[10px] text-text-tertiary"><MonoText>{formatDate(start, 'time')}</MonoText></p>
                       )}
                     </div>
                   </button>
@@ -517,7 +510,7 @@ export default function CalendarMiniPanel() {
   }
 
   const dateText = useMemo(
-    () => formatDateHeader(selectedDate, getDateLocale(i18n.language)),
+    () => formatDateHeader(selectedDate),
     [selectedDate, i18n.language],
   )
 

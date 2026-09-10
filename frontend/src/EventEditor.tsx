@@ -13,24 +13,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toISODate, toDate, formatDate, addDays, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -126,7 +117,7 @@ function RecurrenceField({ preset, customRrule, onChange, onCustomRrule, start }
 }) {
   const { t, i18n } = useTranslation('calendar')
   const [showCustom, setShowCustom] = useState(false)
-  const dayName = format(start, 'EEEE', { locale: getDateLocale(i18n.language) })
+  const dayName = formatDate(start, 'weekday')
   const opts = [
     { value: 'none',    label: t('recur_none', { defaultValue: 'Ne se répète pas' }) },
     { value: 'daily',   label: t('recur_daily', { defaultValue: 'Tous les jours' }) },
@@ -561,7 +552,6 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
   const tPattern = timePattern(useCalendarSettings().timeFormat)
   const isMobile = useIsMobile()
   const me = useAuthStore(s => s.user)
-  const loc = getDateLocale(i18n.language)
 
   const [participants, setParticipants] = useState<Array<{ id: string; label: string }>>([])
   const [query, setQuery] = useState('')
@@ -615,14 +605,14 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
     const byDay = new Map<string, Array<{ start: Date; end: Date; score: number }>>()
     for (const s of slots) {
       if (s.score < 0.999) continue        // only suggest "everyone available"
-      let cur = parseISO(s.starts_at).getTime()
-      const end = parseISO(s.ends_at).getTime()
+      let cur = toDate(s.starts_at).getTime()
+      const end = toDate(s.ends_at).getTime()
       while (cur + durMs <= end) {
         const st = new Date(cur)
         const en = new Date(cur + durMs)
         const okHours = !workHours || (st.getHours() >= 8 && (en.getHours() < 19 || (en.getHours() === 19 && en.getMinutes() === 0)))
         if (okHours) {
-          const key = format(st, 'yyyy-MM-dd')
+          const key = toISODate(st)
           const list = byDay.get(key) ?? []
           if (list.length < 6) list.push({ start: st, end: en, score: s.score })
           byDay.set(key, list)
@@ -715,7 +705,7 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
           {proposals.map(([day, list]) => (
             <div key={day}>
               <p className="text-xs font-semibold text-text-secondary mb-1.5 capitalize">
-                {format(parseISO(`${day}T00:00:00`), 'EEEE d MMMM', { locale: loc })}
+                {formatDate(toDate(`${day}T00:00:00`), 'weekdayDate')}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {list.map(({ start, end }) => (
@@ -726,7 +716,7 @@ function ScheduleTab({ durationMinutes, defaultDate, onPick }: {
                     className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary
                                hover:border-primary hover:bg-primary/5 transition-colors"
                   >
-                    <MonoText>{format(start, tPattern)}</MonoText> – <MonoText>{format(end, tPattern)}</MonoText>
+                    <MonoText>{formatDate(start, tPattern)}</MonoText> – <MonoText>{formatDate(end, tPattern)}</MonoText>
                   </button>
                 ))}
               </div>
@@ -774,8 +764,8 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
 
   // The `<input type="time">` value is always HH:mm regardless of the 12 h/24 h
   // display preference — the browser renders it in the user's locale.
-  const parseTime = (iso: string) => format(parseISO(iso), 'HH:mm')
-  const parseDate = (iso: string) => format(parseISO(iso), 'yyyy-MM-dd')
+  const parseTime = (iso: string) => formatDate(toDate(iso), 'time')
+  const parseDate = (iso: string) => toISODate(toDate(iso))
 
   const settings = useCalendarSettings()
 
@@ -792,16 +782,16 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
   const [calId,      setCalId]      = useState(ev?.calendar_id ?? '')
   // A preselected range (dragging on the grid) prefills the times.
   const initialHasTime = !!initialDate && (initialDate.getHours() !== 0 || initialDate.getMinutes() !== 0 || !!initialEnd)
-  const [date,       setDate]       = useState(ev ? parseDate(ev.starts_at) : format(initialDate ?? new Date(), 'yyyy-MM-dd'))
-  const [endDate,    setEndDate]    = useState(ev ? parseDate(ev.ends_at) : format(initialEnd ?? initialDate ?? new Date(), 'yyyy-MM-dd'))
-  const [startTime,  setStartTime]  = useState(ev ? parseTime(ev.starts_at) : initialHasTime ? format(initialDate!, 'HH:mm') : '09:00')
+  const [date,       setDate]       = useState(ev ? parseDate(ev.starts_at) : toISODate(initialDate ?? new Date()))
+  const [endDate,    setEndDate]    = useState(ev ? parseDate(ev.ends_at) : toISODate(initialEnd ?? initialDate ?? new Date()))
+  const [startTime,  setStartTime]  = useState(ev ? parseTime(ev.starts_at) : initialHasTime ? formatDate(initialDate!, 'time') : '09:00')
   const [endTime,    setEndTime]    = useState(() => {
     if (ev) return parseTime(ev.ends_at)
     // A dragged range wins over the default duration — the user drew it.
-    if (initialEnd) return format(initialEnd, 'HH:mm')
-    if (initialHasTime) return format(defaultEndOf(initialDate!), 'HH:mm')
+    if (initialEnd) return formatDate(initialEnd, 'time')
+    if (initialHasTime) return formatDate(defaultEndOf(initialDate!), 'time')
     const nine = new Date(); nine.setHours(9, 0, 0, 0)
-    return format(defaultEndOf(nine), 'HH:mm')
+    return formatDate(defaultEndOf(nine), 'time')
   })
   const [allDay,     setAllDay]     = useState(ev?.all_day ?? false)
   const [location,   setLocation]   = useState(ev?.location ?? '')
@@ -855,7 +845,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
         endsAt   = `${endDate || date}T23:59:59.000Z`
       } else {
         startsAt = new Date(`${date}T${startTime}:00`).toISOString()
-        const ed = endDate || (endTime < startTime ? format(addDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd') : date)
+        const ed = endDate || (endTime < startTime ? toISODate(addDays(new Date(`${date}T00:00:00`), 1)) : date)
         endsAt   = new Date(`${ed}T${endTime}:00`).toISOString()
       }
       const calColor = calendars.find(c => c.id === calId)?.color
@@ -1060,10 +1050,10 @@ function EventEditor({ mode, event, initialDate, initialEnd, calendars, onClose 
             })()}
             defaultDate={date}
             onPick={(s, e) => {
-              setDate(format(s, 'yyyy-MM-dd'))
-              setEndDate(format(e, 'yyyy-MM-dd'))
-              setStartTime(format(s, 'HH:mm'))
-              setEndTime(format(e, 'HH:mm'))
+              setDate(toISODate(s))
+              setEndDate(toISODate(e))
+              setStartTime(formatDate(s, 'time'))
+              setEndTime(formatDate(e, 'time'))
               setAllDay(false)
               setTab('details')
             }}

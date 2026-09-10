@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toDate, formatDate, addYears, subYears, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -69,8 +60,8 @@ export function SearchResultsView({
     const q         = (searchQuery || searchFilters.subject).toLowerCase().trim()
     const loc       = searchFilters.location.toLowerCase().trim()
     const exclude   = searchFilters.excludeWords.toLowerCase().trim()
-    const dateFrom  = searchFilters.dateFrom ? parseISO(searchFilters.dateFrom + 'T00:00:00') : null
-    const dateTo    = searchFilters.dateTo   ? parseISO(searchFilters.dateTo   + 'T23:59:59') : null
+    const dateFrom  = searchFilters.dateFrom ? toDate(searchFilters.dateFrom + 'T00:00:00') : null
+    const dateTo    = searchFilters.dateTo   ? toDate(searchFilters.dateTo   + 'T23:59:59') : null
 
     return all.filter(ev => {
       const title = ev.title.toLowerCase()
@@ -83,11 +74,11 @@ export function SearchResultsView({
         const words = exclude.split(/\s+/)
         if (words.some(w => title.includes(w) || desc.includes(w))) return false
       }
-      const evStart = parseISO(ev.starts_at)
+      const evStart = toDate(ev.starts_at)
       if (dateFrom && evStart < dateFrom) return false
       if (dateTo   && evStart > dateTo)   return false
       return true
-    }).sort((a, b) => parseISO(a.starts_at).getTime() - parseISO(b.starts_at).getTime())
+    }).sort((a, b) => toDate(a.starts_at).getTime() - toDate(b.starts_at).getTime())
   }, [data, searchQuery, searchFilters])
 
   return (
@@ -120,8 +111,8 @@ export function SearchResultsView({
         {results.map(ev => {
           const cal   = calMap.get(ev.calendar_id)
           const color = ev.color ?? cal?.color ?? '#4D38DB'
-          const start = parseISO(ev.starts_at)
-          const end   = parseISO(ev.ends_at)
+          const start = toDate(ev.starts_at)
+          const end   = toDate(ev.ends_at)
           return (
             <button
               key={ev.id}
@@ -134,8 +125,8 @@ export function SearchResultsView({
                   <span className="text-sm font-medium text-text-primary truncate">{ev.title}</span>
                   <span className="text-xs text-text-tertiary shrink-0">
                     {ev.all_day
-                      ? format(start, 'd MMMM yyyy', { locale: getDateLocale(i18n.language) })
-                      : <>{format(start, 'd MMM, ', { locale: getDateLocale(i18n.language) })}<MonoText>{format(start, tPattern)}</MonoText> – <MonoText>{format(end, tPattern)}</MonoText></>}
+                      ? formatDate(start, 'dateLong')
+                      : <>{formatDate(start, { day: 'numeric', month: 'short' }) + ', '}<MonoText>{formatDate(start, tPattern)}</MonoText> – <MonoText>{formatDate(end, tPattern)}</MonoText></>}
                   </span>
                 </div>
                 {ev.location && (

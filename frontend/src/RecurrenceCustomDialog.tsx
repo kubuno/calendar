@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { format, getDate, getDay } from 'date-fns'
+import { formatDate, toDate } from '@kubuno/sdk'
 import { Repeat } from 'lucide-react'
 import { FloatingWindow, Button, Dropdown, Radio, NumberInput } from '@ui'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   WEEKDAY_BY, WEEKDAYS_ORDERED, buildCustomRrule, parseCustomRecurrence,
   describeRrule, type CustomRecurrence,
@@ -26,7 +25,6 @@ export default function RecurrenceCustomDialog({ initialRrule, start, onSave, on
   onClose: () => void
 }) {
   const { t, i18n } = useTranslation('calendar')
-  const loc = getDateLocale(i18n.language)
   const [c, setC] = useState<CustomRecurrence>(() => parseCustomRecurrence(initialRrule, start))
   const patch = (p: Partial<CustomRecurrence>) => setC(prev => ({ ...prev, ...p }))
 
@@ -40,11 +38,11 @@ export default function RecurrenceCustomDialog({ initialRrule, start, onSave, on
     { value: 'YEARLY',  label: t('rec_unit_year',  { defaultValue: 'an',      count: c.interval }) },
   ]
 
-  const nth = Math.ceil(getDate(start) / 7)
+  const nth = Math.ceil(toDate(start).getDate() / 7)
   const nthLabel = nth >= 5
     ? t('rec_last', { defaultValue: 'dernier' })
     : nth === 1 ? '1ᵉʳ' : `${nth}ᵉ`
-  const dayName = format(start, 'EEEE', { locale: loc })
+  const dayName = formatDate(start, 'weekday')
 
   const toggleDay = (d: string) => {
     setC(prev => {
@@ -115,7 +113,7 @@ export default function RecurrenceCustomDialog({ initialRrule, start, onSave, on
             <Radio
               checked={c.monthlyMode === 'bymonthday'}
               onChange={() => patch({ monthlyMode: 'bymonthday' })}
-              label={t('rec_monthly_bymonthday', { defaultValue: 'Le {{day}} du mois', day: getDate(start) })}
+              label={t('rec_monthly_bymonthday', { defaultValue: 'Le {{day}} du mois', day: toDate(start).getDate() })}
             />
             <Radio
               checked={c.monthlyMode === 'byday'}

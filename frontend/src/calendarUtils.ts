@@ -1,11 +1,7 @@
 // Shared helpers, constants and small hooks used across the calendar views.
 // Split out of the former monolithic CalendarApp.tsx for maintainability.
 import { useState, useEffect } from 'react'
-import {
-  getDay, parseISO, isSameDay, startOfDay, addDays,
-  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
-} from 'date-fns'
-import { ModuleServiceRegistry } from '@kubuno/sdk'
+import { toDate, addDays, startOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameDay, eachDayOfInterval, ModuleServiceRegistry } from '@kubuno/sdk'
 import { type ViewMode } from './store'
 import {
   workDayFor, isWorkingHour,
@@ -39,7 +35,7 @@ export const REMINDER_OPTIONS: Array<{ value: number; labelKey: string }> = [
 ]
 
 export function isWeekend(date: Date): boolean {
-  const d = getDay(date)
+  const d = toDate(date).getDay()
   return d === 0 || d === 6
 }
 
@@ -108,8 +104,8 @@ export function layoutDayEvents(evs: EventInstance[]): Map<string, { leftPct: nu
   const MIN_SPAN = 30 // minutes: a very short event still takes up room
   const items = evs
     .map(ev => {
-      const s = parseISO(ev.starts_at)
-      const e = parseISO(ev.ends_at)
+      const s = toDate(ev.starts_at)
+      const e = toDate(ev.ends_at)
       const sMin = s.getHours() * 60 + s.getMinutes()
       return { id: ev.id, s: sMin, e: Math.max(e.getHours() * 60 + e.getMinutes(), sMin + MIN_SPAN) }
     })
@@ -140,9 +136,9 @@ export function layoutDayEvents(evs: EventInstance[]): Map<string, { leftPct: nu
 }
 
 export function calendarGrid(month: Date, weekStartsOn: WeekStart): Date[] {
-  const start = startOfWeek(startOfMonth(month), { weekStartsOn })
-  const end   = endOfWeek(endOfMonth(month),   { weekStartsOn })
-  return eachDayOfInterval({ start, end })
+  const start = startOfWeek(startOfMonth(month), weekStartsOn)
+  const end   = endOfWeek(endOfMonth(month), weekStartsOn)
+  return eachDayOfInterval(start, end)
 }
 
 /** Events the user explicitly declined — hidden unless the display option asks
@@ -157,7 +153,7 @@ export function keepPerSettings(events: EventInstance[], settings: CalendarSetti
  *  non-working day shades every hour). */
 export function isOffWorkHour(date: Date, hour: number, settings: CalendarSettings): boolean {
   if (!settings.workingHoursEnabled) return false
-  const day = workDayFor(settings.workSchedule, getDay(date))
+  const day = workDayFor(settings.workSchedule, toDate(date).getDay())
   return !isWorkingHour(day, hour)
 }
 
@@ -214,20 +210,20 @@ export function isBannerEvent(ev: EventInstance): boolean {
  *  previous day at GMT-5), so we take the date in UTC and rebuild it at local
  *  midnight — timezone-safe on either side of UTC. */
 function allDayLocal(iso: string): Date {
-  const d = parseISO(iso)
+  const d = toDate(iso)
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 }
 
 /** The first day an event covers (local midnight). */
 export function bannerStartDay(ev: EventInstance): Date {
-  return ev.all_day ? allDayLocal(ev.starts_at) : startOfDay(parseISO(ev.starts_at))
+  return ev.all_day ? allDayLocal(ev.starts_at) : startOfDay(toDate(ev.starts_at))
 }
 
 /** The inclusive last day an event covers. A timed event ending exactly at
  *  midnight does not reach into that following day, so it is pulled back a day. */
 export function bannerEndDay(ev: EventInstance): Date {
   if (ev.all_day) return allDayLocal(ev.ends_at)
-  const e = parseISO(ev.ends_at)
+  const e = toDate(ev.ends_at)
   if (e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0) {
     return startOfDay(addDays(e, -1))
   }

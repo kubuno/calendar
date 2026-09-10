@@ -7,9 +7,8 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
+import { formatDate, toDate } from '@kubuno/sdk'
 import { CalendarDays, ExternalLink, MapPin, Repeat, Video } from 'lucide-react'
-import { getDateLocale } from '@kubuno/sdk'
 import { describeRrule } from './rrule'
 import { MEETING_LINK_RE, type CalendarEventData, type DataCardProps } from './kubunoData'
 import { MonoText } from './MonoText'
@@ -27,13 +26,12 @@ export default function EventDataCard({ envelope }: DataCardProps) {
   const info = useMemo(() => {
     const d = eventDataOf(envelope)
     if (!d) return null
-    const loc   = getDateLocale(i18n.language)
-    const start = parseISO(d.starts_at)
+    const start = toDate(d.starts_at)
     const cap   = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-    const datePart = cap(format(start, 'EEEE d MMMM yyyy', { locale: loc }))
+    const datePart = cap(formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
     const dateText = d.all_day
       ? <>{datePart} · {t('detail_all_day', { defaultValue: 'Toute la journée' })}</>
-      : <>{datePart} · <MonoText>{format(start, 'HH:mm')}</MonoText>–<MonoText>{format(parseISO(d.ends_at), 'HH:mm')}</MonoText></>
+      : <>{datePart} · <MonoText>{formatDate(start, 'time')}</MonoText>–<MonoText>{formatDate(toDate(d.ends_at), 'time')}</MonoText></>
     const isMeeting = !!d.location && MEETING_LINK_RE.test(d.location)
     return {
       data: d,

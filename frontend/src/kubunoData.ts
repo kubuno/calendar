@@ -2,7 +2,7 @@
  * Cross-module data sharing over the clipboard (JSON envelopes) — producer side.
  *
  * VENDORED from core `@kubuno/sdk` (`DataTransferRegistry`): replace the local
- * copy with `import { … } from '@kubuno/sdk'` once `@kubuno/sdk >= 0.1.3` is
+ * copy with `import { …, toISODate, toDate } from '@kubuno/sdk'` once `@kubuno/sdk >= 0.1.3` is
  * published on npm. The runtime contract (envelope shape, `data-kubuno` HTML
  * marker, `core.data-card` extension point) is shared with the host and all
  * consumer modules, so the copies MUST stay in sync.
@@ -11,8 +11,7 @@
  * human-readable summary, `text/html` holds `<span data-kubuno="<base64 JSON>">`
  * that consumer modules (chat…) detect in their paste handlers.
  */
-import { ExtensionRegistry, ModuleServiceRegistry, getDateLocale } from '@kubuno/sdk'
-import { format, parseISO } from 'date-fns'
+import { ExtensionRegistry, ModuleServiceRegistry, formatDate, toDate, toISODate } from '@kubuno/sdk'
 import type React from 'react'
 import type { EventInstance } from './api'
 
@@ -134,17 +133,16 @@ export const MEETING_LINK_RE = /\/chat\/meet\/[\w-]+/
 
 /** Deep link into the calendar: the day view, positioned on the event's day. */
 export function eventHref(startsAt: string): string {
-  return `/calendar/day?date=${format(parseISO(startsAt), 'yyyy-MM-dd')}`
+  return `/calendar/day?date=${toISODate(toDate(startsAt))}`
 }
 
 /** Human-readable summary (clipboard `text/plain`, fallback card label). */
 function eventSummary(event: EventInstance): string {
-  const loc   = getDateLocale()
-  const start = parseISO(event.starts_at)
+  const start = toDate(event.starts_at)
   const cap   = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   const when  = cap(event.all_day
-    ? format(start, 'EEEE d MMMM yyyy', { locale: loc })
-    : `${format(start, 'EEEE d MMMM yyyy', { locale: loc })} · ${format(start, 'HH:mm')}–${format(parseISO(event.ends_at), 'HH:mm')}`)
+    ? formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : `${formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${formatDate(start, 'time')}–${formatDate(toDate(event.ends_at), 'time')}`)
   // A meeting URL is machine-readable noise in a human summary — skip it.
   const where = event.location && !MEETING_LINK_RE.test(event.location) ? event.location : null
   return [event.title, when, where].filter(Boolean).join('\n')

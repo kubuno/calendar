@@ -1,8 +1,7 @@
 // Shared RRULE helpers: presets used by the quick dropdown, a full
 // parse/build round-trip for the custom recurrence editor, and the French
 // humanizer shown in the event popover / editor summary.
-import { format, getDay, getDate } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, toDate, toISODate } from '@kubuno/sdk'
 
 export const WEEKDAY_BY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 /** French display order (week starting on Monday). */
@@ -11,7 +10,7 @@ export const WEEKDAYS_ORDERED = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as co
 export function buildRrule(preset: string, start: Date): string | null {
   switch (preset) {
     case 'daily':   return 'FREQ=DAILY'
-    case 'weekly':  return `FREQ=WEEKLY;BYDAY=${WEEKDAY_BY[getDay(start)]}`
+    case 'weekly':  return `FREQ=WEEKLY;BYDAY=${WEEKDAY_BY[toDate(start).getDay()]}`
     case 'weekday': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
     case 'monthly': return 'FREQ=MONTHLY'
     case 'yearly':  return 'FREQ=YEARLY'
@@ -64,11 +63,11 @@ export function defaultCustomRecurrence(start: Date): CustomRecurrence {
   return {
     freq: 'WEEKLY',
     interval: 1,
-    byday: [WEEKDAY_BY[getDay(start)]],
+    byday: [WEEKDAY_BY[toDate(start).getDay()]],
     monthlyMode: 'bymonthday',
     end: 'never',
     count: 10,
-    until: format(start, 'yyyy-MM-dd'),
+    until: toISODate(start),
   }
 }
 
@@ -105,11 +104,11 @@ export function buildCustomRrule(c: CustomRecurrence, start: Date): string {
   }
   if (c.freq === 'MONTHLY') {
     if (c.monthlyMode === 'bymonthday') {
-      parts.push(`BYMONTHDAY=${getDate(start)}`)
+      parts.push(`BYMONTHDAY=${toDate(start).getDate()}`)
     } else {
       // Rank of the day within the month: 1st/2nd/3rd/4th, or last (-1) when 5th.
-      const nth = Math.ceil(getDate(start) / 7)
-      parts.push(`BYDAY=${nth >= 5 ? -1 : nth}${WEEKDAY_BY[getDay(start)]}`)
+      const nth = Math.ceil(toDate(start).getDate() / 7)
+      parts.push(`BYDAY=${nth >= 5 ? -1 : nth}${WEEKDAY_BY[toDate(start).getDay()]}`)
     }
   }
   if (c.end === 'count') parts.push(`COUNT=${Math.max(1, Math.floor(c.count))}`)
@@ -132,7 +131,6 @@ export function describeRrule(rrule: string | null, lang: string, start: Date): 
   const freq = parts.FREQ
   if (!freq) return null
   const interval = Math.max(1, parseInt(parts.INTERVAL ?? '1', 10) || 1)
-  const loc = getDateLocale(lang)
 
   const byday = (parts.BYDAY ?? '').split(',').map(d => d.replace(/^[+-]?\d+/, '')).filter(Boolean)
   const dayList = byday.map(d => DAY_NAMES[d]).filter(Boolean)
@@ -145,7 +143,7 @@ export function describeRrule(rrule: string | null, lang: string, start: Date): 
       base = interval === 1 ? 'Tous les jours' : `Tous les ${interval} jours`
       break
     case 'WEEKLY': {
-      const days = dayList.length ? joinDays(dayList) : format(start, 'EEEE', { locale: loc })
+      const days = dayList.length ? joinDays(dayList) : formatDate(start, 'weekday')
       base = interval === 1 ? `Toutes les semaines le ${days}` : `Toutes les ${interval} semaines le ${days}`
       break
     }
@@ -167,7 +165,7 @@ export function describeRrule(rrule: string | null, lang: string, start: Date): 
   if (parts.COUNT) base += `, ${parts.COUNT} fois`
   else if (parts.UNTIL) {
     const m = parts.UNTIL.match(/^(\d{4})(\d{2})(\d{2})/)
-    if (m) base += `, jusqu'au ${format(new Date(+m[1], +m[2] - 1, +m[3]), 'd MMMM yyyy', { locale: loc })}`
+    if (m) base += `, jusqu'au ${formatDate(new Date(+m[1], +m[2] - 1, +m[3]), 'dateLong')}`
   }
   return base
 }

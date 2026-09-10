@@ -1,25 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Calendar, MapPin } from 'lucide-react'
-import { format, isToday, isTomorrow, parseISO, type Locale } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
+import { formatDate, toDate, isToday, isTomorrow, DashboardWidget } from '@kubuno/sdk'
 import type { ReactNode } from 'react'
 import { calendarApi } from './api'
-import { DashboardWidget } from '@kubuno/sdk'
 import { MonoText } from './MonoText'
 
 type TFn = (key: string) => string
 
-function eventDay(starts_at: string, t: TFn, loc: Locale): string {
-  const d = parseISO(starts_at)
+function eventDay(starts_at: string, t: TFn): string {
+  const d = toDate(starts_at)
   if (isToday(d))    return t('today')
   if (isTomorrow(d)) return t('tomorrow')
-  return format(d, 'EEE d MMM', { locale: loc })
+  return formatDate(d, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 function eventTime(event: { starts_at: string; ends_at: string; all_day: boolean }, t: TFn): ReactNode {
   if (event.all_day) return t('all_day')
-  return <><MonoText>{format(parseISO(event.starts_at), 'HH:mm')}</MonoText> – <MonoText>{format(parseISO(event.ends_at), 'HH:mm')}</MonoText></>
+  return <><MonoText>{formatDate(toDate(event.starts_at), 'time')}</MonoText> – <MonoText>{formatDate(toDate(event.ends_at), 'time')}</MonoText></>
 }
 
 export default function CalendarEventsWidget() {
@@ -59,7 +57,7 @@ export default function CalendarEventsWidget() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-text-primary truncate">{ev.title}</p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="text-xs text-text-tertiary">{eventDay(ev.starts_at, t, getDateLocale(i18n.language))}</span>
+                  <span className="text-xs text-text-tertiary">{eventDay(ev.starts_at, t)}</span>
                   <span className="text-xs text-text-tertiary">·</span>
                   <span className="text-xs text-text-secondary">{eventTime(ev, t)}</span>
                   {ev.location && (

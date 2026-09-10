@@ -12,13 +12,12 @@
 // .calendar`) and are read straight from the auth store — see `useModulePrefs`.
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { format as fmtDateFns } from 'date-fns'
-import { api, useAuthStore, getDateLocale } from '@kubuno/sdk'
+import { formatDate as fmtIntl, api, useAuthStore } from '@kubuno/sdk'
 import { useInstancePolicy } from './instancePolicy'
 
 export type TimeFormat        = '24h' | '12h'
 export type NotificationsMode = 'off' | 'in_app' | 'desktop'
-/** date-fns `weekStartsOn` (0 = Sunday). */
+/** Day the week starts on (0 = Sunday), JS getDay numbering. */
 export type WeekStart         = 0 | 1 | 6
 
 /** Where the user works on a given day — shown to people viewing their calendar. */
@@ -238,28 +237,25 @@ export function useCalendarSettings(): CalendarSettings {
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 
-/** date-fns pattern for a time of day, honouring the 12 h/24 h preference. */
-export function timePattern(timeFormat: TimeFormat): string {
-  return timeFormat === '12h' ? 'h:mm a' : 'HH:mm'
+/** Intl options for a time of day, honouring the 12 h/24 h preference. */
+export function timePattern(timeFormat: TimeFormat): Intl.DateTimeFormatOptions {
+  return timeFormat === '12h'
+    ? { hour: 'numeric', minute: '2-digit', hour12: true }
+    : { hour: '2-digit', minute: '2-digit', hour12: false }
 }
 
-/** Same, without the minutes when they are zero — used for hour gutters. */
-export function hourPattern(timeFormat: TimeFormat): string {
-  return timeFormat === '12h' ? 'h a' : 'HH:mm'
+/** Same, but hour-focused — used for hour gutters. */
+export function hourPattern(timeFormat: TimeFormat): Intl.DateTimeFormatOptions {
+  return timeFormat === '12h'
+    ? { hour: 'numeric', hour12: true }
+    : { hour: '2-digit', minute: '2-digit', hour12: false }
 }
 
 /** Formats a wall-clock time expressed in minutes from midnight. */
 export function formatMinutes(minutes: number, timeFormat: TimeFormat): string {
   const d = new Date(2000, 0, 1)
   d.setHours(Math.floor(minutes / 60), Math.round(minutes % 60), 0, 0)
-  return fmtDateFns(d, timePattern(timeFormat))
-}
-
-/** Formats a date with the user's numeric date format ('' = active locale). */
-export function formatDate(date: Date, dateFormat: string, language?: string): string {
-  return dateFormat
-    ? fmtDateFns(date, dateFormat)
-    : fmtDateFns(date, 'P', { locale: getDateLocale(language) })
+  return fmtIntl(d, timePattern(timeFormat))
 }
 
 // ── Work schedule helpers ───────────────────────────────────────────────────────

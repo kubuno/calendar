@@ -8,26 +8,7 @@
  */
 import { lazy } from 'react'
 import { Calendar, Calendar1, Columns3, LayoutGrid, List } from 'lucide-react'
-import {
-  RouteRegistry,
-  SlotRegistry,
-  ModuleServiceRegistry,
-  ModuleSettingsRegistry,
-  NotificationRegistry,
-  WidgetRegistry,
-  WaffleAppRegistry,
-  FaviconRegistry,
-  ExtensionRegistry,
-  type CalendarOverlayItem,
-  type CalendarOverlayProvider,
-  useSidebarStore,
-  useToolbarStore,
-  useSearchStore,
-  useRightPanelStore,
-  navigate,
-  SDK_VERSION,
-} from '@kubuno/sdk'
-import { format, parseISO } from 'date-fns'
+import { RouteRegistry, SlotRegistry, ModuleServiceRegistry, ModuleSettingsRegistry, NotificationRegistry, WidgetRegistry, WaffleAppRegistry, FaviconRegistry, ExtensionRegistry, type CalendarOverlayItem, type CalendarOverlayProvider, useSidebarStore, useToolbarStore, useSearchStore, useRightPanelStore, navigate, SDK_VERSION, toISODate, toDate, formatDate } from '@kubuno/sdk'
 import { calendarApi } from './api'
 import './index.css'
 import { ShareRecipientKinds } from './shareSdk'
@@ -65,7 +46,7 @@ export function register() {
         const { events } = await calendarApi.listEvents(fromISO, toISO)
         return events.map<CalendarOverlayItem>(e => ({
           id:    `event-${e.id}`,
-          date:  format(parseISO(e.starts_at), 'yyyy-MM-dd'),
+          date:  toISODate(toDate(e.starts_at)),
           title: e.title || '(sans titre)',
           color: e.color ?? '#1a73e8',
         }))

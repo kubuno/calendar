@@ -1,12 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { parseISO, addDays, addMinutes, format } from 'date-fns'
-import { getDateLocale } from '@kubuno/sdk'
-import { i18n } from '@kubuno/sdk'
+import { formatDate, toDate, addDays, addMinutes, i18n, useNotificationStore, useAuthStore, useWsStore } from '@kubuno/sdk'
 import { calendarApi } from './api'
 import type { EventInstance } from './api'
-import { useNotificationStore } from '@kubuno/sdk'
-import { useAuthStore } from '@kubuno/sdk'
-import { useWsStore } from '@kubuno/sdk'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCalendarSettings } from './calendarSettings'
 
@@ -99,7 +94,7 @@ export default function CalendarNotificationWorker() {
           const key = `${ev.event_id}-${reminder.minutes_before}`
           if (firedRef.current.has(key)) continue
 
-          const eventStart    = parseISO(ev.starts_at)
+          const eventStart    = toDate(ev.starts_at)
           const reminderFires = addMinutes(eventStart, -reminder.minutes_before)
           const diffMs        = reminderFires.getTime() - now.getTime()
 
@@ -112,8 +107,8 @@ export default function CalendarNotificationWorker() {
               : i18n.t('notif_reminder_minutes', { ns: 'calendar', count: reminder.minutes_before })
 
             const body = ev.all_day
-              ? i18n.t('notif_all_day_body', { ns: 'calendar', date: format(eventStart, 'd MMM', { locale: getDateLocale() }) })
-              : i18n.t('notif_timed_body', { ns: 'calendar', time: format(eventStart, 'HH:mm'), label })
+              ? i18n.t('notif_all_day_body', { ns: 'calendar', date: formatDate(eventStart, { day: 'numeric', month: 'short' }) })
+              : i18n.t('notif_timed_body', { ns: 'calendar', time: formatDate(eventStart, 'time'), label })
 
             useNotificationStore.getState().push({
               title:    ev.title,

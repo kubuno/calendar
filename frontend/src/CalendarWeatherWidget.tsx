@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { format, parseISO } from 'date-fns'
+import { formatDate, toDate, DashboardWidget, useWidgetSize } from '@kubuno/sdk'
 import {
   Thermometer, Droplets, Wind, Gauge, Sun, Eye, Cloud, Leaf,
   Sunrise, Sunset, MapPin,
 } from 'lucide-react'
 import type { TFunction } from 'i18next'
-import { getDateLocale, DashboardWidget, useWidgetSize } from '@kubuno/sdk'
 import { Dropdown } from '@ui'
 import {
   weatherApi, wmoKey, weatherIconUrl,
@@ -21,8 +20,6 @@ const LOC_KEY  = 'kubuno:weather-widget-location'
 
 type Unit = 'C' | 'F'
 type Tab  = 'temperature' | 'precipitation' | 'wind'
-// date-fns locale type (kept loose to avoid importing the type surface)
-type Locale = ReturnType<typeof getDateLocale>
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 
@@ -120,12 +117,12 @@ function WindCompass({ deg, size = 56 }: { deg: number; size?: number }) {
 }
 
 // ── Sunrise/sunset arc ─────────────────────────────────────────────────────────
-function SunArc({ sunrise, sunset, t, locale }: {
-  sunrise: string | null; sunset: string | null; t: TFunction; locale: Locale
+function SunArc({ sunrise, sunset, t }: {
+  sunrise: string | null; sunset: string | null; t: TFunction
 }) {
   if (!sunrise || !sunset) return null
-  const rise = parseISO(sunrise).getTime()
-  const set  = parseISO(sunset).getTime()
+  const rise = toDate(sunrise).getTime()
+  const set  = toDate(sunset).getTime()
   const now  = Date.now()
   const frac = Math.max(0, Math.min(1, (now - rise) / (set - rise)))
   // Arc: semicircle from (10,60) to (170,60), peak at (90,10)
@@ -152,11 +149,11 @@ function SunArc({ sunrise, sunset, t, locale }: {
       <div className="flex items-center justify-between w-full text-xs" style={{ maxWidth: 220 }}>
         <span className="flex items-center gap-1 text-text-secondary">
           <Sunrise size={13} className="text-amber-500" />
-          <MonoText>{format(parseISO(sunrise), 'HH:mm', { locale })}</MonoText>
+          <MonoText>{formatDate(toDate(sunrise), 'time')}</MonoText>
         </span>
         <span className="flex items-center gap-1 text-text-secondary">
           <Sunset size={13} className="text-orange-500" />
-          <MonoText>{format(parseISO(sunset), 'HH:mm', { locale })}</MonoText>
+          <MonoText>{formatDate(toDate(sunset), 'time')}</MonoText>
         </span>
       </div>
       <span className="text-[10px] text-text-tertiary uppercase tracking-wide mt-1">{t('weather_sunrise_sunset')}</span>
@@ -277,7 +274,6 @@ function MetricTile({ icon, label, value, sub, accent }: {
 // ── Main widget ───────────────────────────────────────────────────────────────
 export default function CalendarWeatherWidget() {
   const { t, i18n } = useTranslation('calendar')
-  const locale = getDateLocale(i18n.language)
   const widgetSize = useWidgetSize()
   const size: 'sm' | 'md' | 'lg' = widgetSize === 'large' ? 'lg' : widgetSize === 'medium' ? 'md' : 'sm'
 
@@ -443,7 +439,7 @@ export default function CalendarWeatherWidget() {
                   </span>
                 )}
                 <span className="text-xs opacity-80 capitalize">
-                  {format(new Date(), 'EEEE HH:mm', { locale })}
+                  {formatDate(new Date(), 'weekdayTime')}
                 </span>
               </div>
             </div>
@@ -457,7 +453,7 @@ export default function CalendarWeatherWidget() {
                   <div key={h.time} className="flex flex-col items-center gap-1 px-2 py-1 rounded-lg shrink-0"
                     style={{ minWidth: 46 }}>
                     <span className="text-[11px] text-text-tertiary font-medium">
-                      {i === 0 ? t('weather_now') : format(parseISO(h.time), 'HH')}
+                      {i === 0 ? t('weather_now') : String((toDate(h.time)).getHours()).padStart(2, '0')}
                     </span>
                     <img src={weatherIconUrl(h.weather_code, h.is_day)} alt="" width={30} height={30}
                       style={{ width: 30, height: 30 }} draggable={false} />
@@ -515,7 +511,7 @@ export default function CalendarWeatherWidget() {
                       <div className="text-xs text-text-tertiary">{cardinal(current.wind_dir, t)}</div>
                     </div>
                   </div>
-                  <SunArc sunrise={today.sunrise} sunset={today.sunset} t={t} locale={locale} />
+                  <SunArc sunrise={today.sunrise} sunset={today.sunset} t={t} />
                 </div>
               )}
             </div>
@@ -524,7 +520,7 @@ export default function CalendarWeatherWidget() {
           {/* Sun arc (md, below charts) */}
           {size === 'md' && (
             <div className="px-4 pb-3 flex justify-center">
-              <SunArc sunrise={today.sunrise} sunset={today.sunset} t={t} locale={locale} />
+              <SunArc sunrise={today.sunrise} sunset={today.sunset} t={t} />
             </div>
           )}
 
@@ -533,7 +529,7 @@ export default function CalendarWeatherWidget() {
             <p className="text-[11px] uppercase tracking-wide font-semibold text-text-tertiary px-1 py-1.5">
               {t('weather_daily_forecast')}
             </p>
-            <DailyList days={daily.slice(0, daysToShow)} toDisplay={toDisplay} locale={locale} />
+            <DailyList days={daily.slice(0, daysToShow)} toDisplay={toDisplay} />
           </div>
         </div>
       )}
@@ -542,8 +538,8 @@ export default function CalendarWeatherWidget() {
 }
 
 // ── 7-day list with hi/lo range bars ─────────────────────────────────────────
-function DailyList({ days, toDisplay, locale }: {
-  days: DailyWeather[]; toDisplay: (c: number) => number; locale: Locale
+function DailyList({ days, toDisplay }: {
+  days: DailyWeather[]; toDisplay: (c: number) => number
 }) {
   const weekMin = Math.min(...days.map(d => d.temp_min))
   const weekMax = Math.max(...days.map(d => d.temp_max))
@@ -559,7 +555,7 @@ function DailyList({ days, toDisplay, locale }: {
         return (
           <div key={day.date} className="flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-surface-1 transition-colors">
             <span className={`w-9 text-sm capitalize shrink-0 ${isToday ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
-              {format(parseISO(day.date), 'EEE', { locale })}
+              {formatDate(toDate(day.date), 'weekdayShort')}
             </span>
             <img src={weatherIconUrl(day.weather_code, true)} alt="" width={28} height={28}
               style={{ width: 28, height: 28 }} draggable={false} className="shrink-0" />

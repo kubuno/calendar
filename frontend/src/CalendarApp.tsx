@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toDate, addDays, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, addYears, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -208,8 +199,8 @@ export default function CalendarApp() {
 
   const handleEventDrop = useCallback((ev: EventInstance, newStart: Date) => {
     if (ev.event_id.startsWith(APPT_PREFIX) || ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return  // read-only
-    if (Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000) return  // pas de changement
-    const durationMs = parseISO(ev.ends_at).getTime() - parseISO(ev.starts_at).getTime()
+    if (Math.abs(newStart.getTime() - toDate(ev.starts_at).getTime()) < 60000) return  // pas de changement
+    const durationMs = toDate(ev.ends_at).getTime() - toDate(ev.starts_at).getTime()
     const newEnd = new Date(newStart.getTime() + durationMs)
     if (ev.is_recurring) setPendingMove({ ev, newStart, newEnd })   // ask for the scope
     else                 applyMove(ev, newStart, newEnd, 'this')
@@ -217,8 +208,8 @@ export default function CalendarApp() {
 
   const handleEventResize = useCallback((ev: EventInstance, newStart: Date, newEnd: Date) => {
     if (ev.event_id.startsWith(APPT_PREFIX) || ev.event_id.startsWith(HOLIDAY_EVENT_PREFIX)) return  // read-only
-    const sameStart = Math.abs(newStart.getTime() - parseISO(ev.starts_at).getTime()) < 60000
-    const sameEnd   = Math.abs(newEnd.getTime()   - parseISO(ev.ends_at).getTime())   < 60000
+    const sameStart = Math.abs(newStart.getTime() - toDate(ev.starts_at).getTime()) < 60000
+    const sameEnd   = Math.abs(newEnd.getTime()   - toDate(ev.ends_at).getTime())   < 60000
     if (sameStart && sameEnd) return  // pas de changement
     if (ev.is_recurring) setPendingMove({ ev, newStart, newEnd })
     else                 applyMove(ev, newStart, newEnd, 'this')
@@ -286,19 +277,19 @@ export default function CalendarApp() {
   const rangeStart = useMemo(() => {
     if (viewMode === 'day')      return startOfDay(currentDate)
     if (viewMode === 'custom')   return startOfDay(currentDate)
-    if (viewMode === 'week')     return startOfWeek(currentDate, { weekStartsOn: settings.weekStartsOn })
+    if (viewMode === 'week')     return startOfWeek(currentDate, settings.weekStartsOn )
     if (viewMode === 'year')     return startOfYear(currentDate)
     if (viewMode === 'schedule') return startOfMonth(currentDate)
-    return startOfWeek(startOfMonth(currentDate), { weekStartsOn: settings.weekStartsOn })
+    return startOfWeek(startOfMonth(currentDate), settings.weekStartsOn )
   }, [viewMode, currentDate, settings.weekStartsOn])
 
   const rangeEnd = useMemo(() => {
     if (viewMode === 'day')      return endOfDay(currentDate)
     if (viewMode === 'custom')   return endOfDay(addDays(currentDate, settings.customViewDays - 1))
-    if (viewMode === 'week')     return endOfWeek(currentDate, { weekStartsOn: settings.weekStartsOn })
+    if (viewMode === 'week')     return endOfWeek(currentDate, settings.weekStartsOn )
     if (viewMode === 'year')     return endOfYear(currentDate)
     if (viewMode === 'schedule') return endOfMonth(currentDate)
-    return endOfWeek(endOfMonth(currentDate), { weekStartsOn: settings.weekStartsOn })
+    return endOfWeek(endOfMonth(currentDate), settings.weekStartsOn )
   }, [viewMode, currentDate, settings.weekStartsOn, settings.customViewDays])
 
   const { data: evData } = useQuery({

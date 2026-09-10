@@ -11,24 +11,15 @@ import {
   Repeat, Users, Briefcase, ChevronDown, Pipette, Video, Tag,
   LayoutGrid, Home, Building, Building2,
 } from 'lucide-react'
-import { useAuthStore } from '@kubuno/sdk'
+import { useAuthStore, toISODate, toISOMonth, toDate, formatDate, addDays, startOfWeek, isSameDay, isSameMonth, isToday, ExtensionRegistry, ModuleServiceRegistry, CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import { FloatingWindow, MenuDropdown, type MenuItem, type MenuDropdownPos } from '@ui'
 import { Dropdown, Checkbox, Button, DatePicker, Input, RichText, ColorPicker, useAppPickerTheme, useIsMobile } from '@ui'
-import {
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  eachDayOfInterval, isSameMonth, isToday,
-  isSameDay, parseISO, addDays, startOfDay, endOfDay,
-  startOfYear, endOfYear, getDay, subYears, addYears,
-} from 'date-fns'
 import DOMPurify from 'dompurify'
-import { getDateLocale } from '@kubuno/sdk'
 import {
   calendarApi, weatherApi, wmoInfo, weatherIconUrl, appointmentApi,
   type Calendar, type EventInstance, type DailyWeather,
   type EventReminder, type AppointmentSchedule,
 } from './api'
-import { ExtensionRegistry, ModuleServiceRegistry } from '@kubuno/sdk'
-import { CALENDAR_OVERLAY, type CalendarOverlayItem, type CalendarOverlayProvider } from '@kubuno/sdk'
 import {
   useCalendarSettings, timePattern, hourPattern, workDayFor, isWorkingHour,
   type CalendarSettings, type WeekStart, type WorkLocation,
@@ -57,9 +48,8 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
   const days = useMemo(() => calendarGrid(month, settings.weekStartsOn), [month, settings.weekStartsOn])
   // Day letters (localized) — enough at the scale of a year card.
   const weekdayLetters = useMemo(() => {
-    const lc = getDateLocale(i18n.language)
-    const base = startOfWeek(new Date(), { weekStartsOn: settings.weekStartsOn })
-    return Array.from({ length: 7 }, (_, i) => format(addDays(base, i), 'EEEEE', { locale: lc }))
+    const base = startOfWeek(new Date(), settings.weekStartsOn )
+    return Array.from({ length: 7 }, (_, i) => formatDate(addDays(base, i), 'weekdayNarrow'))
   }, [i18n.language, settings.weekStartsOn])
   // Indicator colors (events + tasks) per day, deduplicated: one dot per
   // CALENDAR/source, not per event.
@@ -70,13 +60,13 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
       if (!a) m.set(k, [c])
       else if (!a.includes(c)) a.push(c)
     }
-    events.forEach(ev => { if (isSameMonth(parseISO(ev.starts_at), month)) add(format(parseISO(ev.starts_at), 'yyyy-MM-dd'), ev.color ?? '#4D38DB') })
-    overlayByDate.forEach((items, k) => { if (k.startsWith(format(month, 'yyyy-MM'))) items.forEach(it => add(k, it.color ?? '#80868b')) })
+    events.forEach(ev => { if (isSameMonth(toDate(ev.starts_at), month)) add(toISODate(toDate(ev.starts_at)), ev.color ?? '#4D38DB') })
+    overlayByDate.forEach((items, k) => { if (k.startsWith(toISOMonth(month))) items.forEach(it => add(k, it.color ?? '#80868b')) })
     return m
   }, [events, overlayByDate, month])
 
   const monthEventCount = useMemo(
-    () => events.filter(ev => isSameMonth(parseISO(ev.starts_at), month)).length,
+    () => events.filter(ev => isSameMonth(toDate(ev.starts_at), month)).length,
     [events, month])
   const isCurrentMonth = isSameMonth(new Date(), month)
 
@@ -88,7 +78,7 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
         className="group/mm flex items-baseline justify-between gap-2 mb-1 px-1 w-full text-left shrink-0">
         <span className={`text-[15px] font-semibold capitalize transition-colors
           ${isCurrentMonth ? 'text-primary' : 'text-text-primary group-hover/mm:text-primary'}`}>
-          {format(month, 'MMMM', { locale: getDateLocale(i18n.language) })}
+          {formatDate(month, 'month')}
         </span>
         {monthEventCount > 0 && (
           <span className="text-[10px] tabular-nums px-1.5 py-px rounded-full bg-surface-2 text-text-secondary
@@ -114,7 +104,7 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
           const today   = isToday(day)
           const weekend = isWeekend(day)
           const isSel   = selectedDay != null && isSameDay(day, selectedDay)
-          const dots    = colorsByDay.get(format(day, 'yyyy-MM-dd')) ?? []
+          const dots    = colorsByDay.get(toISODate(day)) ?? []
           return (
             <button key={day.toISOString()} type="button"
               onClick={e => onSelectDay(day, e.currentTarget.getBoundingClientRect())}
@@ -124,7 +114,7 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
                   : isSel   ? 'ring-2 ring-primary text-primary font-semibold'
                   : weekend ? 'text-text-tertiary group-hover/day:bg-surface-2'
                   : 'text-text-primary group-hover/day:bg-surface-2'}`}>
-                {format(day, 'd')}
+                {formatDate(day, { day: 'numeric' })}
               </span>
               <span className="flex items-center justify-center gap-[3px] h-1">
                 {dots.slice(0, 3).map((c, i) => (
@@ -151,10 +141,9 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick, o
 }) {
   const { t, i18n } = useTranslation('calendar')
   const tPattern = timePattern(useCalendarSettings().timeFormat)
-  const loc = getDateLocale(i18n.language)
-  const dayEvents = events.filter(ev => isSameDay(parseISO(ev.starts_at), day))
+  const dayEvents = events.filter(ev => isSameDay(toDate(ev.starts_at), day))
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-  const tasks = overlayByDate.get(format(day, 'yyyy-MM-dd')) ?? []
+  const tasks = overlayByDate.get(toISODate(day)) ?? []
 
   const W = 264
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
@@ -177,14 +166,14 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick, o
         <div className="flex items-center gap-2 mb-2">
           <span className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-base font-bold
             ${isToday(day) ? 'bg-primary text-white' : 'bg-surface-1 text-text-primary'}`}>
-            {format(day, 'd')}
+            {formatDate(day, { day: 'numeric' })}
           </span>
           <div className="flex-1 min-w-0 leading-tight">
             <div className="text-xs font-semibold text-text-primary capitalize truncate">
-              {format(day, 'EEEE', { locale: loc })}
+              {formatDate(day, 'weekday')}
             </div>
             <div className="text-[11px] text-text-tertiary capitalize truncate">
-              {format(day, 'MMMM yyyy', { locale: loc })}
+              {formatDate(day, 'monthYear')}
             </div>
           </div>
           {onCreate && (
@@ -206,7 +195,7 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick, o
               className="cal-event w-full flex items-center gap-1.5 text-xs text-left rounded px-1 py-0.5 hover:bg-surface-1"
               style={{ ['--i' as string]: i } as React.CSSProperties}>
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#4D38DB' }} />
-              {!ev.all_day && <span className="text-text-tertiary shrink-0"><MonoText>{format(parseISO(ev.starts_at), tPattern)}</MonoText></span>}
+              {!ev.all_day && <span className="text-text-tertiary shrink-0"><MonoText>{formatDate(toDate(ev.starts_at), tPattern)}</MonoText></span>}
               <span className="truncate text-text-primary">{ev.title}</span>
             </button>
           ))}
