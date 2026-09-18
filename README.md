@@ -5,39 +5,43 @@
 
 <div align="center">
 
-<img src=".github/logo.png" alt="Kubuno Calendar logo" width="128" height="128">
+<img src=".github/logo.png" alt="Kubuno Calendar logo" width="120">
 
-# Kubuno Calendar
+# Kubuno — Calendar
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-edition_2021-orange.svg)
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 ![Module](https://img.shields.io/badge/Kubuno-module-4D38DB.svg)
+![Status](https://img.shields.io/badge/status-alpha-yellow.svg)
 
-**The Calendar app for [Kubuno](https://github.com/kubuno/core). Manage your events, sync over CalDAV, and organize your days — all self-hosted.**
+**Events, scheduling and CalDAV sync for [Kubuno](https://github.com/kubuno/core) — the self-hosted, libre (AGPLv3) cloud platform, a sovereign alternative to Google Workspace and Microsoft 365.**
+
+Manage your calendars, invite people and find a common time, publish bookable
+availability, and sync with your devices over CalDAV — all self-hosted.
 
 </div>
 
 ---
 
-## 💜 Why is this awesome?
+## ✨ Features
 
-- 🗓️ **Day / Week / Month / Year views** — each with its own URL (`/calendar/day`, `/calendar/week`…), navigable and shareable.
-- ⏱️ **Drag & resize** — move an event or adjust its times directly with the mouse.
-- 🔁 **Recurrence (RRULE)** — repeating events with scope selection (this event / this and following / all), plus a full custom-recurrence editor (every N days/weeks/months/years, weekday multi-select, monthly by date or nth weekday, end conditions) and humanized rule summaries.
-- 📆 **Bookable appointment schedules** — publish your availability (durations, buffers, booking windows, per-day caps, custom form fields) and let anyone book a slot on a standalone public page; bookings land on your calendar automatically, with e-mail confirmations and reminders.
-- 🫂 **Calendar sharing** — share a calendar with other users in view or edit mode, revoke at any time, and hand out a public read-only `.ics` feed link.
-- 📡 **Subscriptions** — follow any remote iCalendar feed (`https://` or `webcal://` — published calendars, holidays…); the mirror calendar refreshes hourly and on demand.
-- 🌐 **CalDAV** — sync with your devices (phone, Thunderbird…).
-- 🤝 **Attendees & scheduling** — invite participants, find a common slot, collect RSVPs on a standalone public page, run meeting polls.
-- ⏰ **Reminders** — browser and email notifications.
-- 🧩 **Cross-app events** — copy an event as a rich card and paste it into other Kubuno apps (Chat, Notes…); other modules can also open the event picker as a service.
+- 🗓️ **Day / Week / Month / Year views** — each with its own URL (`/calendar/day`, `/calendar/week`…), navigable and shareable, with drag & resize to move an event or adjust its times directly.
+- ⚡ **Quick create** — clicking a slot draws a provisional block and opens a small card carrying what an event needs (title, day, guests, video meeting, place, description, calendar); **More options** hands everything typed to the full editor. One card serves both creating and editing an event.
+- 🔁 **Recurrence (RRULE)** — repeating events with scope selection (this event / this and following / all), a full custom-recurrence editor and humanized rule summaries.
+- 🤝 **Attendees & scheduling** — invite people from the instance directory or your contacts (with faces), mark a guest optional, and enforce real guest permissions (may modify / may invite / may see the guest list). A guest already busy at that hour is flagged, and clicking a guest opens their card with the actions the installed modules can perform.
+- 📅 **"Find a time" grid** — a navigable day/week calendar showing your events, your guests' busy bands and the meeting as a block you drag onto the hour that works, in your own zone and an optional second one.
+- 🚪 **Meeting rooms** — invite a room from the organisation's directory; it accepts when free and declines (naming the meeting that holds it) when taken, checked occurrence by occurrence for recurring meetings, with automatic release and usage reporting.
+- 📆 **Bookable appointment schedules** — publish your availability (durations, buffers, booking windows, per-day caps, custom form fields) and let anyone book a slot on a standalone public page; bookings land on your calendar with e-mail confirmations and reminders.
+- 📧 **Invitations by e-mail (iCalendar)** — meeting invitations are e-mailed to guests with an `.ics` attachment and Yes / No / Maybe answer links, so anyone can reply from their own mail client without an account; RSVPs are reflected back on the event automatically.
+- 🎥 **Video meetings** — an event carries a video-call link of its own, typed, pasted, or created in place by whichever installed module hosts meetings; an event and its call keep one shared title.
+- 🫂 **Calendar sharing & subscriptions** — share a calendar in view or edit mode, hand out a public read-only `.ics` feed, and follow any remote iCalendar feed (`https://`/`webcal://`) that refreshes hourly and on demand.
+- 🌐 **CalDAV** — sync with your phone and desktop clients.
 - 🔄 **Delta sync API** — cursor-based change feeds with tombstones (calendars, events, time blocks) for local-first clients.
-- 🌦️ **Built-in weather** — per-location forecasts right inside the calendar: hourly strip, temperature/precipitation charts, wind compass, sunrise/sunset arc, air quality and a 7-day outlook.
-- 🌖 **Moon phases** — optional principal-phase markers on the day/week/month views, computed entirely client-side.
-- 🕑 **Secondary time zone** — show a second time column in the Day view.
-- 🟣 **Dedicated theme** — module-specific purple accent.
-- 🌍 **i18n** — 13 languages.
+- 🏷️ **Cross-module labels** — attach the instance's own labels to an event, at creation time and in both the quick card and the full editor.
+- 🌦️ **Built-in weather & moon phases** — per-location forecasts (hourly strip, charts, wind compass, sunrise/sunset arc, air quality, 7-day forecast) and optional principal-phase moon markers computed client-side.
+- 🧩 **Cross-app events** — copy an event as a rich card and paste it into other Kubuno apps; other modules can open the event picker as a service.
+- 🌍 **i18n** — 13 languages, with dates and times written by the platform in each reader's own language.
 
 ## 🏗️ Architecture
 
@@ -50,43 +54,50 @@ core (kubuno/core)  ──proxy──►  kubuno-calendar (this repo, :3102)
 ```
 
 - **Backend** — `src/`: Axum + SQLx (PostgreSQL, schema `calendar`); migrations in `migrations/`.
-- **Frontend** — `frontend/`: a React bundle built to `entry.js`; consumes `@kubuno/sdk` and `@kubuno/ui` (provided by the host at runtime via the import map).
+- **Frontend** — `frontend/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
 
-## 🐳 Install
+## 📥 Install
 
-This module ships in the **all-in-one [Kubuno](https://github.com/kubuno/core) Docker image** (`ghcr.io/kubuno/kubuno`) — the easiest way to self-host a full Kubuno instance (core + every module). See **[kubuno/docker](https://github.com/kubuno/docker)** for `docker compose` instructions.
+Modules install as a **Kubuno package (`.kbpkg`)** — a single, self-contained archive the Kubuno server unpacks itself (in pure Rust, identically on Linux, Windows and macOS). There are no native system packages for a module; only the core ships those.
 
-Native packages are also built by CI for every tagged release and attached to the [GitHub Releases](https://github.com/kubuno/calendar/releases): **Debian/Ubuntu** (`.deb`), **Fedora/RHEL/openSUSE** (`.rpm`), **Windows** (NSIS installer) and **macOS** (`.pkg`). Each installs the module into an existing Kubuno core installation and restarts the service.
+The easiest way to self-host a full Kubuno instance (core + every module) is the **all-in-one [Docker image](https://github.com/kubuno/docker)** (`ghcr.io/kubuno/kubuno`), which already bundles Calendar.
 
-To build this module from source, see below.
-
-## 🛠️ Build
-
-**Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16, and the [kubuno/core](https://github.com/kubuno/core) repo.
+To build and install this module on its own:
 
 ```bash
-# Backend
-cargo build --release            # → target/release/kubuno-calendar
+bash build_kbpkg.sh --install        # build → install into the store → restart the core
+```
 
-# Frontend (module bundle)
-cd frontend && npm ci && npm run build   # → dist/{entry.js, entry.css, chunks/}
+Or install a prebuilt `.kbpkg` (offline, no catalogue required):
 
-# Debian package
-bash build_deb.sh                # → dist/kubuno-calendar_*.deb
+```bash
+sudo kubuno modules:install dist/calendar-<version>-<os>-<arch>.kbpkg
+sudo systemctl restart kubuno        # the core loads the module on (re)start
+```
 
-# Other platforms
-bash build_rpm.sh                # → dist/kubuno-calendar-*.rpm   (needs rpmbuild)
-bash build_windows.sh            # → dist/kubuno-calendar-setup-*.exe (NSIS; cross-compiles with cargo-xwin)
-bash build_macos.sh              # → dist/kubuno-calendar-*.pkg   (run on macOS)
+A `.kbpkg` is attached to every tagged [GitHub Release](https://github.com/kubuno/calendar/releases) (Linux via `build.yml`, Windows/macOS via `dist.yml`).
+
+## 🛠️ Build & development
+
+**Requirements:** Rust ≥ 1.82, Node.js ≥ 24, PostgreSQL 16.
+
+```bash
+cargo build --release                      # → target/release/kubuno-calendar
+cd frontend && npm ci && npm run build      # → dist/{entry.js, entry.css, chunks/}
+bash build_kbpkg.sh                         # → dist/calendar-<version>-<os>-<arch>.kbpkg
 ```
 
 > Shared dependencies come from Kubuno — no `kubuno/core` checkout required:
-> - **Rust** — `kubuno-seccomp` via a tagged git dependency on `kubuno/core` (fetched automatically by Cargo).
-> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from npm (`@kubuno` scope), pulled in by `npm ci`. They are `external` at runtime (the host provides the singletons via its import map); the npm packages supply the build-time type surface.
+> - **Rust** — shared crates via tagged git dependencies on `kubuno/core`.
+> - **Frontend** — `@kubuno/sdk`, `@kubuno/ui`, `@kubuno/drive` from the `@kubuno` npm scope. They are `external` at runtime (the host provides the singletons via its import map); the npm packages supply the build-time type surface.
 
 ## ⚙️ Configuration
 
-Copy `config.toml.example` → `config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). See `module.toml` for the manifest (id, port, routes, sidebar entry).
+Copy `config.toml.example` → `config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). See `module.toml` for the manifest (id, port, routes, sidebar entry, settings).
+
+## 📦 Tech stack
+
+Rust 2021 · Axum 0.7 · Tokio · SQLx 0.8 (PostgreSQL, schema `calendar`) — React 19 · TypeScript · Vite · Tailwind CSS v4 · Zustand · React Query.
 
 ## 🤝 Contributing
 
