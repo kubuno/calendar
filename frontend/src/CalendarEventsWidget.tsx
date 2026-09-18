@@ -52,7 +52,7 @@ export default function CalendarEventsWidget() {
               {/* Indicateur couleur */}
               <div
                 className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
-                style={{ backgroundColor: ev.color ?? '#4D38DB' }}
+                style={{ backgroundColor: ev.color ?? '#1a73e8' }}
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-text-primary truncate">{ev.title}</p>

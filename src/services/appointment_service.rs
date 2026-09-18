@@ -435,6 +435,9 @@ impl AppointmentService {
                 visibility: Some("public".to_string()),
                 busy: Some(true),
                 attendees: None,
+                guests_can_modify:     None,
+                guests_can_invite:     None,
+                guests_can_see_guests: None,
             },
             db,
         )

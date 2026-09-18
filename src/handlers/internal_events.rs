@@ -38,6 +38,55 @@ struct InviteReply {
 }
 
 const INVITE_REPLY: &str = "mail.invite_reply";
+const MEETING_RENAMED: &str = "chat.meeting_renamed";
+
+/// A meeting attached to one of our events was renamed where it lives.
+#[derive(Deserialize)]
+struct MeetingRenamed {
+    /// `<module>:<id>` — ours to recognise, opaque to everyone else.
+    owner: String,
+    title: String,
+}
+
+/// Rename the event a meeting belongs to.
+///
+/// Only when the title actually differs: an update that changes nothing writes
+/// no row and announces nothing back, which is what keeps the two modules from
+/// renaming each other in turn for ever.
+async fn apply_rename(state: &AppState, body: Value) -> Result<()> {
+    let r: MeetingRenamed = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "meeting_renamed: charge utile illisible, ignorée");
+            return Ok(());
+        }
+    };
+    let title = r.title.trim();
+    let Some(event_id) = crate::events::publisher::owned_event(&r.owner) else { return Ok(()) };
+    if title.is_empty() {
+        return Ok(());
+    }
+
+    let changed = sqlx::query(
+        "UPDATE calendar.events
+            SET title = $2, updated_at = NOW()
+          WHERE id = $1 AND title IS DISTINCT FROM $2",
+    )
+    .bind(event_id)
+    .bind(title)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "meeting_renamed: renommage de l'événement");
+        e
+    })?
+    .rows_affected();
+
+    if changed > 0 {
+        tracing::info!(%event_id, "Événement renommé d'après sa réunion");
+    }
+    Ok(())
+}
 
 /// Handles one delivered event.
 pub async fn handle_event(
@@ -49,6 +98,12 @@ pub async fn handle_event(
         return Ok(Json(json!({ "ok": true })));
     }
     let inner_type = event.payload.get("event_type").and_then(Value::as_str).unwrap_or("");
+    if inner_type == MEETING_RENAMED {
+        if let Some(body) = event.payload.get("payload") {
+            apply_rename(&state, body.clone()).await?;
+        }
+        return Ok(Json(json!({ "ok": true })));
+    }
     if inner_type != INVITE_REPLY {
         return Ok(Json(json!({ "ok": true })));
     }

@@ -281,7 +281,7 @@ function DayView({
             const end    = toDate(ev.ends_at)
             const top    = (start.getHours() + start.getMinutes() / 60) * HOUR_HEIGHT
             const height = Math.max(((end.getTime() - start.getTime()) / 3_600_000) * HOUR_HEIGHT, 18)
-            const color  = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#4D38DB'
+            const color  = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#1a73e8'
             return (
               <button
                 key={ev.id}
@@ -347,7 +347,7 @@ function PlanningView({
             </div>
             <div className="divide-y divide-border/40">
               {evs.map(ev => {
-                const color = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#4D38DB'
+                const color = ev.color ?? calMap.get(ev.calendar_id)?.color ?? '#1a73e8'
                 const start = toDate(ev.starts_at)
                 return (
                   <button

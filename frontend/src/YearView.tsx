@@ -60,7 +60,7 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
       if (!a) m.set(k, [c])
       else if (!a.includes(c)) a.push(c)
     }
-    events.forEach(ev => { if (isSameMonth(toDate(ev.starts_at), month)) add(toISODate(toDate(ev.starts_at)), ev.color ?? '#4D38DB') })
+    events.forEach(ev => { if (isSameMonth(toDate(ev.starts_at), month)) add(toISODate(toDate(ev.starts_at)), ev.color ?? '#1a73e8') })
     overlayByDate.forEach((items, k) => { if (k.startsWith(toISOMonth(month))) items.forEach(it => add(k, it.color ?? '#80868b')) })
     return m
   }, [events, overlayByDate, month])
@@ -194,7 +194,7 @@ function DayPopover({ day, rect, events, overlayByDate, onClose, onEventClick, o
             <button key={ev.id} onClick={() => { onEventClick(ev); onClose() }}
               className="cal-event w-full flex items-center gap-1.5 text-xs text-left rounded px-1 py-0.5 hover:bg-surface-1"
               style={{ ['--i' as string]: i } as React.CSSProperties}>
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#4D38DB' }} />
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ev.color ?? '#1a73e8' }} />
               {!ev.all_day && <span className="text-text-tertiary shrink-0"><MonoText>{formatDate(toDate(ev.starts_at), tPattern)}</MonoText></span>}
               <span className="truncate text-text-primary">{ev.title}</span>
             </button>

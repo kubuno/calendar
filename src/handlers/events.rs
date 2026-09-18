@@ -43,6 +43,33 @@ pub async fn list(
     Ok(Json(serde_json::json!({ "events": instances, "count": instances.len() })))
 }
 
+/// Tell whoever hosts meetings what this event's call is called — or that it no
+/// longer has one.
+///
+/// Fired for every save, not only when the title moved: the module on the other
+/// side compares before it writes, so a repeat costs one no-op statement, while
+/// a missed one leaves two names disagreeing. Best-effort and off the request's
+/// path: an event is saved whether or not a meeting hears about it.
+fn announce_meeting(state: &AppState, url: Option<&str>, title: &str, owner: Option<Uuid>) {
+    let Some(url) = url.map(str::trim).filter(|u| !u.is_empty()) else { return };
+    let (state, url, title) = (state.clone(), url.to_string(), title.to_string());
+    tokio::spawn(async move {
+        publisher::publish_meeting_link(&state, &url, &title, owner).await;
+    });
+}
+
+/// The call this event currently points at, read before it is changed, so a
+/// call that is being replaced or dropped can be released.
+async fn current_url(state: &AppState, id: Uuid) -> Option<String> {
+    sqlx::query_scalar::<_, Option<String>>("SELECT url FROM calendar.events WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+}
+
 pub async fn create(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
@@ -68,6 +95,7 @@ pub async fn create(
     tokio::spawn(async move {
         publisher::publish_event_created(&state2, event_id, user_id).await;
     });
+    announce_meeting(&state, event.url.as_deref(), &event.title, Some(event.id));
 
     // Record the guests and, when the instance enables it, ask the Mail module
     // to send the invitations.
@@ -112,7 +140,33 @@ pub async fn update(
     Query(q): Query<UpdateQuery>,
     Json(dto): Json<UpdateEventDto>,
 ) -> Result<Json<serde_json::Value>> {
+    // Read BEFORE the write: a call that is being replaced or taken off has to
+    // be released, and afterwards there is nothing left pointing at it.
+    let previous_url = current_url(&state, id).await;
     let event = EventService::update(id, user.id, dto, q.scope, q.occurrence, &state.db).await?;
+
+    let now_url = event.url.as_deref().map(str::trim).filter(|u| !u.is_empty());
+    if let Some(old) = previous_url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+        if now_url != Some(old) {
+            // Let it go, without renaming it: its link may already have been
+            // shared, so it keeps the name it is known by.
+            announce_meeting(&state, Some(old), "", None);
+        }
+    }
+    announce_meeting(&state, now_url, &event.title, Some(event.id));
+
+    // A meeting that moved must ask its rooms again: a room that agreed to
+    // Tuesday 10:00 never agreed to Wednesday 15:00, and leaving it marked
+    // "accepted" is how two meetings end up owning the same room. Best effort —
+    // the edit is already saved and must not be undone by a room.
+    match crate::services::room_service::RoomService::rebook(&state.db, &event).await {
+        Ok(declined) if !declined.is_empty() => {
+            tracing::info!(event = %event.id, rooms = declined.len(), "Salles refusées après déplacement");
+        }
+        Err(e) => tracing::warn!(error = %e, event = %event.id, "Salles : re-réservation impossible"),
+        _ => {}
+    }
+
     // Notify the people the event is shared with.
     {
         let state2 = state.clone();
@@ -179,7 +233,11 @@ pub async fn delete(
         None
     };
 
+    // The meeting outlives the event that made it — a link that has been shared
+    // must keep working — but it stops answering to a title nobody owns.
+    let released = current_url(&state, id).await;
     EventService::delete(id, user.id, q.scope, q.occurrence, &state.db).await?;
+    announce_meeting(&state, released.as_deref(), "", None);
 
     if let Some((event, guests)) = snapshot {
         let state2 = state.clone();

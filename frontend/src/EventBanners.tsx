@@ -78,7 +78,7 @@ export function BannerRow({ days, events, calendars, gridCols, leadingGutters, o
       style={{ gridTemplateColumns: gridCols, gridTemplateRows: `repeat(${rows}, ${BANNER_H}px)`, rowGap: 2 }}>
       {segs.map(seg => {
         const cal   = calMap.get(seg.ev.calendar_id)
-        const color = seg.ev.color ?? cal?.color ?? '#4D38DB'
+        const color = seg.ev.color ?? cal?.color ?? '#1a73e8'
         return (
           <BannerBar key={seg.ev.id}
             title={seg.ev.title}

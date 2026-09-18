@@ -70,7 +70,7 @@ impl ICalendarService {
         event: &Event,
         organizer_email: &str,
         organizer_name: Option<&str>,
-        attendees: &[(String, Option<String>)],
+        attendees: &[(String, Option<String>, bool)],
         method: ItipMethod,
     ) -> String {
         let method_str = match method {
@@ -118,15 +118,19 @@ impl ICalendarService {
             None => lines.push(format!("ORGANIZER:mailto:{}", escape_text(organizer_email))),
         }
 
-        // ATTENDEE, one per guest.
-        for (email, name) in attendees {
+        // ATTENDEE, one per guest. An optional guest travels as
+        // `ROLE=OPT-PARTICIPANT`, which is what the standard has for "welcome,
+        // not required" — so the distinction reaches the person in their own
+        // calendar, and not only the organiser's screen.
+        for (email, name, optional) in attendees {
             let cn = match name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
                 Some(n) => format!(";CN={}", escape_param(n)),
                 None    => String::new(),
             };
             lines.push(format!(
-                "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE{cn}:mailto:{}",
-                escape_text(email)
+                "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE={role};PARTSTAT=NEEDS-ACTION;RSVP=TRUE{cn}:mailto:{}",
+                escape_text(email),
+                role = if *optional { "OPT-PARTICIPANT" } else { "REQ-PARTICIPANT" }
             ));
         }
 

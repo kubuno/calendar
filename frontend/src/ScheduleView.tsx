@@ -110,7 +110,7 @@ export function ScheduleView({ rangeStart, rangeEnd, events, calendars, overlayB
                 )}
                 {evs.map(ev => {
                   const cal   = calMap.get(ev.calendar_id)
-                  const color = ev.color ?? cal?.color ?? '#4D38DB'
+                  const color = ev.color ?? cal?.color ?? '#1a73e8'
                   const past  = settings.dimPastEvents && toDate(ev.ends_at) < now
                   const start = toDate(ev.starts_at)
                   const end   = toDate(ev.ends_at)

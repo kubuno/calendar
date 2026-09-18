@@ -328,4 +328,15 @@ export const hi = {
   setting_allow_working_location: "कार्य स्थान की अनुमति दें",
   setting_allow_working_location_help: "उपयोगकर्ताओं को उनका दैनिक कार्य स्थान (कार्यालय, घर…) निर्धारित करने दें, जो उनके कैलेंडर में दिखता है।",
 
+  rooms: "कक्ष",
+  room_search: "कक्ष या भवन खोजें…",
+  room_free: "इस समय खाली",
+  room_held: "“{{title}}” के लिए आरक्षित ({{when}})",
+  room_busy: "इस समय पहले से आरक्षित",
+  room_none_match: "कोई कक्ष मेल नहीं खाता।",
+  room_capacity: "{{count}} स्थान",
+  quick_title: "शीर्षक और समय जोड़ें",
+  quick_set_time: "समय बताएँ",
+  quick_more_options: "अन्य विकल्प",
+  untitled: "(बिना शीर्षक)",
 }

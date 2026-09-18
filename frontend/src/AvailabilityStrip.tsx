@@ -40,7 +40,7 @@ export function AvailabilityStrip({ ev, top, height, sMin, onClick, compact }: {
   // columns of the mobile week view.
   compact?: boolean
 }) {
-  const color = ev.color ?? '#4D38DB'
+  const color = ev.color ?? '#1a73e8'
   const hm = `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`
   return (
     <div onClick={onClick} title={`${ev.title} · ${hm}`}

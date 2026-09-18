@@ -7,7 +7,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
     handlers::{
-        analytics, appointments, attendees, caldav, calendars, delta, events, health, import_export,
+        analytics, appointments, attendees, caldav, calendars, delta, events, health, import_export, rooms,
         internal_events, mcp, policy, public, scheduling, time_blocks, weather,
     },
     middleware::{require_auth, require_internal_secret},
@@ -42,6 +42,14 @@ pub fn build(state: AppState) -> Router {
         // Participants
         .route("/events/:id/attendees",          get(attendees::list).post(attendees::invite))
         .route("/events/:id/attendees/:aid",     patch(attendees::update_rsvp).delete(attendees::remove))
+        // Salles. Chemin distinct des participants : une salle n'a pas d'adresse,
+        // ne compte pas dans le plafond d'invités, n'est jamais extérieure — et
+        // elle RÉPOND (elle refuse un créneau déjà pris) au lieu de faire échouer
+        // la requête (cf. handlers::rooms).
+        .route("/rooms",                         get(rooms::list))
+        .route("/rooms/availability",            get(rooms::availability))
+        .route("/events/:id/rooms",              post(rooms::invite))
+        .route("/events/:id/rooms/:rid",         delete(rooms::remove))
         // Import
         .route("/import",                   post(import_export::import_ics))
         // Blocs de temps
@@ -94,6 +102,7 @@ pub fn build(state: AppState) -> Router {
     // `/ipc/events`, which this router never returns.
     let internal = Router::new()
         .route("/ipc/events", post(internal_events::handle_event))
+        .route("/ipc/room-stats", get(rooms::stats))
         .layer(middleware::from_fn_with_state(state.clone(), require_internal_secret))
         .with_state(state.clone());
 
