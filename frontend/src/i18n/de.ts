@@ -346,4 +346,15 @@ export const de = {
   setting_allow_working_location: "Arbeitsort zulassen",
   setting_allow_working_location_help: "Nutzern erlauben, ihren täglichen Arbeitsort festzulegen (Büro, Zuhause…), im Kalender angezeigt.",
 
+  rooms: "Räume",
+  room_search: "Raum oder Gebäude suchen…",
+  room_free: "Zu dieser Zeit frei",
+  room_held: "Belegt durch „{{title}}“ ({{when}})",
+  room_busy: "Zu dieser Zeit bereits belegt",
+  room_none_match: "Kein Raum passt.",
+  room_capacity: "{{count}} Plätze",
+  quick_title: "Titel und Uhrzeit hinzufügen",
+  quick_set_time: "Uhrzeit angeben",
+  quick_more_options: "Weitere Optionen",
+  untitled: "(Ohne Titel)",
 }

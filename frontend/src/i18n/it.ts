@@ -346,4 +346,15 @@ export const it = {
   setting_allow_working_location: "Consenti il luogo di lavoro",
   setting_allow_working_location_help: "Consenti agli utenti di impostare il luogo di lavoro giornaliero (ufficio, casa…), mostrato nel calendario.",
 
+  rooms: "Sale",
+  room_search: "Cerca una sala o un edificio…",
+  room_free: "Libera in questa fascia",
+  room_held: "Occupata da «{{title}}» ({{when}})",
+  room_busy: "Già occupata in questa fascia",
+  room_none_match: "Nessuna sala corrisponde.",
+  room_capacity: "{{count}} posti",
+  quick_title: "Aggiungi un titolo e un orario",
+  quick_set_time: "Precisa l’orario",
+  quick_more_options: "Altre opzioni",
+  untitled: "(Senza titolo)",
 }

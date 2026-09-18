@@ -204,7 +204,38 @@ impl EventService {
     }
 
     /// Create a new event.
+    /// A blank text field means "nothing", not the string "". A form that lets
+    /// someone empty the location, the description or the meeting link sends
+    /// the empty value back; storing it as "" would make the field read as
+    /// filled everywhere it is tested for presence.
+    fn blank_to_none(v: Option<String>) -> Option<String> {
+        v.filter(|s| !s.trim().is_empty())
+    }
+
+    /// An event cannot end before it starts.
+    ///
+    /// The table has said so since its first migration, but a constraint is the
+    /// last line, not the first: reaching it answers "database error", which
+    /// tells the person nothing about the two dates in front of them. Checked
+    /// here so the answer names the problem.
+    fn check_range(starts_at: DateTime<Utc>, ends_at: DateTime<Utc>) -> Result<()> {
+        if ends_at < starts_at {
+            return Err(CalendarError::Validation(
+                "La date de fin ne peut pas précéder la date de début".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn create(user_id: Uuid, dto: CreateEventDto, db: &PgPool) -> Result<Event> {
+        let dto = CreateEventDto {
+            description: Self::blank_to_none(dto.description),
+            location:    Self::blank_to_none(dto.location),
+            url:         Self::blank_to_none(dto.url),
+            ..dto
+        };
+        Self::check_range(dto.starts_at, dto.ends_at)?;
+
         // Validate the RRULE when present
         if let Some(ref rrule) = dto.rrule {
             RecurrenceService::validate_rrule(rrule)?;
@@ -220,15 +251,21 @@ impl EventService {
         let visibility = dto.visibility.unwrap_or_else(|| "public".to_string());
         let busy      = dto.busy.unwrap_or(true);
         let ical_uid  = format!("{}@kubuno.local", Uuid::new_v4());
+        // Absent means the documented default, not "off": guests may invite and
+        // may see each other, and may not rewrite the event.
+        let can_modify = dto.guests_can_modify.unwrap_or(false);
+        let can_invite = dto.guests_can_invite.unwrap_or(true);
+        let can_see    = dto.guests_can_see_guests.unwrap_or(true);
 
         let event = sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO calendar.events
                 (id, calendar_id, owner_id, title, description, location, url,
                  starts_at, ends_at, all_day, timezone, rrule, reminders,
-                 ical_uid, status, visibility, busy, color)
+                 ical_uid, status, visibility, busy, color,
+                 guests_can_modify, guests_can_invite, guests_can_see_guests)
             VALUES (COALESCE($18, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                    $13, $14, $15, $16, $17)
+                    $13, $14, $15, $16, $17, $19, $20, $21)
             RETURNING *
             "#,
         )
@@ -250,6 +287,9 @@ impl EventService {
         .bind(busy)
         .bind(&dto.color)
         .bind(dto.id)
+        .bind(can_modify)
+        .bind(can_invite)
+        .bind(can_see)
         .fetch_one(db)
         .await?;
 
@@ -356,6 +396,23 @@ impl EventService {
         db: &PgPool,
     ) -> Result<Event> {
         let event = Self::get_owned(id, user_id, db).await?;
+        // Moving the event to another agenda is the owner's act, not a guest's:
+        // it changes whose calendar carries it, which no permission on THIS
+        // event can grant.
+        let dto = if event.owner_id == user_id { dto } else { UpdateEventDto { calendar_id: None, ..dto } };
+
+        // On an update an ABSENT field means "unchanged" and a PRESENT blank
+        // means "clear it" — the only way a form can empty a text field, since
+        // there is no `clear_location` flag and there should not need to be one.
+        let dto = UpdateEventDto {
+            description: dto.description.map(|s| s.trim().to_string()),
+            location:    dto.location.map(|s| s.trim().to_string()),
+            url:         dto.url.map(|s| s.trim().to_string()),
+            ..dto
+        };
+        let clear = |v: Option<String>, old: Option<String>| -> Option<String> {
+            match v { Some(s) if s.is_empty() => None, Some(s) => Some(s), None => old }
+        };
 
         if let Some(ref rrule) = dto.rrule {
             RecurrenceService::validate_rrule(rrule)?;
@@ -383,9 +440,9 @@ impl EventService {
                     id: None,
                     calendar_id: dto.calendar_id.unwrap_or(event.calendar_id),
                     title:       dto.title.unwrap_or(event.title),
-                    description: dto.description.or(event.description),
-                    location:    dto.location.or(event.location),
-                    url:         dto.url.or(event.url),
+                    description: clear(dto.description, event.description),
+                    location:    clear(dto.location, event.location),
+                    url:         clear(dto.url, event.url),
                     starts_at:   dto.starts_at.unwrap_or(occ),
                     ends_at:     dto.ends_at.unwrap_or(occ + occ_duration),
                     all_day:     dto.all_day.or(Some(event.all_day)),
@@ -397,6 +454,11 @@ impl EventService {
                     visibility:  dto.visibility.or(Some(event.visibility)),
                     busy:        dto.busy.or(Some(event.busy)),
                     attendees:   None,
+                    // A split occurrence is the same gathering: it inherits what
+                    // its guests were allowed to do.
+                    guests_can_modify:     dto.guests_can_modify.or(Some(event.guests_can_modify)),
+                    guests_can_invite:     dto.guests_can_invite.or(Some(event.guests_can_invite)),
+                    guests_can_see_guests: dto.guests_can_see_guests.or(Some(event.guests_can_see_guests)),
                 };
                 let created = Self::create(user_id, new_dto, db).await?;
                 sqlx::query("UPDATE calendar.events SET parent_event_id = $2 WHERE id = $1")
@@ -412,11 +474,12 @@ impl EventService {
             RecurrenceScope::All | RecurrenceScope::This => {
                 // Direct update of the event
                 let title      = dto.title.unwrap_or(event.title);
-                let description = dto.description.or(event.description);
-                let location   = dto.location.or(event.location);
-                let url        = dto.url.or(event.url);
+                let description = clear(dto.description, event.description);
+                let location   = clear(dto.location, event.location);
+                let url        = clear(dto.url, event.url);
                 let starts_at  = dto.starts_at.unwrap_or(event.starts_at);
                 let ends_at    = dto.ends_at.unwrap_or(event.ends_at);
+                Self::check_range(starts_at, ends_at)?;
                 let all_day    = dto.all_day.unwrap_or(event.all_day);
                 let timezone   = dto.timezone.unwrap_or(event.timezone);
                 let rrule      = if dto.clear_rrule { None } else if dto.rrule.is_some() { dto.rrule } else { event.rrule };
@@ -425,6 +488,9 @@ impl EventService {
                 let visibility = dto.visibility.unwrap_or(event.visibility);
                 let busy       = dto.busy.unwrap_or(event.busy);
                 let color      = if dto.clear_color { None } else { dto.color.or(event.color) };
+                let can_modify = dto.guests_can_modify.unwrap_or(event.guests_can_modify);
+                let can_invite = dto.guests_can_invite.unwrap_or(event.guests_can_invite);
+                let can_see    = dto.guests_can_see_guests.unwrap_or(event.guests_can_see_guests);
 
                 let updated = sqlx::query_as::<_, Event>(
                     r#"
@@ -433,7 +499,9 @@ impl EventService {
                         starts_at = $6, ends_at = $7, all_day = $8, timezone = $9,
                         rrule = $10, reminders = $11, status = $12, visibility = $13,
                         busy = $14, color = $15, sequence = sequence + 1,
-                        etag = md5(random()::text)
+                        etag = md5(random()::text),
+                        guests_can_modify = $16, guests_can_invite = $17,
+                        guests_can_see_guests = $18
                     WHERE id = $1
                     RETURNING *
                     "#,
@@ -453,6 +521,9 @@ impl EventService {
                 .bind(&visibility)
                 .bind(busy)
                 .bind(&color)
+                .bind(can_modify)
+                .bind(can_invite)
+                .bind(can_see)
                 .fetch_one(db)
                 .await?;
 
@@ -503,6 +574,9 @@ impl EventService {
                     visibility:   dto.visibility.or(Some(event.visibility)),
                     busy:         dto.busy.or(Some(event.busy)),
                     attendees:    None,
+                    guests_can_modify:     Some(event.guests_can_modify),
+                    guests_can_invite:     Some(event.guests_can_invite),
+                    guests_can_see_guests: Some(event.guests_can_see_guests),
                 };
                 Self::create(user_id, new_dto, db).await
             }
@@ -593,9 +667,21 @@ impl EventService {
         format!("{base};UNTIL={until_str}")
     }
 
+    /// The event, for someone entitled to change it.
+    ///
+    /// Its owner, of course — and a GUEST when the organiser ticked "Guests can
+    /// modify the event". That tick is the only thing that makes the box mean
+    /// anything: without it here, an organiser could hand out a permission the
+    /// server would go on refusing, which is worse than not offering it.
+    ///
+    /// A guest who may modify still cannot hand the event to another calendar:
+    /// `calendar_id` belongs to whoever owns the agenda, not to the meeting.
     async fn get_owned(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Event> {
         sqlx::query_as::<_, Event>(
-            "SELECT * FROM calendar.events WHERE id = $1 AND owner_id = $2",
+            "SELECT e.* FROM calendar.events e
+               LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
+              WHERE e.id = $1
+                AND (e.owner_id = $2 OR (e.guests_can_modify AND a.id IS NOT NULL))",
         )
         .bind(id)
         .bind(user_id)

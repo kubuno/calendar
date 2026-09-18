@@ -33,6 +33,7 @@ import {
   moonPhaseName, principalPhaseOfDay, principalPhaseName,
 } from './moon'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
+import { plainText } from './richtext'
 
 export function SearchResultsView({
   calendars,
@@ -65,7 +66,9 @@ export function SearchResultsView({
 
     return all.filter(ev => {
       const title = ev.title.toLowerCase()
-      const desc  = (ev.description ?? '').toLowerCase()
+      // The words, not the markup: searching the stored HTML would match
+      // "span" or "href" in every event that has a formatted description.
+      const desc  = plainText(ev.description ?? '').toLowerCase()
       const evLoc = (ev.location ?? '').toLowerCase()
 
       if (q && !title.includes(q) && !desc.includes(q)) return false
@@ -110,7 +113,7 @@ export function SearchResultsView({
       <div className="space-y-1">
         {results.map(ev => {
           const cal   = calMap.get(ev.calendar_id)
-          const color = ev.color ?? cal?.color ?? '#4D38DB'
+          const color = ev.color ?? cal?.color ?? '#1a73e8'
           const start = toDate(ev.starts_at)
           const end   = toDate(ev.ends_at)
           return (

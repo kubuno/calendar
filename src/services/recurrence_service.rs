@@ -88,6 +88,7 @@ impl RecurrenceService {
                     title:        event.title.clone(),
                     description:  event.description.clone(),
                     location:     event.location.clone(),
+                    url:          event.url.clone(),
                     starts_at:    occ_utc,
                     ends_at:      occ_utc + duration,
                     all_day:      event.all_day,
@@ -102,6 +103,9 @@ impl RecurrenceService {
                     etag:         event.etag.clone(),
                     color:        calendar_color.clone(),
                     my_status:    None,
+            guests_can_modify:     event.guests_can_modify,
+            guests_can_invite:     event.guests_can_invite,
+            guests_can_see_guests: event.guests_can_see_guests,
                 }
             })
             .collect()
@@ -117,6 +121,7 @@ impl RecurrenceService {
             title:        event.title.clone(),
             description:  event.description.clone(),
             location:     event.location.clone(),
+            url:          event.url.clone(),
             starts_at:    event.starts_at,
             ends_at:      event.ends_at,
             all_day:      event.all_day,
@@ -131,6 +136,9 @@ impl RecurrenceService {
             etag:         event.etag.clone(),
             color,
             my_status:    None,
+            guests_can_modify:     event.guests_can_modify,
+            guests_can_invite:     event.guests_can_invite,
+            guests_can_see_guests: event.guests_can_see_guests,
         }
     }
 }

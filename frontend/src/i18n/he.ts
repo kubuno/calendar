@@ -328,4 +328,15 @@ export const he = {
   setting_allow_working_location: "אפשר מיקום עבודה",
   setting_allow_working_location_help: "אפשר למשתמשים להגדיר את מיקום העבודה היומי שלהם (משרד, בית…), המוצג ביומן.",
 
+  rooms: "חדרים",
+  room_search: "חיפוש חדר או בניין…",
+  room_free: "פנוי בשעה הזו",
+  room_held: "תפוס על ידי „{{title}}” ({{when}})",
+  room_busy: "כבר תפוס בשעה הזו",
+  room_none_match: "אין חדר תואם.",
+  room_capacity: "{{count}} מקומות",
+  quick_title: "הוספת כותרת ושעה",
+  quick_set_time: "ציון השעה",
+  quick_more_options: "אפשרויות נוספות",
+  untitled: "(ללא כותרת)",
 }

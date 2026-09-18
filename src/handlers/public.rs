@@ -80,6 +80,47 @@ pub async fn rsvp_respond(
     .await?
     .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
 
+    // Same rule as the signed-in path: a refusal that empties the meeting hands
+    // the room back. Most refusals arrive through this link — an invitation
+    // e-mail — so leaving it out here would make the feature work only for the
+    // few who answer from inside the application.
+    if dto.status == "declined" {
+        let instance = state.instance();
+        let released = crate::services::room_service::RoomService::release_if_deserted(
+            &state.db,
+            &state.http,
+            &state.settings.core.url,
+            &state.settings.core.internal_secret,
+            attendee.event_id,
+            |email| instance.domain_is_internal(email),
+        )
+        .await;
+        if let Err(e) = &released {
+            tracing::warn!(error = %e, event_id = %attendee.event_id, "Libération de salle : échec");
+        }
+
+        // Tell the organiser and the guests: their meeting no longer has a room.
+        // The in-app channel the module already uses for "this event changed" —
+        // which is precisely what happened. Not an iTIP message: that vocabulary
+        // would announce a CANCELLED event, and the meeting is very much alive.
+        if let Ok(Ok(freed)) = &released {
+            if !freed.is_empty() {
+                if let Ok((title,)) = sqlx::query_as::<_, (String,)>(
+                    "SELECT title FROM calendar.events WHERE id = $1",
+                )
+                .bind(attendee.event_id)
+                .fetch_one(&state.db)
+                .await
+                {
+                    crate::events::publisher::publish_event_modified(
+                        &state, attendee.event_id, attendee.user_id.unwrap_or_default(), &title, "updated",
+                    )
+                    .await;
+                }
+            }
+        }
+    }
+
     Ok(Json(serde_json::json!({ "attendee": attendee, "message": "Réponse enregistrée" })))
 }
 
@@ -147,7 +188,11 @@ pub async fn rsvp_page(
     let location = event.location.as_deref().map(esc).unwrap_or_default();
     let date_str = event.starts_at.format("%d/%m/%Y %H:%M").to_string();
     let end_str  = event.ends_at.format("%H:%M").to_string();
-    let guest    = esc(attendee.display_name.as_deref().unwrap_or(&attendee.email));
+    // This page answers an RSVP link, which only a person ever receives — a room
+    // has neither a mailbox nor a display name. The fallback is defensive.
+    let guest    = esc(attendee.display_name.as_deref()
+        .or(attendee.email.as_deref())
+        .unwrap_or("—"));
     let current  = attendee.status.clone();
     let token_js = esc(&token);
 

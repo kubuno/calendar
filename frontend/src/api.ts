@@ -36,6 +36,26 @@ export interface UserBrief {
   username: string
   display_name: string | null
   avatar_url: string | null
+  /** Present only when the administrator lets the directory share addresses —
+   *  omitted, never blanked, so an absent address cannot be mistaken for one. */
+  email?: string | null
+}
+
+/** What the core's directory publishes about one person. Everything but the
+ *  name may be absent. ⚠️ Gender and birthday are deliberately NOT part of it. */
+export interface DirectoryCard {
+  id:                 string
+  username:           string
+  display_name:       string
+  first_name?:        string | null
+  last_name?:         string | null
+  avatar_url?:        string | null
+  email?:             string | null
+  name_pronunciation?: string | null
+  pronouns?:          string | null
+  work_location?:     string | null
+  introduction?:      string | null
+  org_unit?:          string | null
 }
 
 export interface EventReminder {
@@ -51,6 +71,8 @@ export interface EventInstance {
   title: string
   description: string | null
   location: string | null
+  /** The meeting link — a video call, a page — kept apart from the place. */
+  url: string | null
   starts_at: string
   ends_at: string
   all_day: boolean
@@ -66,6 +88,11 @@ export interface EventInstance {
   reminders: EventReminder[]
   /** RSVP status of the current user when invited ('declined', 'accepted'…). */
   my_status?: string | null
+  /** What the organiser lets the guests do. Carried on the occurrence so the
+   *  editor can show what was decided without a second request. */
+  guests_can_modify?: boolean
+  guests_can_invite?: boolean
+  guests_can_see_guests?: boolean
 }
 
 export interface CreateEventDto {
@@ -98,18 +125,62 @@ export interface ImportResult {
   errors:   string[]
 }
 
+export interface Room {
+  id:             string
+  generated_name: string
+  capacity:       number
+  /** The short name, the place and the equipment, kept apart from the composed
+   *  name: a list reads them as columns, not as one long string. */
+  name?:          string
+  floor_name?:    string
+  floor_section?: string | null
+  features?:      string[]
+  building?:      { key: string; name?: string | null } | null
+}
+
+/** A room, with the answer it would give for a proposed slot. */
+export interface RoomOffer extends Room {
+  free:     boolean
+  /** The meeting in the way — named, because "unavailable" is not actionable. */
+  held_by:  { title: string; starts_at: string; ends_at: string } | null
+}
+
+export interface RoomClash {
+  event_id:  string
+  title:     string
+  starts_at: string
+  ends_at:   string
+}
+
+export interface RoomAnswer {
+  resource_id: string
+  name:        string
+  capacity:    number
+  status:      'accepted' | 'declined'
+  clashes:     RoomClash[]
+}
+
 export interface Attendee {
   id:           string
   event_id:     string
   user_id:      string | null
-  email:        string
+  /** Set when this attendee IS a room rather than a person. Exactly one of
+   *  `resource_id` and `email` is filled — a room has no mailbox. */
+  resource_id:  string | null
+  email:        string | null
   display_name: string | null
   status:       string   // 'needs-action' | 'accepted' | 'declined' | 'tentative'
   is_organizer: boolean
+  /** Welcome, not required. Distinct from a refusal: an optional guest who
+   *  stays away has declined nothing. */
+  optional?:    boolean
   rsvp_token:   string | null
   invited_at:   string
   responded_at: string | null
   comment:      string | null
+  /** Set when a room was handed back automatically because the meeting emptied
+   *  out — as opposed to a room that refused a clash. */
+  released_at:  string | null
 }
 
 export interface AvailableSlot {
@@ -380,6 +451,16 @@ export const calendarApi = {
     return data.users ?? []
   },
 
+  /** One person as the directory publishes them — for a contact card. Absent
+   *  fields are simply absent: a profile nobody filled in answers a name and a
+   *  face, as it always did. */
+  userCard: async (userId: string): Promise<DirectoryCard | null> => {
+    try {
+      const { data } = await apiClient.get(`/users/${userId}/card`)
+      return data
+    } catch { return null }   // annuaire fermé, hors périmètre, compte parti
+  },
+
   lookupUsers: async (ids: string[]): Promise<UserBrief[]> => {
     if (!ids.length) return []
     const { data } = await apiClient.get('/users/lookup', { params: { ids: ids.join(',') } })
@@ -433,13 +514,61 @@ export const calendarApi = {
     return data
   },
 
-  inviteAttendee: async (eventId: string, dto: { email: string; display_name?: string }): Promise<{ attendee: Attendee }> => {
+  /** The host's statement that a guest is welcome but not required. Its own
+   *  call, so flipping it sends no second invitation. */
+  setAttendeeOptional: async (eventId: string, attendeeId: string, optional: boolean) => {
+    const { data } = await apiClient.patch(`/calendar/events/${eventId}/attendees/${attendeeId}`, { optional })
+    return data
+  },
+
+  /** `user_id` invites an ACCOUNT: the server resolves its address over the
+   *  internal channel, so a directory that keeps addresses private is still
+   *  usable to invite a colleague. */
+  inviteAttendee: async (eventId: string, dto: { email: string; user_id?: string; display_name?: string; optional?: boolean }): Promise<{ attendee: Attendee }> => {
     const { data } = await apiClient.post(`/calendar/events/${eventId}/attendees`, dto)
     return data
   },
 
   removeAttendee: async (eventId: string, attendeeId: string): Promise<void> => {
     await apiClient.delete(`/calendar/events/${eventId}/attendees/${attendeeId}`)
+  },
+
+  // ── Rooms ──────────────────────────────────────────────────────────────────
+  // The catalogue belongs to the organisation, not to the calendar: the module
+  // reads it from the core on our behalf, because the internal endpoint is proved
+  // with a secret a browser must never hold.
+  listRooms: async (): Promise<{ rooms: Room[] }> => {
+    const { data } = await apiClient.get('/calendar/rooms')
+    return data
+  },
+
+  /** Which rooms are free for a slot — asked BEFORE the meeting exists.
+   *  Someone composing an invitation picks the hour first and the room second;
+   *  a list that cannot say which rooms are free asks them to choose blind. */
+  roomAvailability: async (
+    from: string, to: string,
+    opts: { rrule?: string | null; timezone?: string; eventId?: string } = {},
+  ): Promise<{ rooms: RoomOffer[] }> => {
+    const { data } = await apiClient.get('/calendar/rooms/availability', {
+      params: {
+        from, to,
+        ...(opts.rrule ? { rrule: opts.rrule } : {}),
+        ...(opts.timezone ? { timezone: opts.timezone } : {}),
+        ...(opts.eventId ? { event_id: opts.eventId } : {}),
+      },
+    })
+    return data
+  },
+
+  /** Puts a room on the guest list. It ANSWERS: `accepted`, or `declined` with
+   *  the meetings that already hold it. A busy room does not fail the request. */
+  inviteRoom: async (eventId: string, resourceId: string): Promise<RoomAnswer> => {
+    const { data } = await apiClient.post(`/calendar/events/${eventId}/rooms`, { resource_id: resourceId })
+    return data
+  },
+
+  removeRoom: async (eventId: string, resourceId: string): Promise<void> => {
+    await apiClient.delete(`/calendar/events/${eventId}/rooms/${resourceId}`)
   },
 
   /** Standalone public RSVP page of an attendee (to send by e-mail). */

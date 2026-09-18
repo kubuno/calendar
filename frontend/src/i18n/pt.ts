@@ -346,4 +346,15 @@ export const pt = {
   setting_allow_working_location: "Permitir o local de trabalho",
   setting_allow_working_location_help: "Permitir que os utilizadores definam o seu local de trabalho diário (escritório, casa…), visível no calendário.",
 
+  rooms: "Salas",
+  room_search: "Procurar uma sala ou um edifício…",
+  room_free: "Livre neste horário",
+  room_held: "Ocupada por «{{title}}» ({{when}})",
+  room_busy: "Já ocupada neste horário",
+  room_none_match: "Nenhuma sala corresponde.",
+  room_capacity: "{{count}} lugares",
+  quick_title: "Adicionar um título e uma hora",
+  quick_set_time: "Definir a hora",
+  quick_more_options: "Mais opções",
+  untitled: "(Sem título)",
 }

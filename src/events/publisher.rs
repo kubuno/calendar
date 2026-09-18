@@ -82,7 +82,7 @@ pub async fn publish_invite(
     event: &Event,
     organizer_email: &str,
     organizer_name: Option<&str>,
-    attendees: &[(String, Option<String>)],
+    attendees: &[(String, Option<String>, bool)],
 ) {
     if attendees.is_empty() {
         return;
@@ -121,7 +121,7 @@ pub async fn publish_invite(
 
     let attendees_json: Vec<serde_json::Value> = attendees
         .iter()
-        .map(|(email, name)| {
+        .map(|(email, name, optional)| {
             let link = |answer: &str| {
                 tokens.get(&email.to_lowercase()).map(|t| {
                     format!("{base}/api/v1/calendar/public/rsvp/{t}/page?answer={answer}")
@@ -130,6 +130,8 @@ pub async fn publish_invite(
             json!({
                 "email": email,
                 "name":  name,
+                // Carried to the Mail module so the invitation can say it.
+                "optional": optional,
                 "rsvp":  { "yes": link("accepted"), "no": link("declined"), "maybe": link("tentative") },
             })
         })
@@ -175,4 +177,40 @@ async fn send_to_core(state: &AppState, payload: &serde_json::Value) {
         Ok(r) => tracing::warn!(status = %r.status(), "Publish event: réponse inattendue"),
         Err(e) => tracing::warn!(error = %e, "Publish event: erreur réseau"),
     }
+}
+
+/// Tell whoever hosts meetings that this event owns one, and what it is called.
+///
+/// The LINK travels, not a room id: this module has no business knowing how the
+/// other one addresses its rooms. It hands over the string it stores and the
+/// title it owns; the module that recognises the link acts on it, and every
+/// other one ignores it.
+///
+/// `owner` is `None` when the event has let the meeting go — the call was taken
+/// off it, or the event was deleted. The meeting survives (its link may have
+/// been shared); it simply stops following a title that is no longer its own.
+pub async fn publish_meeting_link(
+    state: &AppState,
+    url: &str,
+    title: &str,
+    owner: Option<Uuid>,
+) {
+    let payload = serde_json::json!({
+        "type": "Custom",
+        "payload": {
+            "event_type": "calendar.meeting_link",
+            "module_id":  "calendar",
+            "payload": {
+                "url":   url,
+                "title": title,
+                "owner": owner.map(|id| format!("calendar:{id}")),
+            }
+        }
+    });
+    send_to_core(state, &payload).await;
+}
+
+/// The `owner` reference this module answers to, if that is what this is.
+pub fn owned_event(owner_ref: &str) -> Option<Uuid> {
+    owner_ref.strip_prefix("calendar:").and_then(|id| Uuid::parse_str(id).ok())
 }

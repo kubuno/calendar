@@ -328,4 +328,15 @@ export const ru = {
   setting_allow_working_location: "Разрешить место работы",
   setting_allow_working_location_help: "Разрешить пользователям указывать ежедневное место работы (офис, дом…), отображаемое в календаре.",
 
+  rooms: "Переговорные",
+  room_search: "Поиск переговорной или здания…",
+  room_free: "Свободна в это время",
+  room_held: "Занята встречей «{{title}}» ({{when}})",
+  room_busy: "Уже занята в это время",
+  room_none_match: "Ничего не найдено.",
+  room_capacity: "мест: {{count}}",
+  quick_title: "Добавьте название и время",
+  quick_set_time: "Указать время",
+  quick_more_options: "Другие параметры",
+  untitled: "(Без названия)",
 }

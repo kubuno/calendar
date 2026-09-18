@@ -328,4 +328,15 @@ export const zh = {
   setting_allow_working_location: "允许工作地点",
   setting_allow_working_location_help: "允许用户设置每日工作地点（办公室、家中…），并显示在其日历中。",
 
+  rooms: "会议室",
+  room_search: "搜索会议室或建筑…",
+  room_free: "该时段空闲",
+  room_held: "已被“{{title}}”占用（{{when}}）",
+  room_busy: "该时段已被占用",
+  room_none_match: "没有匹配的会议室。",
+  room_capacity: "{{count}} 个座位",
+  quick_title: "添加标题和时间",
+  quick_set_time: "指定时间",
+  quick_more_options: "更多选项",
+  untitled: "（无标题）",
 }

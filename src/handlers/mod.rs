@@ -11,6 +11,7 @@ pub mod internal_events;
 pub mod mcp;
 pub mod policy;
 pub mod public;
+pub mod rooms;
 pub mod scheduling;
 pub mod time_blocks;
 pub mod weather;

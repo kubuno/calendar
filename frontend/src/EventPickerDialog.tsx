@@ -144,7 +144,7 @@ function EventPickerInner({ onClose }: { onClose: (envelope: KubunoDataEnvelope 
                         >
                           <span
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: e.color || '#4D38DB' }}
+                            style={{ backgroundColor: e.color || '#1a73e8' }}
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm text-text-primary truncate">{e.title}</span>

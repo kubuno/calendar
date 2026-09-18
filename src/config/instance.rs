@@ -354,6 +354,36 @@ pub async fn directory_user_id(
     })
 }
 
+pub async fn directory_email(
+    http: &reqwest::Client,
+    core_url: &str,
+    secret: &str,
+    user_id: uuid::Uuid,
+) -> Option<String> {
+    let url = format!("{core_url}/internal/directory/users/{user_id}");
+    let resp = http
+        .get(&url)
+        .header("X-Internal-Secret", secret)
+        .send()
+        .await
+        .map_err(|e| tracing::warn!(error = %e, "Annuaire : lecture d'une adresse"))
+        .ok()?;
+    if !resp.status().is_success() {
+        tracing::warn!(status = %resp.status(), "Annuaire : adresse refusée par le core");
+        return None;
+    }
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| tracing::warn!(error = %e, "Annuaire : réponse illisible"))
+        .ok()?;
+    body.get("email")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

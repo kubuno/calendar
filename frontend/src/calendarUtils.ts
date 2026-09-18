@@ -15,7 +15,7 @@ export function getMeetingProvider(): MeetingProvider | undefined {
   return ModuleServiceRegistry.get<MeetingProvider>('chat', 'createMeeting')
 }
 
-export const EVENT_SWATCHES = ['#4D38DB', '#1e8e3e', '#d93025', '#f9ab00', '#9334e6', '#e8710a', '#12b5cb', '#5f6368']
+export const EVENT_SWATCHES = ['#1a73e8', '#1e8e3e', '#d93025', '#f9ab00', '#9334e6', '#e8710a', '#12b5cb', '#4D38DB', '#5f6368']
 
 // Google-style single-letter view shortcuts (match the switcher menu hints).
 export const VIEW_SHORTCUTS: Record<string, ViewMode> = {
@@ -67,7 +67,7 @@ export function buildAvailabilityEvents(schedules: AppointmentSchedule[], from: 
   for (const s of schedules) {
     const rules = s.availability ?? []
     if (rules.length === 0) continue
-    const color = s.color || '#4d38db'
+    const color = s.color || '#1a73e8'
     const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate())
     const last = new Date(to.getFullYear(), to.getMonth(), to.getDate())
     while (cursor <= last) {
@@ -84,7 +84,7 @@ export function buildAvailabilityEvents(schedules: AppointmentSchedule[], from: 
           event_id: `${APPT_PREFIX}${s.id}`,
           calendar_id: s.calendar_id, owner_id: s.owner_id,
           title: s.title || 'Rendez-vous',
-          description: null, location: null,
+          description: null, location: null, url: null,
           starts_at: start.toISOString(), ends_at: end.toISOString(),
           all_day: false, is_recurring: true, rrule: null,
           status: 'confirmed', visibility: 'public', busy: false,

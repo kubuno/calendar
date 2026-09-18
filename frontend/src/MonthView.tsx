@@ -99,7 +99,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
         const cal = calMap.get(seg.ev.calendar_id)
         return {
           ev:              seg.ev,
-          color:           seg.ev.color ?? cal?.color ?? '#4D38DB',
+          color:           seg.ev.color ?? cal?.color ?? '#1a73e8',
           startCol:        seg.startCol, endCol: seg.endCol, row: seg.row,
           continuesBefore: seg.continuesBefore,
           continuesAfter:  seg.continuesAfter,
@@ -235,7 +235,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
               <div className="space-y-0.5 overflow-hidden">
                 {dayEvs.slice(0, isMobile ? 3 : 4).map(ev => {
                   const cal    = calMap.get(ev.calendar_id)
-                  const color  = ev.color ?? cal?.color ?? '#4D38DB'
+                  const color  = ev.color ?? cal?.color ?? '#1a73e8'
                   const past   = settings.dimPastEvents && toDate(ev.ends_at) < now
                   const locked = isCalendarLocked(cal)
                   // Same block style as the day/week views: solid (white text)

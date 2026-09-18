@@ -360,4 +360,15 @@ export const es = {
   setting_allow_working_location: "Permitir el lugar de trabajo",
   setting_allow_working_location_help: "Permitir que los usuarios definan su lugar de trabajo diario (oficina, casa…), visible en su calendario.",
 
+  rooms: "Salas",
+  room_search: "Buscar una sala o un edificio…",
+  room_free: "Libre en este horario",
+  room_held: "Ocupada por «{{title}}» ({{when}})",
+  room_busy: "Ya ocupada en este horario",
+  room_none_match: "Ninguna sala coincide.",
+  room_capacity: "{{count}} plazas",
+  quick_title: "Añadir un título y una hora",
+  quick_set_time: "Precisar la hora",
+  quick_more_options: "Más opciones",
+  untitled: "(Sin título)",
 }

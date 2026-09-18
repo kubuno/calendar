@@ -101,7 +101,7 @@ function toEvent(occurrence: HolidayOccurrence): EventInstance {
     // the description because that is where every view already looks for the
     // one line under a title.
     description:  occurrence.observed_from ? `${occurrence.calendar_name} — ${occurrence.observed_from}` : occurrence.calendar_name,
-    location:     null,
+    location: null, url: null,
     starts_at:    start.toISOString(),
     ends_at:      end.toISOString(),
     all_day:      true,

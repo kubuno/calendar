@@ -328,4 +328,15 @@ export const el = {
   setting_allow_working_location: "Να επιτρέπεται ο τόπος εργασίας",
   setting_allow_working_location_help: "Να επιτρέπεται στους χρήστες να ορίζουν τον καθημερινό τόπο εργασίας τους (γραφείο, σπίτι…), που εμφανίζεται στο ημερολόγιο.",
 
+  rooms: "Αίθουσες",
+  room_search: "Αναζήτηση αίθουσας ή κτιρίου…",
+  room_free: "Ελεύθερη σε αυτή την ώρα",
+  room_held: "Κατειλημμένη από «{{title}}» ({{when}})",
+  room_busy: "Ήδη κατειλημμένη σε αυτή την ώρα",
+  room_none_match: "Καμία αίθουσα δεν ταιριάζει.",
+  room_capacity: "{{count}} θέσεις",
+  quick_title: "Προσθέστε τίτλο και ώρα",
+  quick_set_time: "Ορισμός ώρας",
+  quick_more_options: "Περισσότερες επιλογές",
+  untitled: "(Χωρίς τίτλο)",
 }

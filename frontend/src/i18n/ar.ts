@@ -328,4 +328,15 @@ export const ar = {
   setting_allow_working_location: "السماح بمكان العمل",
   setting_allow_working_location_help: "السماح للمستخدمين بتحديد مكان عملهم اليومي (المكتب، المنزل…) المعروض في تقويمهم.",
 
+  rooms: "القاعات",
+  room_search: "ابحث عن قاعة أو مبنى…",
+  room_free: "متاحة في هذا الوقت",
+  room_held: "محجوزة لـ «{{title}}» ({{when}})",
+  room_busy: "محجوزة بالفعل في هذا الوقت",
+  room_none_match: "لا توجد قاعة مطابقة.",
+  room_capacity: "{{count}} مقاعد",
+  quick_title: "أضف عنوانًا ووقتًا",
+  quick_set_time: "تحديد الوقت",
+  quick_more_options: "خيارات أخرى",
+  untitled: "(بدون عنوان)",
 }

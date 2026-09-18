@@ -328,4 +328,15 @@ export const ja = {
   setting_allow_working_location: "勤務場所を許可",
   setting_allow_working_location_help: "ユーザーが日々の勤務場所（オフィス、自宅など）を設定できるようにし、カレンダーに表示します。",
 
+  rooms: "会議室",
+  room_search: "会議室または建物を検索…",
+  room_free: "この時間帯は空いています",
+  room_held: "「{{title}}」が使用中（{{when}}）",
+  room_busy: "この時間帯はすでに使用中です",
+  room_none_match: "該当する会議室はありません。",
+  room_capacity: "{{count}} 席",
+  quick_title: "タイトルと時刻を追加",
+  quick_set_time: "時刻を指定",
+  quick_more_options: "その他のオプション",
+  untitled: "（タイトルなし）",
 }

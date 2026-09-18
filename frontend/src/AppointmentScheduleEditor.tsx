@@ -208,7 +208,7 @@ export default function AppointmentSchedulePage() {
       {/* ── Week availability preview ── */}
       {!isMobile && (
         <div className="flex flex-1 min-w-0 bg-white ml-1 rounded-xl overflow-hidden">
-          {draft && <AvailabilityPreview weekly={draft.weekly} color={'#4d38db'} t={t} />}
+          {draft && <AvailabilityPreview weekly={draft.weekly} color={'#1a73e8'} t={t} />}
         </div>
       )}
     </div>

@@ -26,6 +26,7 @@ import {
 } from './calendarSettings'
 import { buildRrule, presetFromRrule, describeRrule } from './rrule'
 import { copyKubunoData, eventEnvelope, openLabelPicker } from './kubunoData'
+import { saveEventLabels } from './labels'
 import RecurrenceCustomDialog from './RecurrenceCustomDialog'
 import { MonoText } from './MonoText'
 import {
@@ -33,10 +34,28 @@ import {
   moonPhaseName, principalPhaseOfDay, principalPhaseName,
 } from './moon'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
-import { APPT_PREFIX, buildAvailabilityEvents, isCalendarLocked, keepPerSettings, VIEW_SHORTCUTS, type CtxMenuState } from './calendarUtils'
+import { APPT_PREFIX, buildAvailabilityEvents, isCalendarLocked, keepPerSettings, VIEW_SHORTCUTS, writableCalendars, type CtxMenuState } from './calendarUtils'
 import { HOLIDAY_EVENT_PREFIX, useHolidayEvents } from './holidays'
-import { CreateEventModal, EditEventModal } from './EventEditor'
-import { EventDetail } from './EventDetail'
+import { CreateEventModal, EditEventModal, type QuickHandover } from './EventEditor'
+import { EventCard, type QuickAnchor } from './EventCard'
+
+/** Identifies the provisional block so nothing mistakes it for a saved event. */
+const GHOST_ID = '__draft__'
+
+/**
+ * An instant for the grid to place, from a local date.
+ *
+ * A whole day is a DATE, not an instant: pinned through `toISOString()` a local
+ * midnight in Paris becomes 22:00 the day before, and the block is drawn on the
+ * wrong day — a banner that starts on Friday for a Saturday chosen by the
+ * reader. All-day values are therefore pinned to UTC midnight of the local date,
+ * exactly as the editor stores them.
+ */
+function instantOf(d: Date, allDay: boolean, endOfDay = false): string {
+  if (!allDay) return d.toISOString()
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${iso}T${endOfDay ? '23:59:59' : '00:00:00'}.000Z`
+}
 import { DayView } from './DayView'
 import { WeekView } from './WeekView'
 import { MonthView } from './MonthView'
@@ -110,6 +129,56 @@ export default function CalendarApp() {
   const defaultViewApplied = useRef(false)
 
   const [createDay,     setCreateDay]     = useState<Date | null>(null)
+  const [createDraft,   setCreateDraft]   = useState<QuickHandover | null>(null)
+
+  /**
+   * Creating an event starts small: a card where the pointer went down, and a
+   * provisional block in the grid. The full editor is one click further, for the
+   * events that need it.
+   */
+  const [quick, setQuick] = useState<
+    { start: Date; end: Date; allDay: boolean; anchor: QuickAnchor } | null
+  >(null)
+  const [quickDraft, setQuickDraft] = useState<{ title: string; start: Date; end: Date; allDay: boolean } | null>(null)
+  const [quickSaving, setQuickSaving] = useState(false)
+
+  // Where the card hangs. The views report WHEN a slot was chosen, not where on
+  // screen — and threading a position through three of them would change three
+  // signatures for one piece of chrome. The last pointer position IS the place
+  // that was clicked, so it is read from the window instead.
+  const pointer = useRef<QuickAnchor>({ x: 0, y: 0 })
+  useEffect(() => {
+    const h = (e: PointerEvent) => { pointer.current = { x: e.clientX, y: e.clientY } }
+    window.addEventListener('pointerdown', h, true)
+    return () => window.removeEventListener('pointerdown', h, true)
+  }, [])
+
+  /**
+   * The slot a bare day click stands for.
+   *
+   * NOT a whole day. A whole-day event is drawn as a BANNER: it is laid out
+   * above the day lists, in a band that reserves its height in every cell of the
+   * week — so a provisional one pushed the other days' events down and never
+   * appeared among the events of the day it belonged to. Both symptoms, one
+   * cause. A click on a day means "an event that day", at the same default hour
+   * and duration the editor would have used, so the provisional block is an
+   * ordinary chip in the ordinary list.
+   */
+  const defaultSlot = useCallback((day: Date): [Date, Date, boolean] => {
+    const start = new Date(day)
+    start.setHours(9, 0, 0, 0)
+    let minutes = settings.defaultDurationMin
+    if (settings.speedyMeetings) minutes -= minutes <= 30 ? 5 : 10
+    return [start, new Date(start.getTime() + Math.max(5, minutes) * 60_000), false]
+  }, [settings.defaultDurationMin, settings.speedyMeetings])
+
+  const openQuick = useCallback((start: Date, end: Date, allDay: boolean) => {
+    setQuick({ start, end, allDay, anchor: pointer.current })
+    setQuickDraft({ title: '', start, end, allDay })
+  }, [])
+
+  const closeQuick = useCallback(() => { setQuick(null); setQuickDraft(null) }, [])
+
   // Preselected range end (creation by dragging on the grid).
   const [createEnd,     setCreateEnd]     = useState<Date | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventInstance | null>(null)
@@ -118,9 +187,8 @@ export default function CalendarApp() {
 
   // Creation by dragging on the day/week views: opens the prefilled editor.
   const handleRangeCreate = useCallback((start: Date, end: Date) => {
-    setCreateEnd(end)
-    setCreateDay(start)
-  }, [])
+    openQuick(start, end, false)
+  }, [openQuick])
 
   // Open the creation modal when an external trigger (e.g. sidebar) requests it
   useEffect(() => {
@@ -236,6 +304,10 @@ export default function CalendarApp() {
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return
       // An open editor already captures the keyboard (autofocused title field);
       // as a safety net, also ignore while the create/edit modal is mounted.
+      // Escape gives up on the event being composed: the card closes and the
+      // provisional block leaves the grid with it. Handled before the guard
+      // below, since the quick card is not a modal.
+      if (e.key === 'Escape' && quick) { e.preventDefault(); closeQuick(); return }
       if (createDay !== null || editingEvent) return
       const k = e.key.toLowerCase()
       const step = (dir: 1 | -1) => {
@@ -259,6 +331,11 @@ export default function CalendarApp() {
       else if (k === 't') { e.preventDefault(); setCurrentDate(new Date()) }
       else if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
+      // Two ways to create, and they are not the same gesture — the reference
+      // keeps them apart for a reason: `c` is for the event you already know is
+      // complicated (straight to the editor), `Maj+C` for the one that is a
+      // title and an hour (the quick card, anchored where the pointer last was).
+      else if (k === 'c' && e.shiftKey) { e.preventDefault(); openQuick(...defaultSlot(currentDate)) }
       else if (k === 'c') { e.preventDefault(); setCreateDay(currentDate) }
       // View shortcuts: D/W/M/Y day-week-month-year, A schedule (agenda),
       // X custom N-day. The 1-5 digits stay as aliases.
@@ -272,7 +349,8 @@ export default function CalendarApp() {
     return () => window.removeEventListener('keydown', onKey)
   }, [viewMode, currentDate, setCurrentDate, setViewMode, createDay, editingEvent, // eslint-disable-line react-hooks/exhaustive-deps
       settings.keyboardShortcuts, settings.customViewDays,
-      selectedEvent, ctxMenu, pendingDelete, pendingMove, requestDelete, calData])
+      selectedEvent, ctxMenu, pendingDelete, pendingMove, requestDelete, calData,
+      quick, closeQuick, openQuick, defaultSlot])
 
   const rangeStart = useMemo(() => {
     if (viewMode === 'day')      return startOfDay(currentDate)
@@ -337,9 +415,40 @@ export default function CalendarApp() {
     [holidayEvents, hiddenCalendarIds],
   )
 
+  /** The provisional block, shaped like any other event so the views need to
+   *  know nothing about it — it appears where the click landed and follows the
+   *  card until the card is closed. */
+  const ghost = useMemo<EventInstance[]>(() => {
+    if (!quickDraft) return []
+    return [{
+      id: GHOST_ID, event_id: GHOST_ID, calendar_id: '', owner_id: '',
+      title: quickDraft.title.trim() || t('untitled', { defaultValue: '(Sans titre)' }),
+      description: null, location: null, url: null,
+      starts_at: instantOf(quickDraft.start, quickDraft.allDay),
+      ends_at:   instantOf(quickDraft.end, quickDraft.allDay, true),
+      all_day: quickDraft.allDay, is_recurring: false, rrule: null,
+      status: 'confirmed', visibility: 'public', ical_uid: '', etag: '',
+      color: null, reminders: [],
+    } as EventInstance]
+  }, [quickDraft, t])
+
+  /** Only calendars this account may write to: offering the others would be
+   *  offering a save that cannot happen. */
+  const writable = useMemo(() => writableCalendars(calendars), [calendars])
+
+  // Four sources, one day. Each list is ordered within itself, but appending
+  // them one after another is not an order: every booking slot landed after
+  // every event, so a 09:00 slot sat below a 16:00 meeting in the same cell.
+  // Sorted here, once, so no view has to remember to do it — and so the views
+  // that lay events out side by side are handed them in the order they assume.
+  // All-day first, then by the instant: an all-day event frames the day rather
+  // than taking a place in it.
   const events2 = useMemo(
-    () => [...events, ...availabilityEvents, ...visibleHolidays],
-    [events, availabilityEvents, visibleHolidays],
+    () => [...events, ...availabilityEvents, ...visibleHolidays, ...ghost]
+      .sort((a, b) => (a.all_day === b.all_day
+        ? toDate(a.starts_at).getTime() - toDate(b.starts_at).getTime()
+        : a.all_day ? -1 : 1)),
+    [events, availabilityEvents, visibleHolidays, ghost],
   )
 
   // Clicking an availability block opens its schedule editor rather than the
@@ -453,7 +562,7 @@ export default function CalendarApp() {
           )}
           {viewMode === 'month' && (
             <MonthView month={currentDate} events={events2} calendars={calendars}
-              onDayClick={setCreateDay}
+              onDayClick={day => openQuick(...defaultSlot(day))}
               onDayOpen={(day) => { setCurrentDate(day); setViewMode('day') }}
               onEventClick={handleEventClick}
               onEventContextMenu={handleEventContextMenu}
@@ -549,14 +658,77 @@ export default function CalendarApp() {
       )}
 
       {/* Modals */}
-      {createDay !== null && (
-        <CreateEventModal initialDate={createDay} initialEnd={createEnd} calendars={calendars}
-          onClose={() => { setCreateDay(null); setCreateEnd(null) }} />
+      {quick && (
+        <EventCard
+          start={quick.start}
+          end={quick.end}
+          allDay={quick.allDay}
+          anchor={quick.anchor}
+          calendars={writable}
+          defaultCalendarId={writable[0]?.id ?? ''}
+          onDraftChange={setQuickDraft}
+          onClose={closeQuick}
+          onMore={d => {
+            // Everything typed travels to the editor; nothing is retyped.
+            setCreateDraft({
+              title: d.title, allDay: d.allDay, guests: d.guests,
+              location: d.location, url: d.url, description: d.description, calendarId: d.calendarId,
+              labelIds: d.labelIds,
+            })
+            setCreateEnd(d.end)
+            setCreateDay(d.start)
+            closeQuick()
+          }}
+          saving={quickSaving}
+          onSave={async d => {
+            setQuickSaving(true)
+            try {
+              const created = await calendarApi.createEvent({
+                calendar_id: d.calendarId,
+                title:       d.title || t('untitled', { defaultValue: '(Sans titre)' }),
+                description: d.description || undefined,
+                location:    d.location || undefined,
+                url:         d.url || undefined,
+                starts_at:   instantOf(d.start, d.allDay),
+                ends_at:     instantOf(d.end, d.allDay, true),
+                all_day:     d.allDay,
+                // The account travels with the address: a guest picked from the
+                // people list is invited BY account, which is how a directory
+                // that keeps addresses private can still invite a colleague.
+                ...(d.guests.length ? { attendees: d.guests.map(g => ({
+                  email: g.email, user_id: g.user_id, display_name: g.display_name, optional: g.optional,
+                })) } : {}),
+              })
+              // The labels are attached AFTER, because a link needs something
+              // to point at: until this moment the event had no identity. A
+              // refusal here loses the labels, not the event.
+              if (d.labelIds.length) {
+                try { await saveEventLabels(created.event, d.labelIds) } catch { /* l'évènement est créé */ }
+                qc.invalidateQueries({ queryKey: ['event-labels'] })
+              }
+              qc.invalidateQueries({ queryKey: ['calendar-events'] })
+              closeQuick()
+            } finally { setQuickSaving(false) }
+          }}
+        />
       )}
+      {createDay !== null && (
+        <CreateEventModal initialDate={createDay} initialEnd={createEnd} initialDraft={createDraft}
+          calendars={calendars}
+          onClose={() => { setCreateDay(null); setCreateEnd(null); setCreateDraft(null) }} />
+      )}
+      {/* An event that exists gets the SAME card as one being created — filled,
+          and carrying what only an existing event can offer. */}
       {selectedEvent && !editingEvent && (
-        <EventDetail event={selectedEvent} calendars={calendars}
+        <EventCard
+          event={selectedEvent}
+          start={toDate(selectedEvent.starts_at)}
+          end={toDate(selectedEvent.ends_at)}
+          allDay={selectedEvent.all_day}
+          anchor={pointer.current}
+          calendars={writable}
+          defaultCalendarId={selectedEvent.calendar_id}
           onClose={() => setSelectedEvent(null)}
-          onDelete={() => setSelectedEvent(null)}
           onEdit={() => { setEditingEvent(selectedEvent); setSelectedEvent(null) }}
         />
       )}

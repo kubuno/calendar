@@ -522,10 +522,15 @@ subscribed = [
     "ContactUpdated",
     # RSVP replies relayed by the Mail module (attendee accepted / declined / …).
     "mail.invite_reply",
+    # A meeting attached to an event, renamed where it lives: the event follows.
+    "chat.meeting_renamed",
 ]
 publishes = [
     "EventCreated",
     # Meeting invitations / cancellations, consumed by the Mail module to send
     # the invitation e-mails (module→module data channel, no user push).
     "calendar.invite",
+    # "this event owns that call, and it is called X" — whoever hosts meetings
+    # recognises its own link and keeps the two titles the same.
+    "calendar.meeting_link",
 ]

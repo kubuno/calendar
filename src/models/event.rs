@@ -32,9 +32,21 @@ pub struct Event {
     pub linked_note_id:   Option<Uuid>,
     pub linked_task_ids:  Vec<Uuid>,
     pub meeting_duration_minutes: Option<i32>,
+    /// What the organiser lets the guests do — see migration `000012`. Three
+    /// separate decisions rather than one "level": they are not ordered, and a
+    /// meeting whose guests may invite but not see each other is a real one.
+    #[serde(default)]
+    pub guests_can_modify:     bool,
+    #[serde(default = "yes")]
+    pub guests_can_invite:     bool,
+    #[serde(default = "yes")]
+    pub guests_can_see_guests: bool,
     pub created_at:       DateTime<Utc>,
     pub updated_at:       DateTime<Utc>,
 }
+
+/// The permissive side of the two defaults, spelled once.
+fn yes() -> bool { true }
 
 /// Represents one occurrence of an event (recurring or not).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +58,7 @@ pub struct EventInstance {
     pub title:        String,
     pub description:  Option<String>,
     pub location:     Option<String>,
+    pub url:          Option<String>,
     pub starts_at:    DateTime<Utc>,
     pub ends_at:      DateTime<Utc>,
     pub all_day:      bool,
@@ -64,6 +77,16 @@ pub struct EventInstance {
     /// Lets the client honour the "show declined events" display preference.
     #[serde(default)]
     pub my_status:    Option<String>,
+    /// What the organiser lets the guests do. Carried on the occurrence because
+    /// that is what a client holds when it draws the event — asking for the
+    /// master row just to know whether a checkbox is ticked would be a request
+    /// per event.
+    #[serde(default)]
+    pub guests_can_modify:     bool,
+    #[serde(default = "yes")]
+    pub guests_can_invite:     bool,
+    #[serde(default = "yes")]
+    pub guests_can_see_guests: bool,
 }
 
 #[derive(Debug, Deserialize, validator::Validate)]
@@ -92,6 +115,11 @@ pub struct CreateEventDto {
     /// instance allows it — asks the Mail module to send the invitations.
     #[serde(default)]
     pub attendees:    Option<Vec<crate::models::attendee::AttendeeInputDto>>,
+    /// Absent keeps the documented default: guests may invite and see one
+    /// another, and may not rewrite the event.
+    pub guests_can_modify:     Option<bool>,
+    pub guests_can_invite:     Option<bool>,
+    pub guests_can_see_guests: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,6 +145,10 @@ pub struct UpdateEventDto {
     pub status:       Option<String>,
     pub visibility:   Option<String>,
     pub busy:         Option<bool>,
+    pub guests_can_modify:     Option<bool>,
+    pub guests_can_invite:     Option<bool>,
+    pub guests_can_see_guests: Option<bool>,
+
 }
 
 #[derive(Debug, Deserialize)]
