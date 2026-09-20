@@ -5,11 +5,11 @@ use kubuno_calendar::{
     router,
     services::{reminder_service::ReminderService, weather_service::WeatherService},
     state::AppState,
+    SCHEMA,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::postgres::PgPoolOptions;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -161,36 +161,30 @@ async fn main() -> Result<()> {
     // Security: forbid any process execution on the host (see kubuno-seccomp).
     kubuno_seccomp::lock_down_process_execution("calendar");
 
-    // Pool PostgreSQL
-    let opts = settings.database.connect_options()?;
-    let pool = PgPoolOptions::new()
-        .max_connections(settings.database.max_connections)
-        .min_connections(settings.database.min_connections)
-        .acquire_timeout(settings.database.connect_timeout)
-        .connect_with(opts)
+    // Database pool. The engine (PostgreSQL / MySQL / SQLite) is the
+    // administrator's choice in `[database] engine`, read at run time; `connect`
+    // also creates the module's namespace (PostgreSQL schema, MySQL database, or
+    // the ATTACHed SQLite file).
+    let pool = kubuno_db::connect(&settings.database, SCHEMA)
         .await
-        .context("Connexion PostgreSQL")?;
+        .context("Connexion à la base de données")?;
 
-    // Migrations
+    // Migrations: the set for the pool's engine, kept inside the module's own
+    // namespace (the schema PostgreSQL already used through its search_path).
     if settings.database.run_migrations {
-        sqlx::query("CREATE SCHEMA IF NOT EXISTS calendar")
-            .execute(&pool)
-            .await
-            .context("Création du schéma calendar")?;
+        kubuno_db::migrations!(
+            "./migrations/postgres",
+            "./migrations/mysql",
+            "./migrations/sqlite",
+        )
+        .run(&pool, SCHEMA)
+        .await
+        .context("Migrations")?;
 
-        let migration_opts = settings.database.connect_options()?
-            .options([("search_path", "calendar,public")]);
-        let migration_pool = PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(settings.database.connect_timeout)
-            .connect_with(migration_opts)
+        // Durable event outbox (no-op on PostgreSQL, which uses LISTEN/NOTIFY).
+        kubuno_db::events::ensure_outbox(&pool, SCHEMA)
             .await
-            .context("Pool de migration")?;
-
-        sqlx::migrate!("./migrations")
-            .run(&migration_pool)
-            .await
-            .context("Migrations")?;
+            .context("Initialisation de l'outbox d'événements")?;
     }
 
     let http = Client::new();

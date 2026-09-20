@@ -24,8 +24,8 @@
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc, Weekday};
 use chrono_tz::Tz;
+use kubuno_db::{params, DbPool};
 use serde::Serialize;
-use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -101,7 +101,7 @@ pub struct RoomStatsService;
 
 impl RoomStatsService {
     pub async fn compute(
-        db: &PgPool,
+        db: &DbPool,
         http: &reqwest::Client,
         core_url: &str,
         secret: &str,
@@ -112,29 +112,29 @@ impl RoomStatsService {
         // Every meeting in the window that has a room on its guest list. A
         // recurring one is taken whatever its own start, because its occurrences
         // may well fall inside a window its first date does not.
-        let rows: Vec<(Uuid, String, Option<DateTime<Utc>>, Uuid)> = sqlx::query_as(
-            r#"
+        // Placeholders must ascend in text order (the portable rewriter refuses
+        // `$2 ... $1`), so `to` takes $1 and `from` takes $2.
+        let rows: Vec<(Uuid, String, Option<DateTime<Utc>>, Uuid)> = db
+            .fetch_all_as(
+                r#"
             SELECT a.resource_id, a.status, a.released_at, e.id
               FROM calendar.attendees a
               JOIN calendar.events e ON e.id = a.event_id
              WHERE a.resource_id IS NOT NULL
                AND e.status <> 'cancelled'
-               AND (e.rrule IS NOT NULL OR (e.starts_at < $2 AND e.ends_at > $1))
+               AND (e.rrule IS NOT NULL OR (e.starts_at < $1 AND e.ends_at > $2))
             "#,
-        )
-        .bind(from)
-        .bind(to)
-        .fetch_all(db)
-        .await?;
+                params![to, from],
+            )
+            .await?;
 
         let mut events: HashMap<Uuid, Event> = HashMap::new();
         for (_, _, _, event_id) in &rows {
             if events.contains_key(event_id) {
                 continue;
             }
-            if let Some(e) = sqlx::query_as::<_, Event>("SELECT * FROM calendar.events WHERE id = $1")
-                .bind(event_id)
-                .fetch_optional(db)
+            if let Some(e) = db
+                .fetch_optional_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![*event_id])
                 .await?
             {
                 events.insert(*event_id, e);

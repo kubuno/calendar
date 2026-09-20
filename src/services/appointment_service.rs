@@ -1,6 +1,6 @@
 use chrono::{DateTime, Datelike, Duration, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
-use sqlx::PgPool;
+use kubuno_db::{params, DbPool};
 use uuid::Uuid;
 
 use crate::{
@@ -13,6 +13,7 @@ use crate::{
         event::CreateEventDto,
     },
     services::{event_service::EventService, recurrence_service::RecurrenceService},
+    sync,
 };
 
 pub struct AppointmentService;
@@ -20,41 +21,41 @@ pub struct AppointmentService;
 impl AppointmentService {
     // ── CRUD (owner) ────────────────────────────────────────────────────────
 
-    pub async fn list(owner_id: Uuid, db: &PgPool) -> Result<Vec<AppointmentSchedule>> {
-        let rows = sqlx::query_as::<_, AppointmentSchedule>(
-            "SELECT * FROM calendar.appointment_schedules WHERE owner_id = $1 ORDER BY created_at DESC",
-        )
-        .bind(owner_id)
-        .fetch_all(db)
-        .await?;
+    pub async fn list(owner_id: Uuid, db: &DbPool) -> Result<Vec<AppointmentSchedule>> {
+        let rows = db
+            .fetch_all_as::<AppointmentSchedule>(
+                "SELECT * FROM calendar.appointment_schedules WHERE owner_id = $1 ORDER BY created_at DESC",
+                params![owner_id],
+            )
+            .await?;
         Ok(rows)
     }
 
-    pub async fn get_with_rules(id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<ScheduleWithRules> {
+    pub async fn get_with_rules(id: Uuid, owner_id: Uuid, db: &DbPool) -> Result<ScheduleWithRules> {
         let schedule = Self::get_owned(id, owner_id, db).await?;
         let availability = Self::load_rules(id, db).await?;
         Ok(ScheduleWithRules { schedule, availability })
     }
 
-    async fn get_owned(id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<AppointmentSchedule> {
-        sqlx::query_as::<_, AppointmentSchedule>(
+    async fn get_owned(id: Uuid, owner_id: Uuid, db: &DbPool) -> Result<AppointmentSchedule> {
+        db.fetch_optional_as::<AppointmentSchedule>(
             "SELECT * FROM calendar.appointment_schedules WHERE id = $1 AND owner_id = $2",
+            params![id, owner_id],
         )
-        .bind(id)
-        .bind(owner_id)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound(format!("Planning de rendez-vous {id}")))
     }
 
-    pub async fn load_rules(schedule_id: Uuid, db: &PgPool) -> Result<Vec<AppointmentAvailability>> {
-        let rows = sqlx::query_as::<_, AppointmentAvailability>(
-            "SELECT * FROM calendar.appointment_availability WHERE schedule_id = $1
-             ORDER BY weekday NULLS LAST, specific_date NULLS LAST, start_minute",
-        )
-        .bind(schedule_id)
-        .fetch_all(db)
-        .await?;
+    pub async fn load_rules(schedule_id: Uuid, db: &DbPool) -> Result<Vec<AppointmentAvailability>> {
+        // `NULLS LAST` is not portable (MySQL rejects it); `(col IS NULL)` sorts
+        // false(0) before true(1), i.e. non-null rows first, on all three engines.
+        let rows = db
+            .fetch_all_as::<AppointmentAvailability>(
+                "SELECT * FROM calendar.appointment_availability WHERE schedule_id = $1
+                 ORDER BY (weekday IS NULL), weekday, (specific_date IS NULL), specific_date, start_minute",
+                params![schedule_id],
+            )
+            .await?;
         Ok(rows)
     }
 
@@ -63,16 +64,15 @@ impl AppointmentService {
         owner_id: Uuid,
         id: Option<Uuid>,
         dto: SaveScheduleDto,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<ScheduleWithRules> {
         // The target calendar must belong to the owner.
-        let owns: Option<(Uuid,)> = sqlx::query_as(
-            "SELECT id FROM calendar.calendars WHERE id = $1 AND owner_id = $2",
-        )
-        .bind(dto.calendar_id)
-        .bind(owner_id)
-        .fetch_optional(db)
-        .await?;
+        let owns: Option<Uuid> = db
+            .fetch_optional_scalar(
+                "SELECT id FROM calendar.calendars WHERE id = $1 AND owner_id = $2",
+                params![dto.calendar_id, owner_id],
+            )
+            .await?;
         if owns.is_none() {
             return Err(CalendarError::Validation("Agenda cible introuvable".into()));
         }
@@ -88,93 +88,100 @@ impl AppointmentService {
 
         let mut tx = db.begin().await?;
 
-        let schedule = if let Some(id) = id {
+        let schedule_id = if let Some(id) = id {
             // Ensure ownership before updating.
             let _ = Self::get_owned(id, owner_id, db).await?;
-            sqlx::query_as::<_, AppointmentSchedule>(
+            // Placeholders ascend in text order, so the SET list takes $1.. and
+            // the WHERE keys come last.
+            tx.execute(
                 r#"
                 UPDATE calendar.appointment_schedules SET
-                    calendar_id = $2, title = $3, description = $4, color = $5,
-                    duration_minutes = $6, buffer_minutes = $7, max_per_day = $8, timezone = $9,
-                    window_type = $10, window_max_days = $11, window_min_hours = $12,
-                    window_start_date = $13, window_end_date = $14,
-                    location_type = $15, location_details = $16, guests_can_invite = $17,
-                    host_name = $18, host_avatar_url = $19, form_fields = $20,
-                    calendar_invite = $21, email_reminders = $22
-                WHERE id = $1 AND owner_id = $23
-                RETURNING *
+                    calendar_id = $1, title = $2, description = $3, color = $4,
+                    duration_minutes = $5, buffer_minutes = $6, max_per_day = $7, timezone = $8,
+                    window_type = $9, window_max_days = $10, window_min_hours = $11,
+                    window_start_date = $12, window_end_date = $13,
+                    location_type = $14, location_details = $15, guests_can_invite = $16,
+                    host_name = $17, host_avatar_url = $18, form_fields = $19,
+                    calendar_invite = $20, email_reminders = $21
+                WHERE id = $22 AND owner_id = $23
                 "#,
+                params![
+                    dto.calendar_id, title, dto.description, dto.color,
+                    dto.duration_minutes, dto.buffer_minutes, dto.max_per_day, timezone,
+                    window_type, dto.window_max_days, dto.window_min_hours,
+                    dto.window_start_date, dto.window_end_date,
+                    location_type, dto.location_details, guests_can_invite,
+                    dto.host_name, dto.host_avatar_url, form_fields,
+                    calendar_invite, email_reminders,
+                    id, owner_id
+                ],
             )
-            .bind(id)
-            .bind(dto.calendar_id).bind(&title).bind(&dto.description).bind(&dto.color)
-            .bind(dto.duration_minutes).bind(dto.buffer_minutes).bind(dto.max_per_day).bind(&timezone)
-            .bind(&window_type).bind(dto.window_max_days).bind(dto.window_min_hours)
-            .bind(dto.window_start_date).bind(dto.window_end_date)
-            .bind(&location_type).bind(&dto.location_details).bind(guests_can_invite)
-            .bind(&dto.host_name).bind(&dto.host_avatar_url).bind(&form_fields)
-            .bind(calendar_invite).bind(&email_reminders)
-            .bind(owner_id)
-            .fetch_one(&mut *tx)
-            .await?
+            .await?;
+            id
         } else {
-            sqlx::query_as::<_, AppointmentSchedule>(
+            let sid = kubuno_db::new_id();
+            let token = sync::new_tag();
+            tx.execute(
                 r#"
                 INSERT INTO calendar.appointment_schedules
-                    (owner_id, calendar_id, title, description, color, duration_minutes,
+                    (id, owner_id, calendar_id, title, description, color, duration_minutes,
                      buffer_minutes, max_per_day, timezone, window_type, window_max_days,
                      window_min_hours, window_start_date, window_end_date, location_type,
                      location_details, guests_can_invite, host_name, host_avatar_url,
-                     form_fields, calendar_invite, email_reminders)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-                RETURNING *
+                     form_fields, calendar_invite, email_reminders, public_token)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
                 "#,
+                params![
+                    sid, owner_id, dto.calendar_id, title, dto.description, dto.color, dto.duration_minutes,
+                    dto.buffer_minutes, dto.max_per_day, timezone, window_type, dto.window_max_days,
+                    dto.window_min_hours, dto.window_start_date, dto.window_end_date, location_type,
+                    dto.location_details, guests_can_invite, dto.host_name, dto.host_avatar_url,
+                    form_fields, calendar_invite, email_reminders, token
+                ],
             )
-            .bind(owner_id)
-            .bind(dto.calendar_id).bind(&title).bind(&dto.description).bind(&dto.color)
-            .bind(dto.duration_minutes).bind(dto.buffer_minutes).bind(dto.max_per_day).bind(&timezone)
-            .bind(&window_type).bind(dto.window_max_days).bind(dto.window_min_hours)
-            .bind(dto.window_start_date).bind(dto.window_end_date)
-            .bind(&location_type).bind(&dto.location_details).bind(guests_can_invite)
-            .bind(&dto.host_name).bind(&dto.host_avatar_url).bind(&form_fields)
-            .bind(calendar_invite).bind(&email_reminders)
-            .fetch_one(&mut *tx)
-            .await?
+            .await?;
+            sid
         };
 
         // Replace availability rules wholesale.
-        sqlx::query("DELETE FROM calendar.appointment_availability WHERE schedule_id = $1")
-            .bind(schedule.id)
-            .execute(&mut *tx)
-            .await?;
+        tx.execute(
+            "DELETE FROM calendar.appointment_availability WHERE schedule_id = $1",
+            params![schedule_id],
+        )
+        .await?;
         for rule in &dto.availability {
-            sqlx::query(
+            tx.execute(
                 "INSERT INTO calendar.appointment_availability
-                    (schedule_id, weekday, specific_date, start_minute, end_minute)
-                 VALUES ($1, $2, $3, $4, $5)",
+                    (id, schedule_id, weekday, specific_date, start_minute, end_minute)
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+                params![
+                    kubuno_db::new_id(), schedule_id, rule.weekday, rule.specific_date,
+                    rule.start_minute, rule.end_minute
+                ],
             )
-            .bind(schedule.id)
-            .bind(rule.weekday)
-            .bind(rule.specific_date)
-            .bind(rule.start_minute)
-            .bind(rule.end_minute)
-            .execute(&mut *tx)
             .await?;
         }
 
         tx.commit().await?;
+
+        let schedule = db
+            .fetch_one_as::<AppointmentSchedule>(
+                "SELECT * FROM calendar.appointment_schedules WHERE id = $1",
+                params![schedule_id],
+            )
+            .await?;
         let availability = Self::load_rules(schedule.id, db).await?;
         Ok(ScheduleWithRules { schedule, availability })
     }
 
-    pub async fn delete(id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<()> {
-        let res = sqlx::query(
-            "DELETE FROM calendar.appointment_schedules WHERE id = $1 AND owner_id = $2",
-        )
-        .bind(id)
-        .bind(owner_id)
-        .execute(db)
-        .await?;
-        if res.rows_affected() == 0 {
+    pub async fn delete(id: Uuid, owner_id: Uuid, db: &DbPool) -> Result<()> {
+        let affected = db
+            .execute(
+                "DELETE FROM calendar.appointment_schedules WHERE id = $1 AND owner_id = $2",
+                params![id, owner_id],
+            )
+            .await?;
+        if affected == 0 {
             return Err(CalendarError::NotFound(format!("Planning de rendez-vous {id}")));
         }
         Ok(())
@@ -182,12 +189,11 @@ impl AppointmentService {
 
     // ── Public read ───────────────────────────────────────────────────────────
 
-    pub async fn get_by_token(token: &str, db: &PgPool) -> Result<AppointmentSchedule> {
-        sqlx::query_as::<_, AppointmentSchedule>(
+    pub async fn get_by_token(token: &str, db: &DbPool) -> Result<AppointmentSchedule> {
+        db.fetch_optional_as::<AppointmentSchedule>(
             "SELECT * FROM calendar.appointment_schedules WHERE public_token = $1",
+            params![token],
         )
-        .bind(token)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound("Planning de rendez-vous".into()))
     }
@@ -219,7 +225,7 @@ impl AppointmentService {
         rules: &[AppointmentAvailability],
         from: DateTime<Utc>,
         until: DateTime<Utc>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<Slot>> {
         let tz: Tz = schedule.timezone.parse().unwrap_or(chrono_tz::UTC);
         let now = Utc::now();
@@ -324,23 +330,21 @@ impl AppointmentService {
         schedule_id: Uuid,
         from: DateTime<Utc>,
         until: DateTime<Utc>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<(DateTime<Utc>, DateTime<Utc>)>> {
-        let events: Vec<crate::models::event::Event> = sqlx::query_as(
-            r#"
-            SELECT e.* FROM calendar.events e
-            WHERE e.owner_id = $1 AND e.busy = TRUE AND e.status != 'cancelled'
-              AND (
-                    (e.rrule IS NULL AND e.starts_at < $3 AND e.ends_at > $2)
-                 OR (e.rrule IS NOT NULL AND e.starts_at < $3)
-              )
-            "#,
-        )
-        .bind(owner_id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+        let events: Vec<crate::models::event::Event> = db
+            .fetch_all_as(
+                r#"
+                SELECT e.* FROM calendar.events e
+                WHERE e.owner_id = $1 AND e.busy = TRUE AND e.status != 'cancelled'
+                  AND (
+                        (e.rrule IS NULL AND e.starts_at < $2 AND e.ends_at > $3)
+                     OR (e.rrule IS NOT NULL AND e.starts_at < $4)
+                  )
+                "#,
+                params![owner_id, until, from, until],
+            )
+            .await?;
 
         let mut busy: Vec<(DateTime<Utc>, DateTime<Utc>)> = Vec::new();
         for e in &events {
@@ -353,15 +357,13 @@ impl AppointmentService {
             }
         }
 
-        let booked: Vec<(DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT starts_at, ends_at FROM calendar.appointment_bookings
-             WHERE schedule_id = $1 AND status = 'confirmed' AND starts_at < $3 AND ends_at > $2",
-        )
-        .bind(schedule_id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+        let booked: Vec<(DateTime<Utc>, DateTime<Utc>)> = db
+            .fetch_all_as(
+                "SELECT starts_at, ends_at FROM calendar.appointment_bookings
+                 WHERE schedule_id = $1 AND status = 'confirmed' AND starts_at < $2 AND ends_at > $3",
+                params![schedule_id, until, from],
+            )
+            .await?;
         busy.extend(booked);
 
         Ok(busy)
@@ -371,23 +373,21 @@ impl AppointmentService {
         schedule_id: Uuid,
         from: DateTime<Utc>,
         until: DateTime<Utc>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<DateTime<Utc>>> {
-        let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT starts_at FROM calendar.appointment_bookings
-             WHERE schedule_id = $1 AND status = 'confirmed' AND starts_at >= $2 AND starts_at < $3",
-        )
-        .bind(schedule_id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+        let rows: Vec<(DateTime<Utc>,)> = db
+            .fetch_all_as(
+                "SELECT starts_at FROM calendar.appointment_bookings
+                 WHERE schedule_id = $1 AND status = 'confirmed' AND starts_at >= $2 AND starts_at < $3",
+                params![schedule_id, from, until],
+            )
+            .await?;
         Ok(rows.into_iter().map(|r| r.0).collect())
     }
 
     // ── Booking ───────────────────────────────────────────────────────────────
 
-    pub async fn book(token: &str, dto: BookDto, db: &PgPool) -> Result<AppointmentBooking> {
+    pub async fn book(token: &str, dto: BookDto, db: &DbPool) -> Result<AppointmentBooking> {
         let schedule = Self::get_by_token(token, db).await?;
         let rules = Self::load_rules(schedule.id, db).await?;
         let duration = Duration::minutes(schedule.duration_minutes as i64);
@@ -443,37 +443,36 @@ impl AppointmentService {
         )
         .await?;
 
-        let booking = sqlx::query_as::<_, AppointmentBooking>(
+        let booking_id = kubuno_db::new_id();
+        db.execute(
             r#"
             INSERT INTO calendar.appointment_bookings
-                (schedule_id, starts_at, ends_at, first_name, last_name, email, answers, note, event_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-            RETURNING *
+                (id, schedule_id, starts_at, ends_at, first_name, last_name, email, answers, note, event_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             "#,
+            params![
+                booking_id, schedule.id, dto.starts_at, ends_at, dto.first_name, dto.last_name,
+                dto.email, dto.answers, dto.note, event.id
+            ],
         )
-        .bind(schedule.id)
-        .bind(dto.starts_at)
-        .bind(ends_at)
-        .bind(&dto.first_name)
-        .bind(&dto.last_name)
-        .bind(&dto.email)
-        .bind(&dto.answers)
-        .bind(&dto.note)
-        .bind(event.id)
-        .fetch_one(db)
         .await?;
 
-        Ok(booking)
+        db.fetch_one_as::<AppointmentBooking>(
+            "SELECT * FROM calendar.appointment_bookings WHERE id = $1",
+            params![booking_id],
+        )
+        .await
+        .map_err(Into::into)
     }
 
-    pub async fn list_bookings(schedule_id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<Vec<AppointmentBooking>> {
+    pub async fn list_bookings(schedule_id: Uuid, owner_id: Uuid, db: &DbPool) -> Result<Vec<AppointmentBooking>> {
         let _ = Self::get_owned(schedule_id, owner_id, db).await?;
-        let rows = sqlx::query_as::<_, AppointmentBooking>(
-            "SELECT * FROM calendar.appointment_bookings WHERE schedule_id = $1 ORDER BY starts_at",
-        )
-        .bind(schedule_id)
-        .fetch_all(db)
-        .await?;
+        let rows = db
+            .fetch_all_as::<AppointmentBooking>(
+                "SELECT * FROM calendar.appointment_bookings WHERE schedule_id = $1 ORDER BY starts_at",
+                params![schedule_id],
+            )
+            .await?;
         Ok(rows)
     }
 }

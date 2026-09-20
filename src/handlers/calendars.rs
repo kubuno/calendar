@@ -197,12 +197,13 @@ pub async fn export(
     let cal = CalendarService::get(id, user.id, &state.db).await?;
 
     // Load all the calendar's events
-    let events: Vec<crate::models::event::Event> = sqlx::query_as::<_, crate::models::event::Event>(
-        "SELECT * FROM calendar.events WHERE calendar_id = $1 ORDER BY starts_at",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
+    let events: Vec<crate::models::event::Event> = state
+        .db
+        .fetch_all_as::<crate::models::event::Event>(
+            "SELECT * FROM calendar.events WHERE calendar_id = $1 ORDER BY starts_at",
+            kubuno_db::params![id],
+        )
+        .await?;
 
     let ics = ICalendarService::calendar_to_ics(&events, &cal.name);
 

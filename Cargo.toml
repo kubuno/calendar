@@ -11,47 +11,113 @@ name = "kubuno-calendar"
 path = "src/main.rs"
 
 [dependencies]
-# Dépendances tierces (versions issues du workspace du monorepo, inlinées pour un
-# build autonome — voir kubuno/core pour la référence centrale).
-tokio              = { version = "1",    features = ["full"] }
-axum               = { version = "0.7",  features = ["macros", "ws", "multipart"] }
-tower              = { version = "0.5",  features = ["full"] }
-tower-http         = { version = "0.6",  features = ["cors", "compression-gzip", "trace", "limit", "fs", "set-header", "timeout"] }
-async-trait        = "0.1"
-sqlx               = { version = "0.8",  features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "migrate", "tls-rustls", "bigdecimal"] }
-serde              = { version = "1",    features = ["derive"] }
-serde_json         = "1"
-reqwest            = { version = "0.12", features = ["json", "stream", "multipart"] }
-config             = "0.14"
-dotenvy            = "0.15"
-validator          = { version = "0.21", features = ["derive"] }
-tracing            = "0.1"
-tracing-subscriber = { version = "0.3",  features = ["env-filter", "json"] }
-thiserror          = "1"
-anyhow             = "1"
-uuid               = { version = "1",    features = ["v4", "serde"] }
-chrono             = { version = "0.4",  features = ["serde"] }
-bytes              = "1"
-futures            = "0.3"
-rand               = "0.8"
-base64             = "0.22"
-sha2               = "0.10"
-toml               = "0.8"
-clap               = { version = "4",    features = ["color", "wrap_help", "derive", "env"] }
-hex                = "0.4"
+# Workspace shared
+tokio              = { workspace = true }
+axum               = { workspace = true }
+tower              = { workspace = true }
+tower-http         = { workspace = true }
+async-trait        = { workspace = true }
+sqlx               = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+reqwest            = { workspace = true }
+config             = { workspace = true }
+dotenvy            = { workspace = true }
+validator          = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+kubuno-seccomp     = { workspace = true }
+kubuno-modauth     = { workspace = true }
+kubuno-db          = { workspace = true }
+thiserror          = { workspace = true }
+anyhow             = { workspace = true }
+uuid               = { workspace = true }
+chrono             = { workspace = true }
+bytes              = { workspace = true }
+futures            = { workspace = true }
+rand               = { workspace = true }
+base64             = { workspace = true }
+sha2               = { workspace = true }
+toml               = { workspace = true }
+clap               = { workspace = true }
 
-# Spécifique calendrier
+# Calendar-specific
 rrule      = "0.12"
 icalendar  = "0.16"
 chrono-tz  = { version = "0.10", features = ["serde"] }
+hex        = { workspace = true }
 
-# Crate partagée du core, consommée via une dépendance git taguée sur kubuno/core.
-# (Dev local hors-ligne possible via `[patch]` ci-dessous, décommenté au besoin.)
-kubuno-seccomp = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.1", package = "kubuno-seccomp" }
-# Verifies the signed identity token the core mints with this module's internal
-# secret (core → module trust boundary).
-kubuno-modauth = { git = "https://github.com/kubuno/core", tag = "modauth-v0.1.0", package = "kubuno-modauth" }
+[dev-dependencies]
+tempfile = "3"
 
-# Pour développer hors-ligne avec un checkout voisin de kubuno/core, décommenter :
-# [patch."https://github.com/kubuno/core"]
-# kubuno-seccomp = { path = "../kubuno-core/crates/kubuno-seccomp" }
+# ─── Workspace mono-crate (deps tierces recopiées du monorepo kubuno/core ;
+#     crates partagées consommées via dépendances git taguées) ───
+[workspace]
+
+[workspace.package]
+version      = "0.1.4"
+edition      = "2021"
+authors      = ["Kubuno Contributors"]
+license      = "AGPL-3.0"
+repository   = "https://github.com/kubuno/kubuno"
+rust-version = "1.82"
+
+[workspace.dependencies]
+# Async
+tokio       = { version = "1",    features = ["full"] }
+axum        = { version = "0.7",  features = ["macros", "ws", "multipart"] }
+tower       = { version = "0.5",  features = ["full"] }
+tower-http  = { version = "0.6",  features = ["cors", "compression-gzip", "trace", "limit", "fs", "set-header", "timeout"] }
+async-trait = "0.1"
+
+# Database
+# One binary, three engines. The administrator picks PostgreSQL, MySQL/MariaDB
+# or SQLite in configuration (`database.engine`), read at run time by kubuno-db;
+# all three drivers are compiled in and dispatched at run time. There is no
+# per-engine build. `default-features = false` keeps sqlx's own default backend
+# out, then the three drivers and codecs are listed explicitly (the `derive` and
+# `macros` features live in sqlx's defaults, so they must be re-added for
+# `#[derive(FromRow)]`).
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "uuid", "chrono", "json", "migrate", "tls-rustls", "bigdecimal", "derive", "macros", "postgres", "mysql", "sqlite"] }
+
+# Sérialisation
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP Client
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+
+# Config & Env
+config  = "0.14"
+dotenvy = "0.15"
+
+# Validation
+validator = { version = "0.21", features = ["derive"] }
+
+# Logging & Tracing
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Crates partagées du core, consommées via dépendances git taguées.
+kubuno-seccomp     = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.1", package = "kubuno-seccomp" }
+kubuno-modauth     = { git = "https://github.com/kubuno/core", tag = "modauth-v0.1.0", package = "kubuno-modauth" }
+# PROTOTYPE: pointed at the local crate so this runtime-dispatch rewrite is what
+# builds. The released form is the tagged one below; retag db-v0.5.0 before use.
+#   kubuno-db = { git = "https://github.com/kubuno/core", tag = "db-v0.5.0", package = "kubuno-db" }
+kubuno-db          = { path = "../core/crates/kubuno-db" }
+
+# Erreurs
+thiserror = "1"
+anyhow    = "1"
+
+# Utils
+uuid   = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+bytes   = "1"
+futures = "0.3"
+rand    = "0.8"
+base64  = "0.22"
+sha2    = "0.10"
+hex     = "0.4"
+toml    = "0.8"
+clap    = { version = "4", features = ["color", "wrap_help", "derive", "env"] }

@@ -11,11 +11,13 @@
 //! mistake.
 
 use axum::{extract::State, Json};
+use chrono::Utc;
+use kubuno_db::params;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::{errors::Result, state::AppState};
+use crate::{errors::Result, state::AppState, sync};
 
 /// The envelope every delivered event arrives in.
 #[derive(Deserialize)]
@@ -67,23 +69,28 @@ async fn apply_rename(state: &AppState, body: Value) -> Result<()> {
         return Ok(());
     }
 
-    let changed = sqlx::query(
-        "UPDATE calendar.events
-            SET title = $2, updated_at = NOW()
-          WHERE id = $1 AND title IS DISTINCT FROM $2",
-    )
-    .bind(event_id)
-    .bind(title)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "meeting_renamed: renommage de l'événement");
-        e
-    })?
-    .rows_affected();
-
+    // `title` is NOT NULL, so `IS DISTINCT FROM` (unportable — MariaDB spells it
+    // `<=>`) is just `<>`. The rename is a versioned write: bump the event only
+    // when the title actually changes (so a no-op does not churn the delta). The
+    // seq is taken inside the tx, so a rolled-back no-op does not consume it. The
+    // `updated_at` trigger keeps that column fresh on every engine.
+    let mut tx = state.db.begin().await?;
+    let seq = sync::next_event_seq(&mut tx).await?;
+    let changed = tx
+        .execute(
+            "UPDATE calendar.events SET title = $1, change_seq = $2 WHERE id = $3 AND title <> $4",
+            params![title, seq, event_id, title],
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "meeting_renamed: renommage de l'événement");
+            e
+        })?;
     if changed > 0 {
+        tx.commit().await?;
         tracing::info!(%event_id, "Événement renommé d'après sa réunion");
+    } else {
+        tx.rollback().await?;
     }
     Ok(())
 }
@@ -138,32 +145,47 @@ pub async fn handle_event(
 
     // Apply the reply, scoped to the organizer's own event, and drop it when it
     // answers an invitation older than the last one we notified this attendee at
-    // (a stale reply to a superseded invitation).
-    let affected = sqlx::query(
-        r#"
-        UPDATE calendar.attendees a
-           SET status = $1, responded_at = NOW(), comment = COALESCE($2, a.comment)
-          FROM calendar.events e
-         WHERE a.event_id = e.id
-           AND e.ical_uid = $3
-           AND e.owner_id = $4
-           AND lower(a.email) = lower($5)
-           AND $6 >= COALESCE(a.last_notified_sequence, 0)
-        "#,
-    )
-    .bind(status)
-    .bind(&reply.comment)
-    .bind(event_uid)
-    .bind(reply.organizer_user_id)
-    .bind(attendee_email)
-    .bind(reply.sequence)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "invite_reply: mise à jour du statut de participation");
-        e
-    })?
-    .rows_affected();
+    // (a stale reply to a superseded invitation). `UPDATE ... FROM` has no
+    // portable form (MySQL/SQLite spell the join differently), so the matching
+    // row is located first, then updated by its primary key.
+    let target: Option<(Uuid, Uuid)> = state
+        .db
+        .fetch_optional_as(
+            r#"
+            SELECT a.id, a.event_id
+              FROM calendar.attendees a
+              JOIN calendar.events e ON a.event_id = e.id
+             WHERE e.ical_uid = $1
+               AND e.owner_id = $2
+               AND lower(a.email) = lower($3)
+               AND $4 >= COALESCE(a.last_notified_sequence, 0)
+            "#,
+            params![event_uid, reply.organizer_user_id, attendee_email, reply.sequence],
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "invite_reply: recherche du participant");
+            e
+        })?;
+
+    let affected = if let Some((attendee_id, ev_id)) = target {
+        let mut tx = state.db.begin().await?;
+        tx.execute(
+            "UPDATE calendar.attendees SET status = $1, responded_at = $2, comment = COALESCE($3, comment) WHERE id = $4",
+            params![status, Utc::now(), reply.comment.clone(), attendee_id],
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "invite_reply: mise à jour du statut de participation");
+            e
+        })?;
+        // Attendee write bumps its event so the change reaches the event delta.
+        sync::touch_event(&mut tx, ev_id).await?;
+        tx.commit().await?;
+        1u64
+    } else {
+        0
+    };
 
     if affected == 0 {
         // Not an error: the event may have been deleted, the address may not be

@@ -11,8 +11,8 @@ use axum::{
     Extension, Json,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use kubuno_db::{params, DbPool};
 use serde::Deserialize;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Flexible date-time parser for tool arguments: LLMs frequently emit a *naive*
@@ -48,29 +48,36 @@ use crate::{
     models::event::{CreateEventDto, EventsQuery, RecurrenceScope},
     services::event_service::EventService,
     state::AppState,
+    sync,
 };
 
 /// Resolve the user's default calendar (first / `is_default`), creating a
 /// personal one if none exists — so `create_event` works without the LLM ever
 /// knowing a calendar UUID.
-async fn default_calendar(user_id: Uuid, db: &PgPool) -> Result<Uuid> {
-    if let Some(id) = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM calendar.calendars WHERE owner_id = $1 \
-         ORDER BY is_default DESC, created_at ASC LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?
+async fn default_calendar(user_id: Uuid, db: &DbPool) -> Result<Uuid> {
+    if let Some(id) = db
+        .fetch_optional_scalar::<Uuid>(
+            "SELECT id FROM calendar.calendars WHERE owner_id = $1 \
+             ORDER BY is_default DESC, created_at ASC LIMIT 1",
+            params![user_id],
+        )
+        .await?
     {
         return Ok(id);
     }
-    let id = sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO calendar.calendars (owner_id, name, color, cal_type, is_default) \
-         VALUES ($1, 'Mon calendrier', '#4D38DB', 'personal', TRUE) RETURNING id",
+    // First calendar: a versioned insert (id/token/ctag supplied — no cross-engine
+    // DEFAULT — and its change_seq taken from the journal).
+    let id = kubuno_db::new_id();
+    let mut tx = db.begin().await?;
+    let seq = sync::next_calendar_seq(&mut tx).await?;
+    tx.execute(
+        "INSERT INTO calendar.calendars
+           (id, owner_id, name, color, cal_type, is_default, caldav_token, ctag, change_seq)
+         VALUES ($1, $2, 'Mon calendrier', '#4D38DB', 'personal', TRUE, $3, $4, $5)",
+        params![id, user_id, sync::new_tag(), sync::new_tag(), seq],
     )
-    .bind(user_id)
-    .fetch_one(db)
     .await?;
+    tx.commit().await?;
     Ok(id)
 }
 

@@ -18,6 +18,9 @@ pub struct Event {
     pub timezone:         String,
     pub color:            Option<String>,
     pub rrule:            Option<String>,
+    /// Exception dates. A JSON array of RFC3339 timestamps on every engine
+    /// (PostgreSQL `jsonb`, MySQL `JSON`, SQLite `TEXT`) — see kubuno-db §2.8.
+    #[sqlx(json)]
     pub exdates:          Vec<DateTime<Utc>>,
     pub parent_event_id:  Option<Uuid>,
     pub recurrence_id:    Option<DateTime<Utc>>,
@@ -28,8 +31,12 @@ pub struct Event {
     pub status:           String,
     pub visibility:       String,
     pub busy:             bool,
+    /// A JSON array of UUIDs (hyphenated strings) on every engine — see §2.8.
+    #[sqlx(json)]
     pub linked_file_ids:  Vec<Uuid>,
     pub linked_note_id:   Option<Uuid>,
+    /// A JSON array of UUIDs (hyphenated strings) on every engine — see §2.8.
+    #[sqlx(json)]
     pub linked_task_ids:  Vec<Uuid>,
     pub meeting_duration_minutes: Option<i32>,
     /// What the organiser lets the guests do — see migration `000012`. Three

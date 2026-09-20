@@ -1,11 +1,11 @@
 use crate::{config::{InstanceConfig, Settings}, services::weather_service::WeatherService};
+use kubuno_db::DbPool;
 use reqwest::Client;
-use sqlx::PgPool;
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db:       PgPool,
+    pub db:       DbPool,
     pub settings: Arc<Settings>,
     pub weather:  Arc<WeatherService>,
     /// Shared outbound client, also used to ask the core the questions only it

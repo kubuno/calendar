@@ -5,24 +5,36 @@ use axum::{
     Json,
 };
 use chrono::{Duration, Utc};
+use kubuno_db::dialect::Assign;
+use kubuno_db::{params, DbPool};
 use uuid::Uuid;
 
 use crate::{
     errors::{CalendarError, Result},
     middleware::CalendarUser,
-    models::attendee::{AttendeeInputDto, InviteAttendeeDto, RsvpDto},
+    models::attendee::{Attendee, AttendeeInputDto, InviteAttendeeDto, RsvpDto},
     state::AppState,
+    sync,
 };
+
+/// The upsert `SET` list for a guest row (display_name / optional overwritten,
+/// an already-resolved account id kept). Built per engine.
+fn guest_upsert_clause(backend: kubuno_db::Backend) -> String {
+    backend.upsert(
+        "attendees",
+        &["event_id", "email"],
+        &[
+            Assign::Incoming("display_name"),
+            Assign::Incoming("optional"),
+            Assign::Expr { col: "user_id", expr: "COALESCE({cur}, {new})" },
+        ],
+    )
+}
 
 /// Resolves each guest address to an instance account id when it matches one,
 /// then inserts the organizer's own attendee row and every guest row in a single
-/// transaction. Linking a guest to their account is what lets an invited user
-/// see the event in their own calendar.
-///
-/// The directory lookups are done first, outside the transaction, so no network
-/// round-trip is held across an open transaction. Returns the guest list as
-/// `(email, display_name)` for the invitation e-mail — the organizer is never in
-/// it.
+/// transaction. Bumps the event once (the portable replacement for the old
+/// attendee→event trigger).
 pub(crate) async fn insert_guests(
     state: &AppState,
     event_id: Uuid,
@@ -33,11 +45,6 @@ pub(crate) async fn insert_guests(
     // Resolve account ids before opening the transaction (best-effort network).
     let mut resolved: Vec<(String, Option<String>, Option<Uuid>, bool)> = Vec::with_capacity(guests.len());
     for g in guests {
-        // Picked from the people list rather than typed: the address is asked
-        // of the directory HERE, over the internal channel, so it never had to
-        // reach the browser in the first place.
-        // `Toto <toto@toto.com>` is a form people paste; understood here so the
-        // address is an address and the name is a name.
         let (typed, typed_name) = crate::models::attendee::parse_address(&g.email);
         let email = match (typed.trim(), g.user_id) {
             (e, _) if !e.is_empty() => e.to_string(),
@@ -63,58 +70,49 @@ pub(crate) async fn insert_guests(
         tracing::error!(error = %e, "attendees: ouverture de la transaction d'insertion");
         e
     })?;
+    let backend = tx.backend();
 
-    // The organizer's own attendee row (accepted), so the event shows in their
-    // calendar as a meeting they run. Idempotent on (event_id, email).
-    sqlx::query(
-        r#"
-        INSERT INTO calendar.attendees (event_id, user_id, email, status, is_organizer)
-        VALUES ($1, $2, $3, 'accepted', TRUE)
-        ON CONFLICT (event_id, email) DO UPDATE
-            SET is_organizer = TRUE, user_id = COALESCE(calendar.attendees.user_id, EXCLUDED.user_id)
-        "#,
+    // The organizer's own attendee row (accepted), idempotent on (event_id, email).
+    let org_clause = backend.upsert(
+        "attendees",
+        &["event_id", "email"],
+        &[
+            Assign::Expr { col: "is_organizer", expr: "TRUE" },
+            Assign::Expr { col: "user_id", expr: "COALESCE({cur}, {new})" },
+        ],
+    );
+    tx.execute(
+        &format!(
+            "INSERT INTO calendar.attendees (id, event_id, user_id, email, status, is_organizer)
+             VALUES ($1, $2, $3, $4, 'accepted', TRUE){org_clause}"
+        ),
+        params![kubuno_db::new_id(), event_id, organizer_id, organizer_email.trim()],
     )
-    .bind(event_id)
-    .bind(organizer_id)
-    .bind(organizer_email.trim())
-    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "attendees: insertion de la ligne organisateur");
         e
     })?;
 
+    let guest_clause = guest_upsert_clause(backend);
     let mut out: Vec<(String, Option<String>, bool)> = Vec::with_capacity(resolved.len());
     for (email, display_name, user_id, optional) in resolved {
-        // Never let a guest row shadow the organizer row.
         if email.eq_ignore_ascii_case(organizer_email.trim()) {
             continue;
         }
-        let rsvp_token: String = {
-            use rand::Rng;
-            let bytes: [u8; 16] = rand::thread_rng().gen();
-            hex::encode(bytes)
-        };
+        let rsvp_token = rsvp_token();
         let expires_at = Utc::now() + Duration::days(7);
-        sqlx::query(
-            r#"
-            INSERT INTO calendar.attendees
-                (event_id, user_id, email, display_name, rsvp_token, rsvp_expires_at, optional)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (event_id, email) DO UPDATE
-                SET display_name = EXCLUDED.display_name,
-                    optional     = EXCLUDED.optional,
-                    user_id      = COALESCE(calendar.attendees.user_id, EXCLUDED.user_id)
-            "#,
+        tx.execute(
+            &format!(
+                "INSERT INTO calendar.attendees
+                    (id, event_id, user_id, email, display_name, rsvp_token, rsvp_expires_at, optional)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8){guest_clause}"
+            ),
+            params![
+                kubuno_db::new_id(), event_id, user_id, email.clone(), display_name.clone(),
+                rsvp_token, expires_at, optional
+            ],
         )
-        .bind(event_id)
-        .bind(user_id)
-        .bind(&email)
-        .bind(&display_name)
-        .bind(&rsvp_token)
-        .bind(expires_at)
-        .bind(optional)
-        .execute(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "attendees: insertion d'un invité");
@@ -122,6 +120,9 @@ pub(crate) async fn insert_guests(
         })?;
         out.push((email, display_name, optional));
     }
+
+    // Attendee writes bump their event so the change reaches the event delta.
+    sync::touch_event(&mut tx, event_id).await?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "attendees: validation de la transaction d'insertion");
@@ -131,88 +132,100 @@ pub(crate) async fn insert_guests(
     Ok(out)
 }
 
-/// The non-organizer guests of an event as `(email, display_name, optional)`, for
-/// (re)sending or cancelling the invitation. The organizer is excluded — they do
-/// not invite themselves.
+/// A fresh 32-hex RSVP token.
+fn rsvp_token() -> String {
+    use rand::Rng;
+    let bytes: [u8; 16] = rand::thread_rng().gen();
+    hex::encode(bytes)
+}
+
+/// The non-organizer guests of an event as `(email, display_name, optional)`. A
+/// room carries no address, so it is excluded (the `email IS NOT NULL` guard).
 pub(crate) async fn fetch_guests(
-    db: &sqlx::PgPool,
+    db: &DbPool,
     event_id: Uuid,
 ) -> Result<Vec<(String, Option<String>, bool)>> {
-    let rows: Vec<(String, Option<String>, bool)> = sqlx::query_as(
-        "SELECT email, display_name, optional FROM calendar.attendees \
-         WHERE event_id = $1 AND is_organizer = FALSE ORDER BY email",
-    )
-    .bind(event_id)
-    .fetch_all(db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "attendees: lecture de la liste des invités");
-        e
-    })?;
+    let rows: Vec<(String, Option<String>, bool)> = db
+        .fetch_all_as(
+            "SELECT email, display_name, optional FROM calendar.attendees \
+             WHERE event_id = $1 AND is_organizer = FALSE AND email IS NOT NULL ORDER BY email",
+            params![event_id],
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "attendees: lecture de la liste des invités");
+            e
+        })?;
     Ok(rows)
 }
 
-/// Records the event `SEQUENCE` at which the guests were just notified, so a
-/// later RSVP reply answering an older invitation is rejected as stale. Applied
-/// to every non-organizer attendee of the event.
+/// Records the event `SEQUENCE` at which the guests were just notified, and bumps
+/// the event (an attendee write).
 pub(crate) async fn mark_notified(
-    db: &sqlx::PgPool,
+    db: &DbPool,
     event_id: Uuid,
     sequence: i32,
 ) -> Result<()> {
-    sqlx::query(
-        "UPDATE calendar.attendees SET last_notified_sequence = $2 \
-         WHERE event_id = $1 AND is_organizer = FALSE",
+    let mut tx = db.begin().await?;
+    tx.execute(
+        "UPDATE calendar.attendees SET last_notified_sequence = $1 \
+         WHERE event_id = $2 AND is_organizer = FALSE",
+        params![sequence, event_id],
     )
-    .bind(event_id)
-    .bind(sequence)
-    .execute(db)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "attendees: enregistrement du numéro de séquence notifié");
         e
     })?;
+    sync::touch_event(&mut tx, event_id).await?;
+    tx.commit().await?;
     Ok(())
 }
 
 /// What this caller may do with this event's guest list.
-///
-/// Three questions, one lookup, because the three answers come from the same
-/// row and asking separately is how they drift apart. An organiser answers yes
-/// to everything; someone the calendar was shared with acts on the owner's
-/// behalf; a GUEST gets exactly what the organiser ticked, and someone who is
-/// neither gets a "not found" — an event they cannot see must not be probeable
-/// by the shape of the refusal.
 struct GuestRights {
-    /// The caller organises it, or holds write access to its calendar.
     is_host:   bool,
     can_see:   bool,
     can_invite: bool,
 }
 
-async fn guest_rights(state: &AppState, event_id: Uuid, user_id: Uuid) -> Result<GuestRights> {
-    let row: Option<(bool, bool, bool, bool, bool)> = sqlx::query_as(
-        r#"
-        SELECT (c.owner_id = $2 OR cs.shared_with IS NOT NULL) AS is_host,
-               a.id IS NOT NULL                                AS is_guest,
-               e.guests_can_invite,
-               e.guests_can_see_guests,
-               e.guests_can_modify
-          FROM calendar.events e
-          JOIN calendar.calendars c ON c.id = e.calendar_id
-          LEFT JOIN calendar.calendar_shares cs
-                 ON cs.calendar_id = c.id AND cs.shared_with = $2 AND cs.permission <> 'read'
-          LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
-         WHERE e.id = $1
-        "#,
-    )
-    .bind(event_id)
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?;
+/// Raw columns behind [`GuestRights`]. Host/guest are decided in Rust from these
+/// rather than as SQL booleans: a boolean *expression* decodes as an integer on
+/// MySQL/SQLite and would not read back into a Rust `bool`.
+#[derive(sqlx::FromRow)]
+struct GuestRightsRow {
+    owner_id:              Uuid,
+    shared_with:           Option<Uuid>,
+    attendee_id:           Option<Uuid>,
+    guests_can_invite:     bool,
+    guests_can_see_guests: bool,
+    #[allow(dead_code)]
+    guests_can_modify:     bool,
+}
 
-    let (is_host, is_guest, can_invite, can_see, _can_modify) =
-        row.ok_or_else(|| CalendarError::NotFound(format!("Événement {event_id}")))?;
+async fn guest_rights(state: &AppState, event_id: Uuid, user_id: Uuid) -> Result<GuestRights> {
+    let row: Option<GuestRightsRow> = state
+        .db
+        .fetch_optional_as(
+            r#"
+            SELECT c.owner_id AS owner_id, cs.shared_with AS shared_with, a.id AS attendee_id,
+                   e.guests_can_invite, e.guests_can_see_guests, e.guests_can_modify
+              FROM calendar.events e
+              JOIN calendar.calendars c ON c.id = e.calendar_id
+              LEFT JOIN calendar.calendar_shares cs
+                     ON cs.calendar_id = c.id AND cs.shared_with = $1 AND cs.permission <> 'read'
+              LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
+             WHERE e.id = $3
+            "#,
+            params![user_id, user_id, event_id],
+        )
+        .await?;
+
+    let row = row.ok_or_else(|| CalendarError::NotFound(format!("Événement {event_id}")))?;
+    let is_host  = row.owner_id == user_id || row.shared_with.is_some();
+    let is_guest = row.attendee_id.is_some();
+    let can_invite = row.guests_can_invite;
+    let can_see = row.guests_can_see_guests;
     if !is_host && !is_guest {
         return Err(CalendarError::NotFound(format!("Événement {event_id}")));
     }
@@ -230,33 +243,29 @@ pub async fn list(
 ) -> Result<Json<serde_json::Value>> {
     let rights = guest_rights(&state, event_id, user.id).await?;
 
-    // A guest the organiser kept from seeing the others still sees the two
-    // names they already know: the organiser, and themselves. Returning an
-    // empty list instead would read as "nobody is coming", which is a different
-    // statement and a false one.
     let attendees = if rights.can_see {
-        sqlx::query_as::<_, crate::models::attendee::Attendee>(
-            "SELECT * FROM calendar.attendees WHERE event_id = $1
-              ORDER BY is_organizer DESC, optional, email",
-        )
-        .bind(event_id)
-        .fetch_all(&state.db)
-        .await?
+        state
+            .db
+            .fetch_all_as::<Attendee>(
+                "SELECT * FROM calendar.attendees WHERE event_id = $1
+                  ORDER BY is_organizer DESC, optional, email",
+                params![event_id],
+            )
+            .await?
     } else {
-        sqlx::query_as::<_, crate::models::attendee::Attendee>(
-            "SELECT * FROM calendar.attendees
-              WHERE event_id = $1 AND (is_organizer OR user_id = $2)
-              ORDER BY is_organizer DESC",
-        )
-        .bind(event_id)
-        .bind(user.id)
-        .fetch_all(&state.db)
-        .await?
+        state
+            .db
+            .fetch_all_as::<Attendee>(
+                "SELECT * FROM calendar.attendees
+                  WHERE event_id = $1 AND (is_organizer OR user_id = $2)
+                  ORDER BY is_organizer DESC",
+                params![event_id, user.id],
+            )
+            .await?
     };
 
     Ok(Json(serde_json::json!({
         "attendees": attendees,
-        // Said out loud, so the list can explain itself rather than look short.
         "hidden":    !rights.can_see,
     })))
 }
@@ -271,12 +280,6 @@ pub async fn invite(
     dto.validate()
         .map_err(|e| CalendarError::Validation(e.to_string()))?;
 
-    // An account chosen from the people list becomes an address here, never in
-    // the browser: the directory may be configured to keep addresses private,
-    // and a picker that cannot invite a colleague because of it would be a
-    // picker that does not work on most instances.
-    // Same understanding on the single-guest route: an address pasted with its
-    // name is the same address.
     let (parsed, parsed_name) = crate::models::attendee::parse_address(&dto.email);
     let dto = InviteAttendeeDto {
         email: parsed,
@@ -298,9 +301,6 @@ pub async fn invite(
         return Err(CalendarError::Validation("Adresse invalide".into()));
     }
 
-    // The organiser always may; a guest may when the organiser said so. This is
-    // the whole point of "Invite others": a permission that only the organiser
-    // could exercise would be a label on an empty box.
     let rights = guest_rights(&state, event_id, user.id).await?;
     if !rights.can_invite {
         return Err(CalendarError::Forbidden);
@@ -309,16 +309,15 @@ pub async fn invite(
     let instance = state.instance();
     let email = dto.email.trim().to_string();
 
-    // Ceiling on the guest list. The address already on the list does not count:
-    // the insert below is an upsert, so re-inviting someone adds nobody.
     if instance.max_event_guests > 0 {
-        let others: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM calendar.attendees WHERE event_id = $1 AND email <> $2",
-        )
-        .bind(event_id)
-        .bind(&email)
-        .fetch_one(&state.db)
-        .await?;
+        let count_expr = state.db.backend().count_bigint("*");
+        let others: i64 = state
+            .db
+            .fetch_scalar(
+                &format!("SELECT {count_expr} FROM calendar.attendees WHERE event_id = $1 AND email <> $2"),
+                params![event_id, &email],
+            )
+            .await?;
         if others >= instance.max_event_guests {
             return Err(CalendarError::Validation(format!(
                 "Nombre maximal de participants atteint ({}) pour cet événement",
@@ -327,10 +326,6 @@ pub async fn invite(
         }
     }
 
-    // Guests from outside the instance. The declared domains answer for free;
-    // only an address that matches none of them costs a directory lookup, and an
-    // unanswered lookup refuses rather than guesses — a policy that opens itself
-    // whenever the network hiccups is not a policy.
     if !instance.allow_external_guests && !instance.domain_is_internal(&email) {
         let known = crate::config::directory_knows_email(
             &state.http,
@@ -356,9 +351,7 @@ pub async fn invite(
         }
     }
 
-    // Resolve the address to an instance account so the invited user sees the
-    // event in their own calendar (best-effort; external guests stay NULL).
-    let user_id = crate::config::directory_user_id(
+    let resolved_user = crate::config::directory_user_id(
         &state.http,
         &state.settings.core.url,
         &state.settings.core.internal_secret,
@@ -366,52 +359,50 @@ pub async fn invite(
     )
     .await;
 
-    // Générer un token RSVP
-    let rsvp_token: String = {
-        use rand::Rng;
-        let bytes: [u8; 16] = rand::thread_rng().gen();
-        hex::encode(bytes)
-    };
+    let rsvp_token = rsvp_token();
     let expires_at = Utc::now() + Duration::days(7);
 
-    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-        r#"
-        INSERT INTO calendar.attendees
-            (event_id, user_id, email, display_name, rsvp_token, rsvp_expires_at, optional)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (event_id, email) DO UPDATE
-            SET display_name = EXCLUDED.display_name,
-                optional     = EXCLUDED.optional,
-                user_id      = COALESCE(calendar.attendees.user_id, EXCLUDED.user_id)
-        RETURNING *
-        "#,
+    let mut tx = state.db.begin().await?;
+    let backend = tx.backend();
+    let guest_clause = guest_upsert_clause(backend);
+    tx.execute(
+        &format!(
+            "INSERT INTO calendar.attendees
+                (id, event_id, user_id, email, display_name, rsvp_token, rsvp_expires_at, optional)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8){guest_clause}"
+        ),
+        params![
+            kubuno_db::new_id(), event_id, resolved_user, &email, dto.display_name.clone(),
+            rsvp_token, expires_at, dto.optional
+        ],
     )
-    .bind(event_id)
-    .bind(user_id)
-    .bind(&email)
-    .bind(&dto.display_name)
-    .bind(&rsvp_token)
-    .bind(expires_at)
-    .bind(dto.optional)
-    .fetch_one(&state.db)
     .await?;
-
     // Ensure the organizer has their own (accepted) attendee row.
-    sqlx::query(
-        r#"
-        INSERT INTO calendar.attendees (event_id, user_id, email, status, is_organizer)
-        VALUES ($1, $2, $3, 'accepted', TRUE)
-        ON CONFLICT (event_id, email) DO UPDATE SET is_organizer = TRUE
-        "#,
+    let org_clause = backend.upsert(
+        "attendees",
+        &["event_id", "email"],
+        &[Assign::Expr { col: "is_organizer", expr: "TRUE" }],
+    );
+    tx.execute(
+        &format!(
+            "INSERT INTO calendar.attendees (id, event_id, user_id, email, status, is_organizer)
+             VALUES ($1, $2, $3, $4, 'accepted', TRUE){org_clause}"
+        ),
+        params![kubuno_db::new_id(), event_id, user.id, user.email.trim()],
     )
-    .bind(event_id)
-    .bind(user.id)
-    .bind(user.email.trim())
-    .execute(&state.db)
     .await?;
+    sync::touch_event(&mut tx, event_id).await?;
+    tx.commit().await?;
 
-    // Send the invitation e-mail for this newly added guest, if the instance
-    // enables it. Best-effort: never fail the request over the mail path.
+    let attendee = state
+        .db
+        .fetch_one_as::<Attendee>(
+            "SELECT * FROM calendar.attendees WHERE event_id = $1 AND email = $2",
+            params![event_id, &email],
+        )
+        .await?;
+
+    // Send the invitation e-mail for this newly added guest, if enabled.
     if state.instance().send_email_invitations {
         if let Ok(event) = crate::services::event_service::EventService::get(event_id, user.id, &state.db).await {
             mark_notified(&state.db, event_id, event.sequence).await?;
@@ -441,52 +432,57 @@ pub async fn update_rsvp(
     Path((event_id, attendee_id)): Path<(Uuid, Uuid)>,
     Json(dto): Json<RsvpDto>,
 ) -> Result<Json<serde_json::Value>> {
-    // "Welcome, not required" is the HOST's statement about a guest, not an
-    // answer from that guest — so it takes this route but not its rule, and a
-    // guest cannot quietly make their own attendance optional.
+    // "Welcome, not required" is the HOST's statement, not the guest's answer.
     if let Some(optional) = dto.optional {
         if !guest_rights(&state, event_id, user.id).await?.is_host {
             return Err(CalendarError::Forbidden);
         }
-        let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-            "UPDATE calendar.attendees SET optional = $2 WHERE id = $1 AND event_id = $3 RETURNING *",
-        )
-        .bind(attendee_id)
-        .bind(optional)
-        .bind(event_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| CalendarError::NotFound(format!("Participant {attendee_id}")))?;
+        let mut tx = state.db.begin().await?;
+        let n = tx
+            .execute(
+                "UPDATE calendar.attendees SET optional = $1 WHERE id = $2 AND event_id = $3",
+                params![optional, attendee_id, event_id],
+            )
+            .await?;
+        if n == 0 {
+            tx.rollback().await?;
+            return Err(CalendarError::NotFound(format!("Participant {attendee_id}")));
+        }
+        sync::touch_event(&mut tx, event_id).await?;
+        tx.commit().await?;
+        let attendee = state
+            .db
+            .fetch_one_as::<Attendee>("SELECT * FROM calendar.attendees WHERE id = $1", params![attendee_id])
+            .await?;
         return Ok(Json(serde_json::json!({ "attendee": attendee })));
     }
 
     let valid_statuses = ["needs-action", "accepted", "declined", "tentative"];
     if !valid_statuses.contains(&dto.status.as_str()) {
-        return Err(CalendarError::Validation(format!(
-            "Statut invalide: {}",
-            dto.status
-        )));
+        return Err(CalendarError::Validation(format!("Statut invalide: {}", dto.status)));
     }
 
-    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-        r#"
-        UPDATE calendar.attendees
-        SET status = $2, comment = $3, responded_at = NOW()
-        WHERE id = $1 AND user_id = $4
-        RETURNING *
-        "#,
-    )
-    .bind(attendee_id)
-    .bind(&dto.status)
-    .bind(&dto.comment)
-    .bind(user.id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound(format!("Participant {attendee_id}")))?;
+    let mut tx = state.db.begin().await?;
+    let n = tx
+        .execute(
+            "UPDATE calendar.attendees SET status = $1, comment = $2, responded_at = $3
+             WHERE id = $4 AND user_id = $5",
+            params![&dto.status, dto.comment, Utc::now(), attendee_id, user.id],
+        )
+        .await?;
+    if n == 0 {
+        tx.rollback().await?;
+        return Err(CalendarError::NotFound(format!("Participant {attendee_id}")));
+    }
+    sync::touch_event(&mut tx, event_id).await?;
+    tx.commit().await?;
 
-    // A refusal may have emptied the meeting; the room it holds is then given
-    // back. Best-effort on purpose: the answer above is already recorded, and a
-    // failure to free a room must not turn it into an error the person retries.
+    let attendee = state
+        .db
+        .fetch_one_as::<Attendee>("SELECT * FROM calendar.attendees WHERE id = $1", params![attendee_id])
+        .await?;
+
+    // A refusal may have emptied the meeting; the room it holds is then given back.
     if dto.status == "declined" {
         let instance = state.instance();
         let released = crate::services::room_service::RoomService::release_if_deserted(
@@ -502,19 +498,13 @@ pub async fn update_rsvp(
             tracing::warn!(error = %e, event_id = %attendee.event_id, "Libération de salle : échec");
         }
 
-        // Tell the organiser and the guests: their meeting no longer has a room.
-        // The in-app channel the module already uses for "this event changed" —
-        // which is precisely what happened. Not an iTIP message: that vocabulary
-        // would announce a CANCELLED event, and the meeting is very much alive.
         if let Ok(Ok(freed)) = &released {
             if !freed.is_empty() {
-                if let Ok((title,)) = sqlx::query_as::<_, (String,)>(
-                    "SELECT title FROM calendar.events WHERE id = $1",
-                )
-                .bind(attendee.event_id)
-                .fetch_one(&state.db)
-                .await
-                {
+                let title: Option<String> = state
+                    .db
+                    .fetch_optional_scalar("SELECT title FROM calendar.events WHERE id = $1", params![attendee.event_id])
+                    .await?;
+                if let Some(title) = title {
                     crate::events::publisher::publish_event_modified(
                         &state, attendee.event_id, user.id, &title, "updated",
                     )
@@ -532,18 +522,18 @@ pub async fn remove(
     Extension(user): Extension<CalendarUser>,
     Path((event_id, attendee_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
-    // Taking a name OFF the list stays with the host. "Invite others" adds
-    // people; it was never a licence to uninvite them, and a guest able to
-    // remove other guests would be a way to empty a meeting quietly.
     if !guest_rights(&state, event_id, user.id).await?.is_host {
         return Err(CalendarError::Forbidden);
     }
 
-    sqlx::query("DELETE FROM calendar.attendees WHERE id = $1 AND event_id = $2")
-        .bind(attendee_id)
-        .bind(event_id)
-        .execute(&state.db)
-        .await?;
+    let mut tx = state.db.begin().await?;
+    tx.execute(
+        "DELETE FROM calendar.attendees WHERE id = $1 AND event_id = $2",
+        params![attendee_id, event_id],
+    )
+    .await?;
+    sync::touch_event(&mut tx, event_id).await?;
+    tx.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

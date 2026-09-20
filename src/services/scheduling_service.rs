@@ -1,4 +1,5 @@
-use sqlx::PgPool;
+use kubuno_db::dialect::Assign;
+use kubuno_db::{params, DbPool};
 use uuid::Uuid;
 
 use crate::{
@@ -6,96 +7,92 @@ use crate::{
     models::scheduling::{
         ConfirmPollDto, CreatePollDto, MeetingPoll, PollResponse, PollRespondDto, PollSlot,
     },
+    sync,
 };
 
 pub struct SchedulingService;
 
 impl SchedulingService {
-    pub async fn list_polls(user_id: Uuid, db: &PgPool) -> Result<Vec<MeetingPoll>> {
-        let rows = sqlx::query_as::<_, MeetingPoll>(
-            "SELECT * FROM calendar.meeting_polls WHERE organizer_id = $1 ORDER BY created_at DESC",
-        )
-        .bind(user_id)
-        .fetch_all(db)
-        .await?;
+    pub async fn list_polls(user_id: Uuid, db: &DbPool) -> Result<Vec<MeetingPoll>> {
+        let rows = db
+            .fetch_all_as::<MeetingPoll>(
+                "SELECT * FROM calendar.meeting_polls WHERE organizer_id = $1 ORDER BY created_at DESC",
+                params![user_id],
+            )
+            .await?;
         Ok(rows)
     }
 
-    pub async fn create_poll(user_id: Uuid, dto: CreatePollDto, db: &PgPool) -> Result<MeetingPoll> {
-        let mut tx = db.begin().await?;
-
+    pub async fn create_poll(user_id: Uuid, dto: CreatePollDto, db: &DbPool) -> Result<MeetingPoll> {
         let duration = dto.duration_minutes.unwrap_or(60);
+        let poll_id = kubuno_db::new_id();
+        let token = sync::new_tag();
 
-        let poll = sqlx::query_as::<_, MeetingPoll>(
+        let mut tx = db.begin().await?;
+        tx.execute(
             r#"
             INSERT INTO calendar.meeting_polls
-                (organizer_id, title, description, duration_minutes, location, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING *
+                (id, organizer_id, title, description, duration_minutes, location, public_token, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
+            params![
+                poll_id, user_id, dto.title, dto.description, duration, dto.location, token, dto.expires_at
+            ],
         )
-        .bind(user_id)
-        .bind(&dto.title)
-        .bind(&dto.description)
-        .bind(duration)
-        .bind(&dto.location)
-        .bind(dto.expires_at)
-        .fetch_one(&mut *tx)
         .await?;
 
         for slot in &dto.slots {
-            sqlx::query(
-                "INSERT INTO calendar.poll_slots (poll_id, starts_at, ends_at) VALUES ($1, $2, $3)",
+            tx.execute(
+                "INSERT INTO calendar.poll_slots (id, poll_id, starts_at, ends_at) VALUES ($1, $2, $3, $4)",
+                params![kubuno_db::new_id(), poll_id, slot.starts_at, slot.ends_at],
             )
-            .bind(poll.id)
-            .bind(slot.starts_at)
-            .bind(slot.ends_at)
-            .execute(&mut *tx)
             .await?;
         }
-
         tx.commit().await?;
-        Ok(poll)
+
+        db.fetch_one_as::<MeetingPoll>(
+            "SELECT * FROM calendar.meeting_polls WHERE id = $1",
+            params![poll_id],
+        )
+        .await
+        .map_err(Into::into)
     }
 
-    pub async fn get_poll(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<MeetingPoll> {
-        sqlx::query_as::<_, MeetingPoll>(
+    pub async fn get_poll(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<MeetingPoll> {
+        db.fetch_optional_as::<MeetingPoll>(
             "SELECT * FROM calendar.meeting_polls WHERE id = $1 AND organizer_id = $2",
+            params![id, user_id],
         )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound(format!("Sondage {id}")))
     }
 
-    pub async fn get_poll_by_token(token: &str, db: &PgPool) -> Result<MeetingPoll> {
-        sqlx::query_as::<_, MeetingPoll>(
+    pub async fn get_poll_by_token(token: &str, db: &DbPool) -> Result<MeetingPoll> {
+        db.fetch_optional_as::<MeetingPoll>(
             "SELECT * FROM calendar.meeting_polls WHERE public_token = $1",
+            params![token],
         )
-        .bind(token)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound("Sondage introuvable".to_string()))
     }
 
-    pub async fn get_poll_slots(poll_id: Uuid, db: &PgPool) -> Result<Vec<PollSlot>> {
-        let rows = sqlx::query_as::<_, PollSlot>(
-            "SELECT * FROM calendar.poll_slots WHERE poll_id = $1 ORDER BY starts_at",
-        )
-        .bind(poll_id)
-        .fetch_all(db)
-        .await?;
+    pub async fn get_poll_slots(poll_id: Uuid, db: &DbPool) -> Result<Vec<PollSlot>> {
+        let rows = db
+            .fetch_all_as::<PollSlot>(
+                "SELECT * FROM calendar.poll_slots WHERE poll_id = $1 ORDER BY starts_at",
+                params![poll_id],
+            )
+            .await?;
         Ok(rows)
     }
 
-    pub async fn get_poll_responses(poll_id: Uuid, db: &PgPool) -> Result<Vec<PollResponse>> {
-        let rows = sqlx::query_as::<_, PollResponse>(
-            "SELECT * FROM calendar.poll_responses WHERE poll_id = $1 ORDER BY responded_at",
-        )
-        .bind(poll_id)
-        .fetch_all(db)
-        .await?;
+    pub async fn get_poll_responses(poll_id: Uuid, db: &DbPool) -> Result<Vec<PollResponse>> {
+        let rows = db
+            .fetch_all_as::<PollResponse>(
+                "SELECT * FROM calendar.poll_responses WHERE poll_id = $1 ORDER BY responded_at",
+                params![poll_id],
+            )
+            .await?;
         Ok(rows)
     }
 
@@ -104,64 +101,69 @@ impl SchedulingService {
         user_id: Option<Uuid>,
         email: &str,
         dto: PollRespondDto,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<PollResponse>> {
-        let mut tx = db.begin().await?;
-
-        // Vérifier que le sondage est ouvert
-        let poll: Option<(String,)> = sqlx::query_as(
-            "SELECT status FROM calendar.meeting_polls WHERE id = $1",
-        )
-        .bind(poll_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        match poll {
-            Some((status,)) if status != "open" => {
+        // The poll must be open — read that on the pool before opening the write
+        // transaction.
+        let status: Option<String> = db
+            .fetch_optional_scalar(
+                "SELECT status FROM calendar.meeting_polls WHERE id = $1",
+                params![poll_id],
+            )
+            .await?;
+        match status {
+            Some(s) if s != "open" => {
                 return Err(CalendarError::Validation("Le sondage est fermé".to_string()));
             }
             None => return Err(CalendarError::NotFound(format!("Sondage {poll_id}"))),
             _ => {}
         }
 
-        let mut results = Vec::new();
-        for resp in &dto.responses {
-            let row = sqlx::query_as::<_, PollResponse>(
-                r#"
-                INSERT INTO calendar.poll_responses
-                    (poll_id, slot_id, user_id, email, display_name, availability)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (slot_id, email)
-                DO UPDATE SET availability = EXCLUDED.availability,
-                              responded_at = NOW()
-                RETURNING *
-                "#,
-            )
-            .bind(poll_id)
-            .bind(resp.slot_id)
-            .bind(user_id)
-            .bind(email)
-            .bind(&dto.display_name)
-            .bind(&resp.availability)
-            .fetch_one(&mut *tx)
-            .await?;
-            results.push(row);
-        }
+        // Upsert one row per slot answered; the conflict target is (slot_id, email),
+        // and both the availability and the response time are refreshed on a re-vote.
+        let clause = db.backend().upsert(
+            "poll_responses",
+            &["slot_id", "email"],
+            &[Assign::Incoming("availability"), Assign::Incoming("responded_at")],
+        );
+        let sql = format!(
+            "INSERT INTO calendar.poll_responses
+                (id, poll_id, slot_id, user_id, email, display_name, availability, responded_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8){clause}"
+        );
 
+        let mut tx = db.begin().await?;
+        for resp in &dto.responses {
+            tx.execute(
+                &sql,
+                params![
+                    kubuno_db::new_id(), poll_id, resp.slot_id, user_id, email,
+                    dto.display_name.clone(), resp.availability.clone(), chrono::Utc::now()
+                ],
+            )
+            .await?;
+        }
         tx.commit().await?;
-        Ok(results)
+
+        // The responder's rows, which are exactly the answers just recorded.
+        let rows = db
+            .fetch_all_as::<PollResponse>(
+                "SELECT * FROM calendar.poll_responses WHERE poll_id = $1 AND email = $2 ORDER BY responded_at",
+                params![poll_id, email],
+            )
+            .await?;
+        Ok(rows)
     }
 
-    pub async fn delete_poll(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<()> {
-        let deleted = sqlx::query(
-            "DELETE FROM calendar.meeting_polls WHERE id = $1 AND organizer_id = $2",
-        )
-        .bind(id)
-        .bind(user_id)
-        .execute(db)
-        .await?;
+    pub async fn delete_poll(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<()> {
+        let deleted = db
+            .execute(
+                "DELETE FROM calendar.meeting_polls WHERE id = $1 AND organizer_id = $2",
+                params![id, user_id],
+            )
+            .await?;
 
-        if deleted.rows_affected() == 0 {
+        if deleted == 0 {
             return Err(CalendarError::NotFound(format!("Sondage {id}")));
         }
         Ok(())
@@ -171,23 +173,31 @@ impl SchedulingService {
         id: Uuid,
         user_id: Uuid,
         dto: ConfirmPollDto,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<MeetingPoll> {
-        let updated = sqlx::query_as::<_, MeetingPoll>(
-            r#"
-            UPDATE calendar.meeting_polls
-            SET status = 'confirmed', confirmed_slot_id = $2
-            WHERE id = $1 AND organizer_id = $3
-            RETURNING *
-            "#,
-        )
-        .bind(id)
-        .bind(dto.slot_id)
-        .bind(user_id)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| CalendarError::NotFound(format!("Sondage {id}")))?;
+        // Guarded update (`organizer_id`): check ownership first, then update by
+        // id and reselect — a guarded `UPDATE ... RETURNING` has no portable form.
+        let owned: Option<Uuid> = db
+            .fetch_optional_scalar(
+                "SELECT id FROM calendar.meeting_polls WHERE id = $1 AND organizer_id = $2",
+                params![id, user_id],
+            )
+            .await?;
+        if owned.is_none() {
+            return Err(CalendarError::NotFound(format!("Sondage {id}")));
+        }
 
-        Ok(updated)
+        db.execute(
+            "UPDATE calendar.meeting_polls SET status = 'confirmed', confirmed_slot_id = $1 WHERE id = $2",
+            params![dto.slot_id, id],
+        )
+        .await?;
+
+        db.fetch_one_as::<MeetingPoll>(
+            "SELECT * FROM calendar.meeting_polls WHERE id = $1",
+            params![id],
+        )
+        .await
+        .map_err(Into::into)
     }
 }

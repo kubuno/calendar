@@ -13,9 +13,11 @@
 //!   * mirrored subscription calendars — their content is not the instance's to
 //!     keep or drop, and the next sync would bring it back anyway.
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
+use kubuno_db::{params, DbValue};
+use uuid::Uuid;
 
-use crate::state::AppState;
+use crate::{state::AppState, sync};
 
 /// How often the cleaner wakes up. A retention is expressed in days, so there is
 /// nothing to gain from a tighter loop.
@@ -50,28 +52,9 @@ impl RetentionService {
 
         let mut total: u64 = 0;
         loop {
-            let deleted = sqlx::query(
-                r#"
-                DELETE FROM calendar.events
-                WHERE id IN (
-                    SELECT e.id
-                    FROM calendar.events e
-                    JOIN calendar.calendars c ON c.id = e.calendar_id
-                    WHERE e.ends_at < $1
-                      AND e.rrule IS NULL
-                      AND c.subscription_url IS NULL
-                    LIMIT $2
-                )
-                "#,
-            )
-            .bind(cutoff)
-            .bind(BATCH)
-            .execute(&state.db)
-            .await;
-
-            match deleted {
-                Ok(res) => {
-                    let n = res.rows_affected();
+            match Self::sweep_batch(state, cutoff).await {
+                Ok(0) => break,
+                Ok(n) => {
                     total += n;
                     if (n as i64) < BATCH {
                         break;
@@ -90,5 +73,44 @@ impl RetentionService {
                 "Purge des événements terminés au-delà de la rétention"
             );
         }
+    }
+
+    /// Deletes one batch of expired events, recording a tombstone for each first.
+    /// `DELETE ... WHERE id IN (SELECT ... LIMIT ...)` over the same table has no
+    /// portable form (MySQL forbids it), so the batch is read, tombstoned and
+    /// deleted by an explicit id list. Returns how many rows went.
+    async fn sweep_batch(state: &AppState, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+        let batch: Vec<(Uuid, Uuid)> = state
+            .db
+            .fetch_all_as(
+                r#"
+                SELECT e.id, e.owner_id
+                FROM calendar.events e
+                JOIN calendar.calendars c ON c.id = e.calendar_id
+                WHERE e.ends_at < $1
+                  AND e.rrule IS NULL
+                  AND c.subscription_url IS NULL
+                ORDER BY e.ends_at
+                LIMIT $2
+                "#,
+                params![cutoff, BATCH],
+            )
+            .await?;
+        if batch.is_empty() {
+            return Ok(0);
+        }
+        let n = batch.len() as u64;
+
+        let mut tx = state.db.begin().await?;
+        for (id, owner) in &batch {
+            let seq = sync::next_event_seq(&mut tx).await?;
+            kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, *id, *owner, seq).await?;
+        }
+        let in_list = tx.backend().in_list(1, batch.len());
+        let binds: Vec<DbValue> = batch.iter().map(|(id, _)| (*id).into()).collect();
+        tx.execute(&format!("DELETE FROM calendar.events WHERE id IN ({in_list})"), binds)
+            .await?;
+        tx.commit().await?;
+        Ok(n)
     }
 }

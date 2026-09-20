@@ -28,8 +28,13 @@ pub async fn publish_event_modified(
     title: &str,
     kind: &str, // "updated" | "deleted"
 ) {
-    let recipients: Vec<Uuid> = sqlx::query_scalar::<_, Uuid>(
-        r#"
+    // `event_id` was bound once and used twice on PostgreSQL; the portable
+    // rewriter forbids reusing a placeholder number, so it carries its own each
+    // time ($1 and $2), and the actor is $3.
+    let recipients: Vec<Uuid> = state
+        .db
+        .fetch_all_as::<(Uuid,)>(
+            r#"
         SELECT DISTINCT u FROM (
             SELECT cs.shared_with AS u
             FROM calendar.calendar_shares cs
@@ -38,16 +43,15 @@ pub async fn publish_event_modified(
             UNION
             SELECT a.user_id AS u
             FROM calendar.attendees a
-            WHERE a.event_id = $1 AND a.user_id IS NOT NULL
+            WHERE a.event_id = $2 AND a.user_id IS NOT NULL
         ) s
-        WHERE u <> $2
+        WHERE u <> $3
         "#,
-    )
-    .bind(event_id)
-    .bind(actor_id)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+            kubuno_db::params![event_id, event_id, actor_id],
+        )
+        .await
+        .map(|rows| rows.into_iter().map(|r| r.0).collect())
+        .unwrap_or_default();
 
     if recipients.is_empty() {
         return;
@@ -103,20 +107,21 @@ pub async fn publish_invite(
     let tokens: std::collections::HashMap<String, String> = if base.is_empty() {
         std::collections::HashMap::new()
     } else {
-        sqlx::query_as::<_, (String, Option<String>)>(
-            "SELECT LOWER(email), rsvp_token FROM calendar.attendees \
-             WHERE event_id = $1 AND is_organizer = FALSE",
-        )
-        .bind(event.id)
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::error!(error = %e, "invitations : lecture des jetons de réponse");
-            Vec::new()
-        })
-        .into_iter()
-        .filter_map(|(email, token)| token.map(|t| (email, t)))
-        .collect()
+        state
+            .db
+            .fetch_all_as::<(String, Option<String>)>(
+                "SELECT LOWER(email), rsvp_token FROM calendar.attendees \
+                 WHERE event_id = $1 AND is_organizer = FALSE AND email IS NOT NULL",
+                kubuno_db::params![event.id],
+            )
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, "invitations : lecture des jetons de réponse");
+                Vec::new()
+            })
+            .into_iter()
+            .filter_map(|(email, token)| token.map(|t| (email, t)))
+            .collect()
     };
 
     let attendees_json: Vec<serde_json::Value> = attendees

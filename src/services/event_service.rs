@@ -1,11 +1,12 @@
 use chrono::{DateTime, Duration, Utc};
-use sqlx::PgPool;
+use kubuno_db::{params, DbPool, DbQueryBuilder};
 use uuid::Uuid;
 
 use crate::{
     errors::{CalendarError, Result},
     models::event::{CreateEventDto, Event, EventInstance, EventsQuery, RecurrenceScope, UpdateEventDto},
     services::recurrence_service::RecurrenceService,
+    sync,
 };
 
 /// Couleur d'un calendrier, issue d'une JOIN.
@@ -21,26 +22,26 @@ impl EventService {
     pub async fn list(
         user_id: Uuid,
         query: EventsQuery,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<EventInstance>> {
         let from  = query.from.unwrap_or_else(Utc::now);
         let until = query.until.unwrap_or_else(|| from + Duration::days(30));
 
         // Fetch the accessible calendars and their color
-        let cal_colors: Vec<CalColor> = sqlx::query_as::<_, (Uuid, String)>(
-            r#"
-            SELECT DISTINCT c.id, c.color
-            FROM calendar.calendars c
-            LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $1
-            WHERE c.owner_id = $1 OR cs.shared_with = $1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(db)
-        .await?
-        .into_iter()
-        .map(|(id, color)| CalColor { id, color })
-        .collect();
+        let cal_colors: Vec<CalColor> = db
+            .fetch_all_as::<(Uuid, String)>(
+                r#"
+                SELECT DISTINCT c.id, c.color
+                FROM calendar.calendars c
+                LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $1
+                WHERE c.owner_id = $2 OR cs.shared_with = $3
+                "#,
+                params![user_id, user_id, user_id],
+            )
+            .await?
+            .into_iter()
+            .map(|(id, color)| CalColor { id, color })
+            .collect();
 
         let cal_ids: Vec<Uuid> = if let Some(cid) = query.calendar_id {
             if cal_colors.iter().any(|c| c.id == cid) {
@@ -62,57 +63,37 @@ impl EventService {
             return Ok(vec![]);
         }
 
-        // Load the base events within the window
-        // Includes recurring ones starting before until (for expansion)
-        let base_events: Vec<Event> = sqlx::query_as::<_, Event>(
-            r#"
-            SELECT * FROM calendar.events
-            WHERE (
-                    calendar_id = ANY($1)
-                    OR ($5 AND id IN (
-                        SELECT event_id FROM calendar.attendees WHERE user_id = $4
-                    ))
-                  )
-              AND parent_event_id IS NULL
-              AND (
-                  -- Plain events within the window
-                  (rrule IS NULL AND starts_at < $3 AND ends_at > $2)
-                  OR
-                  -- Recurring: load them all and filter through expansion
-                  (rrule IS NOT NULL AND starts_at < $3)
-              )
-            ORDER BY starts_at
-            "#,
-        )
-        .bind(&cal_ids)
-        .bind(from)
-        .bind(until)
-        .bind(user_id)
-        .bind(include_invited)
-        .fetch_all(db)
-        .await?;
+        // Load the base events within the window (recurring ones starting before
+        // `until` are loaded whole, for expansion). The `calendar_id IN (...)`
+        // list and the "invited" fallback are rendered per-engine by the builder.
+        let mut qb = DbQueryBuilder::new(db.backend(), "SELECT * FROM calendar.events WHERE (calendar_id");
+        qb.push_in(cal_ids.iter().copied())
+            .push(" OR (")
+            .push_bind(include_invited)
+            .push(" AND id IN (SELECT event_id FROM calendar.attendees WHERE user_id = ")
+            .push_bind(user_id)
+            .push("))) AND parent_event_id IS NULL AND ((rrule IS NULL AND starts_at < ")
+            .push_bind(until)
+            .push(" AND ends_at > ")
+            .push_bind(from)
+            .push(") OR (rrule IS NOT NULL AND starts_at < ")
+            .push_bind(until)
+            .push("))");
+        qb.push_order_by("starts_at");
+        let base_events: Vec<Event> = qb.fetch_all_as::<Event>(db).await?;
 
         // Load the occurrence exceptions within the window
-        let exception_events: Vec<Event> = sqlx::query_as::<_, Event>(
-            r#"
-            SELECT * FROM calendar.events
-            WHERE (
-                    calendar_id = ANY($1)
-                    OR ($5 AND id IN (
-                        SELECT event_id FROM calendar.attendees WHERE user_id = $4
-                    ))
-                  )
-              AND parent_event_id IS NOT NULL
-              AND starts_at < $3 AND ends_at > $2
-            "#,
-        )
-        .bind(&cal_ids)
-        .bind(from)
-        .bind(until)
-        .bind(user_id)
-        .bind(include_invited)
-        .fetch_all(db)
-        .await?;
+        let mut qb = DbQueryBuilder::new(db.backend(), "SELECT * FROM calendar.events WHERE (calendar_id");
+        qb.push_in(cal_ids.iter().copied())
+            .push(" OR (")
+            .push_bind(include_invited)
+            .push(" AND id IN (SELECT event_id FROM calendar.attendees WHERE user_id = ")
+            .push_bind(user_id)
+            .push("))) AND parent_event_id IS NOT NULL AND starts_at < ")
+            .push_bind(until)
+            .push(" AND ends_at > ")
+            .push_bind(from);
+        let exception_events: Vec<Event> = qb.fetch_all_as::<Event>(db).await?;
 
         let color_map: std::collections::HashMap<Uuid, String> =
             cal_colors.into_iter().map(|c| (c.id, c.color)).collect();
@@ -130,12 +111,10 @@ impl EventService {
             }
         }
 
-        // Remove the occurrences replaced by exceptions
-        // and add the exceptions themselves
+        // Remove the occurrences replaced by exceptions and add the exceptions.
         for exc in &exception_events {
             let parent_id     = exc.parent_event_id.unwrap();
             let recurrence_ts = exc.recurrence_id.map(|d| d.timestamp()).unwrap_or(0);
-            // Supprimer l'occurrence originale
             instances.retain(|i| {
                 !(i.event_id == parent_id
                     && i.starts_at.timestamp() == recurrence_ts)
@@ -147,8 +126,7 @@ impl EventService {
         }
 
         // Participation status of the requesting user on the events they were
-        // invited to — one lookup for the whole window, so the client can honour
-        // the "show declined events" preference without a request per event.
+        // invited to — one lookup for the whole window.
         let event_ids: Vec<Uuid> = {
             let mut ids: Vec<Uuid> = instances.iter().map(|i| i.event_id).collect();
             ids.sort_unstable();
@@ -156,18 +134,12 @@ impl EventService {
             ids
         };
         if !event_ids.is_empty() {
-            let rows: Vec<(Uuid, String)> = sqlx::query_as(
-                r#"
-                SELECT event_id, status
-                FROM calendar.attendees
-                WHERE user_id = $1 AND event_id = ANY($2)
-                "#,
-            )
-            .bind(user_id)
-            .bind(&event_ids)
-            .fetch_all(db)
-            .await
-            .map_err(|e| {
+            let mut qb = DbQueryBuilder::new(
+                db.backend(),
+                "SELECT event_id, status FROM calendar.attendees WHERE user_id = ",
+            );
+            qb.push_bind(user_id).push(" AND event_id").push_in(event_ids.iter().copied());
+            let rows: Vec<(Uuid, String)> = qb.fetch_all_as::<(Uuid, String)>(db).await.map_err(|e| {
                 tracing::error!(error = %e, "chargement des statuts de participation");
                 e
             })?;
@@ -181,43 +153,30 @@ impl EventService {
         Ok(instances)
     }
 
-    /// Fetch an event by its ID.
-    pub async fn get(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Event> {
-        let event = sqlx::query_as::<_, Event>(
+    /// Fetch an event by its ID. `user_id` is bound once per occurrence because
+    /// the portable placeholder rewriter forbids reusing a `$n`.
+    pub async fn get(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<Event> {
+        db.fetch_optional_as::<Event>(
             r#"
             SELECT e.*
             FROM calendar.events e
             JOIN calendar.calendars c ON c.id = e.calendar_id
-            LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $2
+            LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $1
             LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
-            WHERE e.id = $1
-              AND (c.owner_id = $2 OR cs.shared_with = $2 OR c.is_public = TRUE OR a.id IS NOT NULL)
+            WHERE e.id = $3
+              AND (c.owner_id = $4 OR cs.shared_with = $5 OR c.is_public = TRUE OR a.id IS NOT NULL)
             LIMIT 1
             "#,
+            params![user_id, user_id, id, user_id, user_id],
         )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(db)
         .await?
-        .ok_or_else(|| CalendarError::NotFound(format!("Événement {id}")))?;
-        Ok(event)
+        .ok_or_else(|| CalendarError::NotFound(format!("Événement {id}")))
     }
 
-    /// Create a new event.
-    /// A blank text field means "nothing", not the string "". A form that lets
-    /// someone empty the location, the description or the meeting link sends
-    /// the empty value back; storing it as "" would make the field read as
-    /// filled everywhere it is tested for presence.
     fn blank_to_none(v: Option<String>) -> Option<String> {
         v.filter(|s| !s.trim().is_empty())
     }
 
-    /// An event cannot end before it starts.
-    ///
-    /// The table has said so since its first migration, but a constraint is the
-    /// last line, not the first: reaching it answers "database error", which
-    /// tells the person nothing about the two dates in front of them. Checked
-    /// here so the answer names the problem.
     fn check_range(starts_at: DateTime<Utc>, ends_at: DateTime<Utc>) -> Result<()> {
         if ends_at < starts_at {
             return Err(CalendarError::Validation(
@@ -227,7 +186,21 @@ impl EventService {
         Ok(())
     }
 
-    pub async fn create(user_id: Uuid, dto: CreateEventDto, db: &PgPool) -> Result<Event> {
+    /// Refresh a calendar's CalDAV ctag. This does NOT bump the calendar's
+    /// `change_seq`: the ctag is a CalDAV concern, and events are pulled through
+    /// their own delta feed, so churning the calendar feed on every event write
+    /// would be noise. (Mirrors the tasks port, where the ctag trigger no longer
+    /// moves the board's change_seq.)
+    async fn bump_ctag(db: &DbPool, calendar_id: Uuid) -> Result<()> {
+        db.execute(
+            "UPDATE calendar.calendars SET ctag = $1 WHERE id = $2",
+            params![sync::new_tag(), calendar_id],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn create(user_id: Uuid, dto: CreateEventDto, db: &DbPool) -> Result<Event> {
         let dto = CreateEventDto {
             description: Self::blank_to_none(dto.description),
             location:    Self::blank_to_none(dto.location),
@@ -236,70 +209,59 @@ impl EventService {
         };
         Self::check_range(dto.starts_at, dto.ends_at)?;
 
-        // Validate the RRULE when present
         if let Some(ref rrule) = dto.rrule {
             RecurrenceService::validate_rrule(rrule)?;
         }
 
-        // Check access to the calendar
         Self::check_calendar_write_access(dto.calendar_id, user_id, db).await?;
 
-        let all_day   = dto.all_day.unwrap_or(false);
-        let timezone  = dto.timezone.unwrap_or_else(|| "UTC".to_string());
-        let reminders = dto.reminders.unwrap_or(serde_json::json!([]));
-        let status    = dto.status.unwrap_or_else(|| "confirmed".to_string());
+        let all_day    = dto.all_day.unwrap_or(false);
+        let timezone   = dto.timezone.unwrap_or_else(|| "UTC".to_string());
+        let reminders  = dto.reminders.unwrap_or(serde_json::json!([]));
+        let status     = dto.status.unwrap_or_else(|| "confirmed".to_string());
         let visibility = dto.visibility.unwrap_or_else(|| "public".to_string());
-        let busy      = dto.busy.unwrap_or(true);
-        let ical_uid  = format!("{}@kubuno.local", Uuid::new_v4());
-        // Absent means the documented default, not "off": guests may invite and
-        // may see each other, and may not rewrite the event.
+        let busy       = dto.busy.unwrap_or(true);
+        let ical_uid   = format!("{}@kubuno.local", Uuid::new_v4());
         let can_modify = dto.guests_can_modify.unwrap_or(false);
         let can_invite = dto.guests_can_invite.unwrap_or(true);
         let can_see    = dto.guests_can_see_guests.unwrap_or(true);
 
-        let event = sqlx::query_as::<_, Event>(
+        let event_id = dto.id.unwrap_or_else(kubuno_db::new_id);
+        let etag = sync::new_tag();
+        let calendar_id = dto.calendar_id;
+        let empty_files: Vec<Uuid> = Vec::new();
+        let empty_tasks: Vec<Uuid> = Vec::new();
+        // JSON array columns have no cross-engine DEFAULT, so they are supplied
+        // explicitly (exdates is timestamps, hence a JSON value rather than a Vec).
+        let empty_exdates = serde_json::json!([]);
+
+        let mut tx = db.begin().await?;
+        let seq = sync::next_event_seq(&mut tx).await?;
+        tx.execute(
             r#"
             INSERT INTO calendar.events
                 (id, calendar_id, owner_id, title, description, location, url,
-                 starts_at, ends_at, all_day, timezone, rrule, reminders,
-                 ical_uid, status, visibility, busy, color,
-                 guests_can_modify, guests_can_invite, guests_can_see_guests)
-            VALUES (COALESCE($18, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                    $13, $14, $15, $16, $17, $19, $20, $21)
-            RETURNING *
+                 starts_at, ends_at, all_day, timezone, rrule, exdates, reminders,
+                 ical_uid, etag, status, visibility, busy, color,
+                 linked_file_ids, linked_task_ids,
+                 guests_can_modify, guests_can_invite, guests_can_see_guests, change_seq)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
             "#,
+            params![
+                event_id, calendar_id, user_id, dto.title, dto.description, dto.location, dto.url,
+                dto.starts_at, dto.ends_at, all_day, timezone, dto.rrule, empty_exdates, reminders,
+                ical_uid, etag, status, visibility, busy, dto.color,
+                empty_files, empty_tasks, can_modify, can_invite, can_see, seq
+            ],
         )
-        .bind(dto.calendar_id)
-        .bind(user_id)
-        .bind(&dto.title)
-        .bind(&dto.description)
-        .bind(&dto.location)
-        .bind(&dto.url)
-        .bind(dto.starts_at)
-        .bind(dto.ends_at)
-        .bind(all_day)
-        .bind(&timezone)
-        .bind(&dto.rrule)
-        .bind(&reminders)
-        .bind(&ical_uid)
-        .bind(&status)
-        .bind(&visibility)
-        .bind(busy)
-        .bind(&dto.color)
-        .bind(dto.id)
-        .bind(can_modify)
-        .bind(can_invite)
-        .bind(can_see)
-        .fetch_one(db)
         .await?;
+        tx.commit().await?;
 
-        // Update the calendar's ctag
-        sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
-            .bind(dto.calendar_id)
-            .execute(db)
-            .await?;
+        Self::bump_ctag(db, calendar_id).await?;
 
-        Ok(event)
+        db.fetch_one_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![event_id])
+            .await
+            .map_err(Into::into)
     }
 
     /// Imports an event coming from an `.ics` file, preserving its iCalendar
@@ -312,7 +274,7 @@ impl EventService {
         user_id: Uuid,
         dto: CreateEventDto,
         ical_uid: &str,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Option<bool>> {
         if let Some(ref rrule) = dto.rrule {
             RecurrenceService::validate_rrule(rrule)?;
@@ -327,60 +289,70 @@ impl EventService {
         let visibility = dto.visibility.unwrap_or_else(|| "public".to_string());
         let busy       = dto.busy.unwrap_or(true);
 
-        // `xmax = 0` is true only for freshly inserted rows, letting us tell an
-        // insert apart from an update. The `WHERE owner_id = ...` guard keeps an
-        // import from overwriting another user's event that shares the same UID.
-        let inserted: Option<bool> = sqlx::query_scalar(
-            r#"
-            INSERT INTO calendar.events
-                (calendar_id, owner_id, title, description, location, url,
-                 starts_at, ends_at, all_day, timezone, rrule, reminders,
-                 ical_uid, status, visibility, busy, color)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                    $13, $14, $15, $16, $17)
-            ON CONFLICT (ical_uid) DO UPDATE SET
-                calendar_id = EXCLUDED.calendar_id,
-                title       = EXCLUDED.title,
-                description = EXCLUDED.description,
-                location    = EXCLUDED.location,
-                url         = EXCLUDED.url,
-                starts_at   = EXCLUDED.starts_at,
-                ends_at     = EXCLUDED.ends_at,
-                all_day     = EXCLUDED.all_day,
-                timezone    = EXCLUDED.timezone,
-                rrule       = EXCLUDED.rrule,
-                sequence    = calendar.events.sequence + 1,
-                etag        = md5(random()::text),
-                updated_at  = now()
-            WHERE calendar.events.owner_id = EXCLUDED.owner_id
-            RETURNING (xmax = 0)
-            "#,
-        )
-        .bind(dto.calendar_id)
-        .bind(user_id)
-        .bind(&dto.title)
-        .bind(&dto.description)
-        .bind(&dto.location)
-        .bind(&dto.url)
-        .bind(dto.starts_at)
-        .bind(dto.ends_at)
-        .bind(all_day)
-        .bind(&timezone)
-        .bind(&dto.rrule)
-        .bind(&reminders)
-        .bind(ical_uid)
-        .bind(&status)
-        .bind(&visibility)
-        .bind(busy)
-        .bind(&dto.color)
-        .fetch_optional(db)
-        .await?;
+        // Insert-or-update, decided in Rust rather than through PostgreSQL's
+        // `xmax` (which no other engine exposes). The `ical_uid` is unique, so at
+        // most one row matches; a row owned by someone else is left untouched.
+        let existing: Option<(Uuid, Uuid)> = db
+            .fetch_optional_as(
+                "SELECT id, owner_id FROM calendar.events WHERE ical_uid = $1",
+                params![ical_uid],
+            )
+            .await?;
+
+        let inserted: Option<bool> = match existing {
+            Some((_, owner)) if owner != user_id => None,
+            Some((existing_id, _)) => {
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
+                    r#"
+                    UPDATE calendar.events
+                    SET calendar_id = $1, title = $2, description = $3, location = $4, url = $5,
+                        starts_at = $6, ends_at = $7, all_day = $8, timezone = $9, rrule = $10,
+                        sequence = sequence + 1, etag = $11, change_seq = $12
+                    WHERE id = $13
+                    "#,
+                    params![
+                        dto.calendar_id, dto.title, dto.description, dto.location, dto.url,
+                        dto.starts_at, dto.ends_at, all_day, timezone, dto.rrule,
+                        sync::new_tag(), seq, existing_id
+                    ],
+                )
+                .await?;
+                tx.commit().await?;
+                Some(false)
+            }
+            None => {
+                let event_id = kubuno_db::new_id();
+                let empty_files: Vec<Uuid> = Vec::new();
+                let empty_tasks: Vec<Uuid> = Vec::new();
+                let empty_exdates = serde_json::json!([]);
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
+                    r#"
+                    INSERT INTO calendar.events
+                        (id, calendar_id, owner_id, title, description, location, url,
+                         starts_at, ends_at, all_day, timezone, rrule, exdates, reminders,
+                         ical_uid, etag, status, visibility, busy, color,
+                         linked_file_ids, linked_task_ids, change_seq)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+                    "#,
+                    params![
+                        event_id, dto.calendar_id, user_id, dto.title, dto.description, dto.location,
+                        dto.url, dto.starts_at, dto.ends_at, all_day, timezone, dto.rrule, empty_exdates,
+                        reminders, ical_uid, sync::new_tag(), status, visibility, busy, dto.color,
+                        empty_files, empty_tasks, seq
+                    ],
+                )
+                .await?;
+                tx.commit().await?;
+                Some(true)
+            }
+        };
 
         if inserted.is_some() {
-            sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
-                .bind(dto.calendar_id)
-                .execute(db)
-                .await?;
+            Self::bump_ctag(db, dto.calendar_id).await?;
         }
 
         Ok(inserted)
@@ -393,17 +365,11 @@ impl EventService {
         dto: UpdateEventDto,
         scope: RecurrenceScope,
         occurrence_dt: Option<DateTime<Utc>>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Event> {
         let event = Self::get_owned(id, user_id, db).await?;
-        // Moving the event to another agenda is the owner's act, not a guest's:
-        // it changes whose calendar carries it, which no permission on THIS
-        // event can grant.
         let dto = if event.owner_id == user_id { dto } else { UpdateEventDto { calendar_id: None, ..dto } };
 
-        // On an update an ABSENT field means "unchanged" and a PRESENT blank
-        // means "clear it" — the only way a form can empty a text field, since
-        // there is no `clear_location` flag and there should not need to be one.
         let dto = UpdateEventDto {
             description: dto.description.map(|s| s.trim().to_string()),
             location:    dto.location.map(|s| s.trim().to_string()),
@@ -418,22 +384,25 @@ impl EventService {
             RecurrenceService::validate_rrule(rrule)?;
         }
 
-        // "This event only" on a series: detach the occurrence — exdate on
-        // the master + a standalone copy (without rrule) carrying the changes,
-        // linked via parent_event_id so that "this and following" can purge
-        // future exceptions.
+        // "This event only" on a series: detach the occurrence — exdate on the
+        // master + a standalone copy (without rrule) carrying the changes.
         if matches!(scope, RecurrenceScope::This) && event.rrule.is_some() {
             if let Some(occ) = occurrence_dt {
-                sqlx::query(
+                // Append the exdate on the master and bump it (`array_append` has
+                // no portable form: read the JSON array, push in Rust, rewrite it).
+                let mut new_exdates = event.exdates.clone();
+                new_exdates.push(occ);
+                let exdates_json = serde_json::json!(new_exdates);
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
                     "UPDATE calendar.events
-                        SET exdates = array_append(exdates, $2),
-                            sequence = sequence + 1, etag = md5(random()::text)
-                      WHERE id = $1",
+                        SET exdates = $1, sequence = sequence + 1, etag = $2, change_seq = $3
+                      WHERE id = $4",
+                    params![exdates_json, sync::new_tag(), seq, id],
                 )
-                .bind(id)
-                .bind(occ)
-                .execute(db)
                 .await?;
+                tx.commit().await?;
 
                 let occ_duration = event.ends_at - event.starts_at;
                 let new_dto = CreateEventDto {
@@ -454,25 +423,27 @@ impl EventService {
                     visibility:  dto.visibility.or(Some(event.visibility)),
                     busy:        dto.busy.or(Some(event.busy)),
                     attendees:   None,
-                    // A split occurrence is the same gathering: it inherits what
-                    // its guests were allowed to do.
                     guests_can_modify:     dto.guests_can_modify.or(Some(event.guests_can_modify)),
                     guests_can_invite:     dto.guests_can_invite.or(Some(event.guests_can_invite)),
                     guests_can_see_guests: dto.guests_can_see_guests.or(Some(event.guests_can_see_guests)),
                 };
                 let created = Self::create(user_id, new_dto, db).await?;
-                sqlx::query("UPDATE calendar.events SET parent_event_id = $2 WHERE id = $1")
-                    .bind(created.id)
-                    .bind(id)
-                    .execute(db)
-                    .await?;
+
+                // Link the copy back to the master (its own delta bump).
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
+                    "UPDATE calendar.events SET parent_event_id = $1, change_seq = $2 WHERE id = $3",
+                    params![id, seq, created.id],
+                )
+                .await?;
+                tx.commit().await?;
                 return Ok(created);
             }
         }
 
         match scope {
             RecurrenceScope::All | RecurrenceScope::This => {
-                // Direct update of the event
                 let title      = dto.title.unwrap_or(event.title);
                 let description = clear(dto.description, event.description);
                 let location   = clear(dto.location, event.location);
@@ -492,55 +463,37 @@ impl EventService {
                 let can_invite = dto.guests_can_invite.unwrap_or(event.guests_can_invite);
                 let can_see    = dto.guests_can_see_guests.unwrap_or(event.guests_can_see_guests);
 
-                let updated = sqlx::query_as::<_, Event>(
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
                     r#"
                     UPDATE calendar.events
-                    SET title = $2, description = $3, location = $4, url = $5,
-                        starts_at = $6, ends_at = $7, all_day = $8, timezone = $9,
-                        rrule = $10, reminders = $11, status = $12, visibility = $13,
-                        busy = $14, color = $15, sequence = sequence + 1,
-                        etag = md5(random()::text),
+                    SET title = $1, description = $2, location = $3, url = $4,
+                        starts_at = $5, ends_at = $6, all_day = $7, timezone = $8,
+                        rrule = $9, reminders = $10, status = $11, visibility = $12,
+                        busy = $13, color = $14, sequence = sequence + 1, etag = $15,
                         guests_can_modify = $16, guests_can_invite = $17,
-                        guests_can_see_guests = $18
-                    WHERE id = $1
-                    RETURNING *
+                        guests_can_see_guests = $18, change_seq = $19
+                    WHERE id = $20
                     "#,
+                    params![
+                        title, description, location, url, starts_at, ends_at, all_day, timezone,
+                        rrule, reminders, status, visibility, busy, color, sync::new_tag(),
+                        can_modify, can_invite, can_see, seq, id
+                    ],
                 )
-                .bind(id)
-                .bind(&title)
-                .bind(&description)
-                .bind(&location)
-                .bind(&url)
-                .bind(starts_at)
-                .bind(ends_at)
-                .bind(all_day)
-                .bind(&timezone)
-                .bind(&rrule)
-                .bind(&reminders)
-                .bind(&status)
-                .bind(&visibility)
-                .bind(busy)
-                .bind(&color)
-                .bind(can_modify)
-                .bind(can_invite)
-                .bind(can_see)
-                .fetch_one(db)
                 .await?;
+                tx.commit().await?;
 
-                // Update ctag
-                sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
-                    .bind(event.calendar_id)
-                    .execute(db)
-                    .await?;
+                Self::bump_ctag(db, event.calendar_id).await?;
 
-                Ok(updated)
+                db.fetch_one_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![id])
+                    .await
+                    .map_err(Into::into)
             }
             RecurrenceScope::Following => {
-                // Truncate the parent recurrence and create a new master
-                // for the following occurrences
                 let starts_at_new = occurrence_dt.or(dto.starts_at).unwrap_or(event.starts_at);
 
-                // End the parent recurrence just before this occurrence
                 let old_until = starts_at_new - Duration::seconds(1);
                 let until_str = old_until.format("%Y%m%dT%H%M%SZ").to_string();
                 let new_rrule = event
@@ -549,15 +502,17 @@ impl EventService {
                     .map(|r| Self::truncated_rrule(r, &until_str))
                     .unwrap_or_default();
 
-                sqlx::query("UPDATE calendar.events SET rrule = $2 WHERE id = $1")
-                    .bind(id)
-                    .bind(&new_rrule)
-                    .execute(db)
-                    .await?;
+                let mut tx = db.begin().await?;
+                let seq = sync::next_event_seq(&mut tx).await?;
+                tx.execute(
+                    "UPDATE calendar.events SET rrule = $1, change_seq = $2 WHERE id = $3",
+                    params![new_rrule, seq, id],
+                )
+                .await?;
+                tx.commit().await?;
 
-                // Create a new master with the new values
                 let new_dto = CreateEventDto {
-                id: None,
+                    id: None,
                     calendar_id:  dto.calendar_id.unwrap_or(event.calendar_id),
                     title:        dto.title.unwrap_or(event.title),
                     description:  dto.description.or(event.description),
@@ -589,32 +544,30 @@ impl EventService {
         user_id: Uuid,
         scope: RecurrenceScope,
         occurrence_dt: Option<DateTime<Utc>>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<()> {
         let event = Self::get_owned(id, user_id, db).await?;
 
         match scope {
             RecurrenceScope::All => {
-                sqlx::query("DELETE FROM calendar.events WHERE id = $1")
-                    .bind(id)
-                    .execute(db)
-                    .await?;
+                Self::hard_delete_tree(db, id).await?;
             }
             RecurrenceScope::This => {
-                // Add an exdate to hide this occurrence
                 if let Some(occ_dt) = occurrence_dt {
-                    sqlx::query(
-                        "UPDATE calendar.events SET exdates = array_append(exdates, $2) WHERE id = $1",
+                    // Hide this occurrence with an exdate; bump the event.
+                    let mut new_exdates = event.exdates.clone();
+                    new_exdates.push(occ_dt);
+                    let exdates_json = serde_json::json!(new_exdates);
+                    let mut tx = db.begin().await?;
+                    let seq = sync::next_event_seq(&mut tx).await?;
+                    tx.execute(
+                        "UPDATE calendar.events SET exdates = $1, change_seq = $2 WHERE id = $3",
+                        params![exdates_json, seq, id],
                     )
-                    .bind(id)
-                    .bind(occ_dt)
-                    .execute(db)
                     .await?;
+                    tx.commit().await?;
                 } else {
-                    sqlx::query("DELETE FROM calendar.events WHERE id = $1")
-                        .bind(id)
-                        .execute(db)
-                        .await?;
+                    Self::hard_delete_tree(db, id).await?;
                 }
             }
             RecurrenceScope::Following => {
@@ -626,35 +579,66 @@ impl EventService {
                         .as_deref()
                         .map(|r| Self::truncated_rrule(r, &until_str))
                         .unwrap_or_default();
-                    sqlx::query("UPDATE calendar.events SET rrule = $2 WHERE id = $1")
-                        .bind(id)
-                        .bind(&new_rrule)
-                        .execute(db)
+
+                    // The future exceptions that will be hard-deleted (read on the
+                    // pool: their tombstones are written explicitly, since the FK
+                    // cascade fires no application code).
+                    let doomed: Vec<(Uuid, Uuid)> = db
+                        .fetch_all_as(
+                            "SELECT id, owner_id FROM calendar.events WHERE parent_event_id = $1 AND starts_at >= $2",
+                            params![id, occ_dt],
+                        )
                         .await?;
-                    // Remove future exceptions
-                    sqlx::query(
-                        "DELETE FROM calendar.events WHERE parent_event_id = $1 AND starts_at >= $2",
+
+                    let mut tx = db.begin().await?;
+                    let seq = sync::next_event_seq(&mut tx).await?;
+                    tx.execute(
+                        "UPDATE calendar.events SET rrule = $1, change_seq = $2 WHERE id = $3",
+                        params![new_rrule, seq, id],
                     )
-                    .bind(id)
-                    .bind(occ_dt)
-                    .execute(db)
                     .await?;
+                    for (eid, owner) in &doomed {
+                        let s = sync::next_event_seq(&mut tx).await?;
+                        kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, *eid, *owner, s).await?;
+                    }
+                    tx.execute(
+                        "DELETE FROM calendar.events WHERE parent_event_id = $1 AND starts_at >= $2",
+                        params![id, occ_dt],
+                    )
+                    .await?;
+                    tx.commit().await?;
                 }
             }
         }
 
-        sqlx::query("UPDATE calendar.calendars SET ctag = md5(random()::text) WHERE id = $1")
-            .bind(event.calendar_id)
-            .execute(db)
+        Self::bump_ctag(db, event.calendar_id).await?;
+        Ok(())
+    }
+
+    /// Hard-deletes an event and every occurrence-exception that cascades from
+    /// it, writing a tombstone for each first — the FK `ON DELETE CASCADE` runs
+    /// no application code, so the delta feed would otherwise never learn the
+    /// children are gone.
+    async fn hard_delete_tree(db: &DbPool, id: Uuid) -> Result<()> {
+        let doomed: Vec<(Uuid, Uuid)> = db
+            .fetch_all_as(
+                "SELECT id, owner_id FROM calendar.events WHERE id = $1 OR parent_event_id = $2",
+                params![id, id],
+            )
             .await?;
 
+        let mut tx = db.begin().await?;
+        for (eid, owner) in &doomed {
+            let seq = sync::next_event_seq(&mut tx).await?;
+            kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, *eid, *owner, seq).await?;
+        }
+        tx.execute("DELETE FROM calendar.events WHERE id = $1", params![id]).await?;
+        tx.commit().await?;
         Ok(())
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
-    /// Rewrites an RRULE so the series ends at `until_str`, dropping any prior
-    /// UNTIL/COUNT (appending a second UNTIL would produce an invalid rule).
     fn truncated_rrule(rrule: &str, until_str: &str) -> String {
         let base = rrule
             .split(';')
@@ -667,46 +651,39 @@ impl EventService {
         format!("{base};UNTIL={until_str}")
     }
 
-    /// The event, for someone entitled to change it.
-    ///
-    /// Its owner, of course — and a GUEST when the organiser ticked "Guests can
-    /// modify the event". That tick is the only thing that makes the box mean
-    /// anything: without it here, an organiser could hand out a permission the
-    /// server would go on refusing, which is worse than not offering it.
-    ///
-    /// A guest who may modify still cannot hand the event to another calendar:
-    /// `calendar_id` belongs to whoever owns the agenda, not to the meeting.
-    async fn get_owned(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Event> {
-        sqlx::query_as::<_, Event>(
+    /// The event, for someone entitled to change it: its owner, or a guest when
+    /// the organiser ticked "Guests can modify the event". `user_id` is bound
+    /// three times (the rewriter forbids reusing a `$n`).
+    async fn get_owned(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<Event> {
+        db.fetch_optional_as::<Event>(
             "SELECT e.* FROM calendar.events e
-               LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $2
-              WHERE e.id = $1
-                AND (e.owner_id = $2 OR (e.guests_can_modify AND a.id IS NOT NULL))",
+               LEFT JOIN calendar.attendees a ON a.event_id = e.id AND a.user_id = $1
+              WHERE e.id = $2
+                AND (e.owner_id = $3 OR (e.guests_can_modify AND a.id IS NOT NULL))",
+            params![user_id, id, user_id],
         )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound(format!("Événement {id}")))
     }
 
-    async fn check_calendar_write_access(calendar_id: Uuid, user_id: Uuid, db: &PgPool) -> Result<()> {
-        let ok: bool = sqlx::query_scalar(
-            r#"
-            SELECT EXISTS (
-                SELECT 1 FROM calendar.calendars c
+    async fn check_calendar_write_access(calendar_id: Uuid, user_id: Uuid, db: &DbPool) -> Result<()> {
+        // A real column is selected (not a `1` literal, whose SQL type differs
+        // per engine) so `.is_some()` is the portable "row exists" test.
+        let ok = db
+            .fetch_optional_scalar::<Uuid>(
+                r#"
+                SELECT c.id FROM calendar.calendars c
                 LEFT JOIN calendar.calendar_shares cs
-                    ON cs.calendar_id = c.id AND cs.shared_with = $2
-                WHERE c.id = $1
-                  AND (c.owner_id = $2
-                       OR (cs.shared_with = $2 AND cs.permission IN ('write', 'admin')))
+                    ON cs.calendar_id = c.id AND cs.shared_with = $1
+                WHERE c.id = $2
+                  AND (c.owner_id = $3
+                       OR (cs.shared_with = $4 AND cs.permission IN ('write', 'admin')))
+                LIMIT 1
+                "#,
+                params![user_id, calendar_id, user_id, user_id],
             )
-            "#,
-        )
-        .bind(calendar_id)
-        .bind(user_id)
-        .fetch_one(db)
-        .await?;
+            .await?
+            .is_some();
 
         if ok {
             Ok(())

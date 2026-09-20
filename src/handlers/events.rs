@@ -61,9 +61,12 @@ fn announce_meeting(state: &AppState, url: Option<&str>, title: &str, owner: Opt
 /// The call this event currently points at, read before it is changed, so a
 /// call that is being replaced or dropped can be released.
 async fn current_url(state: &AppState, id: Uuid) -> Option<String> {
-    sqlx::query_scalar::<_, Option<String>>("SELECT url FROM calendar.events WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
+    state
+        .db
+        .fetch_optional_scalar::<Option<String>>(
+            "SELECT url FROM calendar.events WHERE id = $1",
+            kubuno_db::params![id],
+        )
         .await
         .ok()
         .flatten()

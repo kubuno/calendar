@@ -1,66 +1,71 @@
-use sqlx::PgPool;
+use kubuno_db::dialect::Assign;
+use kubuno_db::{params, DbPool};
 use uuid::Uuid;
 
 use crate::{
     config::InstanceConfig,
     errors::{CalendarError, Result},
     models::calendar::{Calendar, CalendarShare, CreateCalendarDto, ShareCalendarDto, UpdateCalendarDto},
+    sync,
 };
 
 pub struct CalendarService;
 
 impl CalendarService {
     /// List a user's calendars (own + shared with them).
-    pub async fn list(user_id: Uuid, db: &PgPool) -> Result<Vec<Calendar>> {
+    pub async fn list(user_id: Uuid, db: &DbPool) -> Result<Vec<Calendar>> {
         // `my_permission` tells the caller what they may do with each calendar
         // ('owner' | 'write' | 'read') so the UI can grey out what's read-only.
-        let rows = sqlx::query_as::<_, Calendar>(
-            r#"
-            SELECT c.*,
-                   CASE WHEN c.owner_id = $1 THEN 'owner' ELSE cs.permission END AS my_permission
-            FROM calendar.calendars c
-            LEFT JOIN calendar.calendar_shares cs
-                   ON cs.calendar_id = c.id AND cs.shared_with = $1
-            WHERE c.owner_id = $1
-               OR cs.shared_with = $1
-            ORDER BY c.is_default DESC, c.name ASC
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(db)
-        .await?;
+        // `user_id` is bound once per placeholder: the portable rewriter forbids
+        // reusing a number, so the four occurrences carry four binds.
+        let rows = db
+            .fetch_all_as::<Calendar>(
+                r#"
+                SELECT c.*,
+                       CASE WHEN c.owner_id = $1 THEN 'owner' ELSE cs.permission END AS my_permission
+                FROM calendar.calendars c
+                LEFT JOIN calendar.calendar_shares cs
+                       ON cs.calendar_id = c.id AND cs.shared_with = $2
+                WHERE c.owner_id = $3
+                   OR cs.shared_with = $4
+                ORDER BY c.is_default DESC, c.name ASC
+                "#,
+                params![user_id, user_id, user_id, user_id],
+            )
+            .await?;
         Ok(rows)
     }
 
     /// List the shares of a calendar (owner only).
-    pub async fn list_shares(id: Uuid, owner_id: Uuid, db: &PgPool) -> Result<Vec<CalendarShare>> {
+    pub async fn list_shares(id: Uuid, owner_id: Uuid, db: &DbPool) -> Result<Vec<CalendarShare>> {
         Self::get_owned(id, owner_id, db).await?;
-        let rows = sqlx::query_as::<_, CalendarShare>(
-            "SELECT * FROM calendar.calendar_shares WHERE calendar_id = $1 ORDER BY created_at",
-        )
-        .bind(id)
-        .fetch_all(db)
-        .await?;
+        let rows = db
+            .fetch_all_as::<CalendarShare>(
+                "SELECT * FROM calendar.calendar_shares WHERE calendar_id = $1 ORDER BY created_at",
+                params![id],
+            )
+            .await?;
         Ok(rows)
     }
 
     /// Fetch a calendar by its ID, checking access.
-    pub async fn get(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Calendar> {
-        let row = sqlx::query_as::<_, Calendar>(
-            r#"
-            SELECT c.*
-            FROM calendar.calendars c
-            LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $2
-            WHERE c.id = $1
-              AND (c.owner_id = $2 OR cs.shared_with = $2 OR c.is_public = TRUE)
-            LIMIT 1
-            "#,
-        )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(db)
-        .await?
-        .ok_or_else(|| CalendarError::NotFound(format!("Calendrier {id}")))?;
+    pub async fn get(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<Calendar> {
+        // Placeholders ascend in text order (the JOIN predicate comes first), so
+        // `user_id` and `id` are bound in that order and repeated per occurrence.
+        let row = db
+            .fetch_optional_as::<Calendar>(
+                r#"
+                SELECT c.*
+                FROM calendar.calendars c
+                LEFT JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id AND cs.shared_with = $1
+                WHERE c.id = $2
+                  AND (c.owner_id = $3 OR cs.shared_with = $4 OR c.is_public = TRUE)
+                LIMIT 1
+                "#,
+                params![user_id, id, user_id, user_id],
+            )
+            .await?
+            .ok_or_else(|| CalendarError::NotFound(format!("Calendrier {id}")))?;
         Ok(row)
     }
 
@@ -74,16 +79,18 @@ impl CalendarService {
     pub async fn assert_can_create(
         user_id: Uuid,
         instance: &InstanceConfig,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<()> {
         if instance.max_calendars_per_user <= 0 {
             return Ok(());
         }
-        let owned: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM calendar.calendars WHERE owner_id = $1")
-                .bind(user_id)
-                .fetch_one(db)
-                .await?;
+        let count_expr = db.backend().count_bigint("*");
+        let owned: i64 = db
+            .fetch_scalar(
+                &format!("SELECT {count_expr} FROM calendar.calendars WHERE owner_id = $1"),
+                params![user_id],
+            )
+            .await?;
         if owned >= instance.max_calendars_per_user {
             return Err(CalendarError::Validation(format!(
                 "Nombre maximal d'agendas atteint ({}) — supprimez-en un ou contactez votre administration",
@@ -99,16 +106,11 @@ impl CalendarService {
     /// instance setting acting only as the fallback when that zone is unknown —
     /// see [`crate::services::timezone`] for where the creator's zone comes from
     /// and why nothing here trusts it as given.
-    ///
-    /// The other instance setting that applies is the permission to publish a
-    /// calendar. Asking for a published calendar while the instance forbids it is
-    /// refused out loud rather than silently downgraded — a caller that believes
-    /// it published something must learn otherwise.
     pub async fn create(
         user_id: Uuid,
         dto: CreateCalendarDto,
         instance: &InstanceConfig,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Calendar> {
         if dto.is_public == Some(true) && !instance.allow_public_calendars {
             return Err(CalendarError::Validation(
@@ -125,47 +127,43 @@ impl CalendarService {
         let is_public = dto.is_public.unwrap_or(false);
 
         // Check whether this is the first calendar (→ default)
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM calendar.calendars WHERE owner_id = $1")
-            .bind(user_id)
-            .fetch_one(db)
+        let count_expr = db.backend().count_bigint("*");
+        let count: i64 = db
+            .fetch_scalar(
+                &format!("SELECT {count_expr} FROM calendar.calendars WHERE owner_id = $1"),
+                params![user_id],
+            )
             .await?;
         let is_default = count == 0;
 
-        let row = sqlx::query_as::<_, Calendar>(
-            r#"
-            INSERT INTO calendar.calendars
-                (id, owner_id, name, description, color, cal_type, is_default, timezone, is_public)
-            VALUES (COALESCE($9, uuid_generate_v4()), $1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING *
-            "#,
+        let cal_id = dto.id.unwrap_or_else(kubuno_db::new_id);
+        let mut tx = db.begin().await?;
+        let seq = sync::next_calendar_seq(&mut tx).await?;
+        tx.execute(
+            "INSERT INTO calendar.calendars
+               (id, owner_id, name, description, color, cal_type, is_default, timezone,
+                is_public, caldav_token, ctag, change_seq)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+            params![
+                cal_id, user_id, dto.name, dto.description, color, cal_type, is_default, timezone,
+                is_public, sync::new_tag(), sync::new_tag(), seq
+            ],
         )
-        .bind(user_id)
-        .bind(&dto.name)
-        .bind(&dto.description)
-        .bind(&color)
-        .bind(&cal_type)
-        .bind(is_default)
-        .bind(&timezone)
-        .bind(is_public)
-        .bind(dto.id)
-        .fetch_one(db)
         .await?;
+        tx.commit().await?;
 
-        Ok(row)
+        db.fetch_one_as::<Calendar>("SELECT * FROM calendar.calendars WHERE id = $1", params![cal_id])
+            .await
+            .map_err(Into::into)
     }
 
     /// Update a calendar.
-    ///
-    /// A time zone named here is REFUSED when it is not a zone, where the same
-    /// value at creation would have fallen back: this one was chosen on purpose,
-    /// and quietly storing something else would tell the caller their change
-    /// took when it did not.
     pub async fn update(
         id: Uuid,
         user_id: Uuid,
         dto: UpdateCalendarDto,
         instance: &InstanceConfig,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Calendar> {
         if dto.is_public == Some(true) && !instance.allow_public_calendars {
             return Err(CalendarError::Validation(
@@ -187,95 +185,109 @@ impl CalendarService {
         // Check ownership
         let cal = Self::get_owned(id, user_id, db).await?;
 
-        let name       = dto.name.unwrap_or(cal.name);
+        let name        = dto.name.unwrap_or(cal.name);
         let description = dto.description.or(cal.description);
-        let color      = dto.color.unwrap_or(cal.color);
-        let timezone   = dto.timezone.map(|tz| tz.trim().to_string()).unwrap_or(cal.timezone);
-        let is_visible = dto.is_visible.unwrap_or(cal.is_visible);
-        let is_public  = dto.is_public.unwrap_or(cal.is_public);
+        let color       = dto.color.unwrap_or(cal.color);
+        let timezone    = dto.timezone.map(|tz| tz.trim().to_string()).unwrap_or(cal.timezone);
+        let is_visible  = dto.is_visible.unwrap_or(cal.is_visible);
+        let is_public   = dto.is_public.unwrap_or(cal.is_public);
 
-        let row = sqlx::query_as::<_, Calendar>(
-            r#"
-            UPDATE calendar.calendars
-            SET name = $2, description = $3, color = $4, timezone = $5,
-                is_visible = $6, is_public = $7,
-                ctag = md5(random()::text)
-            WHERE id = $1
-            RETURNING *
-            "#,
+        let mut tx = db.begin().await?;
+        let seq = sync::next_calendar_seq(&mut tx).await?;
+        tx.execute(
+            "UPDATE calendar.calendars
+             SET name = $1, description = $2, color = $3, timezone = $4,
+                 is_visible = $5, is_public = $6, ctag = $7, change_seq = $8
+             WHERE id = $9",
+            params![name, description, color, timezone, is_visible, is_public, sync::new_tag(), seq, id],
         )
-        .bind(id)
-        .bind(&name)
-        .bind(&description)
-        .bind(&color)
-        .bind(&timezone)
-        .bind(is_visible)
-        .bind(is_public)
-        .fetch_one(db)
         .await?;
+        tx.commit().await?;
 
-        Ok(row)
+        db.fetch_one_as::<Calendar>("SELECT * FROM calendar.calendars WHERE id = $1", params![id])
+            .await
+            .map_err(Into::into)
     }
 
     /// Delete a calendar and all its events (CASCADE).
-    pub async fn delete(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<()> {
+    pub async fn delete(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<()> {
         let cal = Self::get_owned(id, user_id, db).await?;
         if cal.is_default {
             return Err(CalendarError::Validation(
                 "Impossible de supprimer le calendrier par défaut".to_string(),
             ));
         }
-        sqlx::query("DELETE FROM calendar.calendars WHERE id = $1")
-            .bind(id)
-            .execute(db)
+
+        // The FK cascade removes the calendar's events, but a cascade fires no
+        // application code — so the event delta would never learn those events
+        // are gone. Record an event tombstone for each (owner-scoped, as the
+        // event delta reads them) before the calendar goes.
+        let doomed: Vec<(Uuid, Uuid)> = db
+            .fetch_all_as(
+                "SELECT id, owner_id FROM calendar.events WHERE calendar_id = $1",
+                params![id],
+            )
             .await?;
+
+        let mut tx = db.begin().await?;
+        for (event_id, event_owner) in doomed {
+            let seq = sync::next_event_seq(&mut tx).await?;
+            kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, event_id, event_owner, seq)
+                .await?;
+        }
+        let seq = sync::next_calendar_seq(&mut tx).await?;
+        tx.execute("DELETE FROM calendar.calendars WHERE id = $1", params![id]).await?;
+        kubuno_db::journal::record_tombstone(&mut tx, sync::CALENDAR_TOMBSTONES, id, user_id, seq).await?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Share a calendar with another user.
-    pub async fn share(id: Uuid, owner_id: Uuid, dto: ShareCalendarDto, db: &PgPool) -> Result<CalendarShare> {
+    pub async fn share(id: Uuid, owner_id: Uuid, dto: ShareCalendarDto, db: &DbPool) -> Result<CalendarShare> {
         Self::get_owned(id, owner_id, db).await?;
         let permission = dto.permission.unwrap_or_else(|| "read".to_string());
 
-        let row = sqlx::query_as::<_, CalendarShare>(
-            r#"
-            INSERT INTO calendar.calendar_shares (calendar_id, shared_with, permission)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (calendar_id, shared_with)
-            DO UPDATE SET permission = EXCLUDED.permission
-            RETURNING *
-            "#,
+        // Upsert on (calendar_id, shared_with); shares are carried by no delta
+        // feed, so no change_seq is bumped.
+        let clause = db.backend().upsert(
+            "calendar_shares",
+            &["calendar_id", "shared_with"],
+            &[Assign::Incoming("permission")],
+        );
+        db.execute(
+            &format!(
+                "INSERT INTO calendar.calendar_shares (id, calendar_id, shared_with, permission)
+                 VALUES ($1, $2, $3, $4){clause}"
+            ),
+            params![kubuno_db::new_id(), id, dto.user_id, permission],
         )
-        .bind(id)
-        .bind(dto.user_id)
-        .bind(&permission)
-        .fetch_one(db)
         .await?;
 
-        Ok(row)
+        db.fetch_one_as::<CalendarShare>(
+            "SELECT * FROM calendar.calendar_shares WHERE calendar_id = $1 AND shared_with = $2",
+            params![id, dto.user_id],
+        )
+        .await
+        .map_err(Into::into)
     }
 
     /// Supprime un partage.
-    pub async fn unshare(id: Uuid, owner_id: Uuid, shared_with: Uuid, db: &PgPool) -> Result<()> {
+    pub async fn unshare(id: Uuid, owner_id: Uuid, shared_with: Uuid, db: &DbPool) -> Result<()> {
         Self::get_owned(id, owner_id, db).await?;
-        sqlx::query(
+        db.execute(
             "DELETE FROM calendar.calendar_shares WHERE calendar_id = $1 AND shared_with = $2",
+            params![id, shared_with],
         )
-        .bind(id)
-        .bind(shared_with)
-        .execute(db)
         .await?;
         Ok(())
     }
 
     /// Fetch a calendar owned by the user.
-    async fn get_owned(id: Uuid, user_id: Uuid, db: &PgPool) -> Result<Calendar> {
-        sqlx::query_as::<_, Calendar>(
+    async fn get_owned(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<Calendar> {
+        db.fetch_optional_as::<Calendar>(
             "SELECT * FROM calendar.calendars WHERE id = $1 AND owner_id = $2",
+            params![id, user_id],
         )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(db)
         .await?
         .ok_or_else(|| CalendarError::NotFound(format!("Calendrier {id}")))
     }

@@ -1,5 +1,5 @@
 use chrono::{Duration, Utc};
-use sqlx::PgPool;
+use kubuno_db::{params, DbPool};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -9,13 +9,12 @@ pub struct ReminderService;
 
 impl ReminderService {
     /// Planifie les rappels d'un événement dans la DB.
-    pub async fn schedule_reminders(event: &Event, user_id: Uuid, db: &PgPool) -> Result<()> {
+    pub async fn schedule_reminders(event: &Event, user_id: Uuid, db: &DbPool) -> Result<()> {
         // Supprimer les anciens rappels non envoyés
-        sqlx::query(
+        db.execute(
             "DELETE FROM calendar.scheduled_reminders WHERE event_id = $1 AND sent = FALSE",
+            params![event.id],
         )
-        .bind(event.id)
-        .execute(db)
         .await?;
 
         // Parser les rappels JSONB: [{"type":"popup","minutes_before":15}, ...]
@@ -37,19 +36,19 @@ impl ReminderService {
             let remind_at = event.starts_at - Duration::minutes(minutes_before);
 
             if remind_at > Utc::now() {
-                sqlx::query(
-                    r#"
-                    INSERT INTO calendar.scheduled_reminders
-                        (event_id, user_id, remind_at, channel)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT DO NOTHING
-                    "#,
+                // The process now supplies the primary key (no DEFAULT on the
+                // portable engines). The old bare `ON CONFLICT DO NOTHING` only
+                // ever guarded the primary key, which a fresh id never hits.
+                let ignore = db.backend().insert_ignore_prefix();
+                let nothing = db.backend().on_conflict_do_nothing(&["id"]);
+                db.execute(
+                    &format!(
+                        "INSERT {ignore}INTO calendar.scheduled_reminders
+                            (id, event_id, user_id, remind_at, channel)
+                        VALUES ($1, $2, $3, $4, $5){nothing}"
+                    ),
+                    params![kubuno_db::new_id(), event.id, user_id, remind_at, channel],
                 )
-                .bind(event.id)
-                .bind(user_id)
-                .bind(remind_at)
-                .bind(&channel)
-                .execute(db)
                 .await?;
             }
         }
@@ -70,17 +69,19 @@ impl ReminderService {
 
     async fn process_due_reminders(state: &AppState) -> Result<()> {
         // Récupérer les rappels dus
-        let due: Vec<(Uuid, Uuid, String)> = sqlx::query_as(
-            r#"
+        let due: Vec<(Uuid, Uuid, String)> = state
+            .db
+            .fetch_all_as(
+                r#"
             SELECT id, user_id, channel
             FROM calendar.scheduled_reminders
-            WHERE sent = FALSE AND remind_at <= NOW()
+            WHERE sent = FALSE AND remind_at <= $1
             ORDER BY remind_at
             LIMIT 100
             "#,
-        )
-        .fetch_all(&state.db)
-        .await?;
+                params![Utc::now()],
+            )
+            .await?;
 
         for (reminder_id, user_id, channel) in due {
             tracing::info!(
@@ -91,12 +92,13 @@ impl ReminderService {
             );
 
             // Marquer comme envoyé
-            sqlx::query(
-                "UPDATE calendar.scheduled_reminders SET sent = TRUE, sent_at = NOW() WHERE id = $1",
-            )
-            .bind(reminder_id)
-            .execute(&state.db)
-            .await?;
+            state
+                .db
+                .execute(
+                    "UPDATE calendar.scheduled_reminders SET sent = TRUE, sent_at = $1 WHERE id = $2",
+                    params![Utc::now(), reminder_id],
+                )
+                .await?;
 
             // TODO: envoyer via WebSocket ou email selon le canal
         }

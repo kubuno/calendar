@@ -5,10 +5,13 @@ use axum::{
     routing::any,
     Router,
 };
+use kubuno_db::params;
+use uuid::Uuid;
 
 use crate::{
     services::icalendar_service::ICalendarService,
     state::AppState,
+    sync,
 };
 
 pub fn caldav_router() -> Router<AppState> {
@@ -106,12 +109,13 @@ async fn calendar_collection(
             .into_response(),
         "PROPFIND" => {
             // Charger le calendrier par son caldav_token
-            let cal_result = sqlx::query_as::<_, crate::models::calendar::Calendar>(
-                "SELECT * FROM calendar.calendars WHERE caldav_token = $1",
-            )
-            .bind(&token)
-            .fetch_optional(&state.db)
-            .await;
+            let cal_result = state
+                .db
+                .fetch_optional_as::<crate::models::calendar::Calendar>(
+                    "SELECT * FROM calendar.calendars WHERE caldav_token = $1",
+                    params![&token],
+                )
+                .await;
 
             let cal = match cal_result {
                 Ok(Some(c)) => c,
@@ -144,22 +148,23 @@ async fn calendar_collection(
         }
         "REPORT" => {
             // Retourner tous les événements du calendrier en format multi-status
-            let events_result = sqlx::query_as::<_, crate::models::event::Event>(
-                "SELECT * FROM calendar.events WHERE calendar_id = $1 AND status != 'cancelled'",
-            )
-            .bind(
-                sqlx::query_scalar::<_, uuid::Uuid>(
+            let cal_id: Uuid = state
+                .db
+                .fetch_optional_scalar::<Uuid>(
                     "SELECT id FROM calendar.calendars WHERE caldav_token = $1",
+                    params![&token],
                 )
-                .bind(&token)
-                .fetch_optional(&state.db)
                 .await
                 .ok()
                 .flatten()
-                .unwrap_or_default(),
-            )
-            .fetch_all(&state.db)
-            .await;
+                .unwrap_or_default();
+            let events_result = state
+                .db
+                .fetch_all_as::<crate::models::event::Event>(
+                    "SELECT * FROM calendar.events WHERE calendar_id = $1 AND status != 'cancelled'",
+                    params![cal_id],
+                )
+                .await;
 
             let events = match events_result {
                 Ok(e)  => e,
@@ -207,17 +212,17 @@ async fn event_resource(
 
     match method.as_str() {
         "GET" | "HEAD" => {
-            let event_result = sqlx::query_as::<_, crate::models::event::Event>(
-                r#"
-                SELECT e.* FROM calendar.events e
-                JOIN calendar.calendars c ON c.id = e.calendar_id
-                WHERE c.caldav_token = $1 AND e.ical_uid = $2
-                "#,
-            )
-            .bind(&token)
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await;
+            let event_result = state
+                .db
+                .fetch_optional_as::<crate::models::event::Event>(
+                    r#"
+                    SELECT e.* FROM calendar.events e
+                    JOIN calendar.calendars c ON c.id = e.calendar_id
+                    WHERE c.caldav_token = $1 AND e.ical_uid = $2
+                    "#,
+                    params![token, uid],
+                )
+                .await;
 
             match event_result {
                 Ok(Some(event)) => {
@@ -240,23 +245,32 @@ async fn event_resource(
             }
         }
         "DELETE" => {
-            let del_result = sqlx::query(
-                r#"
-                DELETE FROM calendar.events e
-                USING calendar.calendars c
-                WHERE e.calendar_id = c.id
-                  AND c.caldav_token = $1
-                  AND e.ical_uid = $2
-                "#,
-            )
-            .bind(&token)
-            .bind(uid)
-            .execute(&state.db)
-            .await;
+            // `DELETE ... USING` is PostgreSQL-only: locate the event through its
+            // calendar token, then tombstone it (and any occurrence-exceptions it
+            // cascades to) and delete it by primary key.
+            let target = state
+                .db
+                .fetch_optional_as::<(Uuid, Uuid)>(
+                    r#"
+                    SELECT e.id, e.owner_id FROM calendar.events e
+                    JOIN calendar.calendars c ON c.id = e.calendar_id
+                    WHERE c.caldav_token = $1 AND e.ical_uid = $2
+                    "#,
+                    params![token, uid],
+                )
+                .await;
 
-            match del_result {
-                Ok(r) if r.rows_affected() > 0 => StatusCode::NO_CONTENT.into_response(),
-                Ok(_)  => StatusCode::NOT_FOUND.into_response(),
+            let event_id = match target {
+                Ok(Some((id, _owner))) => id,
+                Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "CalDAV DELETE lookup error");
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            };
+
+            match delete_event_tree(&state, event_id).await {
+                Ok(()) => StatusCode::NO_CONTENT.into_response(),
                 Err(e) => {
                     tracing::error!(error = %e, "CalDAV DELETE error");
                     StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -279,4 +293,25 @@ async fn event_resource(
             .into_response(),
         _ => StatusCode::METHOD_NOT_ALLOWED.into_response(),
     }
+}
+
+/// Hard-deletes an event and its occurrence-exceptions, recording a tombstone
+/// for each first (an FK cascade runs no application code, so the delta feed
+/// would otherwise never learn the children are gone).
+async fn delete_event_tree(state: &AppState, event_id: Uuid) -> Result<(), sqlx::Error> {
+    let doomed: Vec<(Uuid, Uuid)> = state
+        .db
+        .fetch_all_as(
+            "SELECT id, owner_id FROM calendar.events WHERE id = $1 OR parent_event_id = $2",
+            params![event_id, event_id],
+        )
+        .await?;
+    let mut tx = state.db.begin().await?;
+    for (eid, owner) in &doomed {
+        let seq = sync::next_event_seq(&mut tx).await?;
+        kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, *eid, *owner, seq).await?;
+    }
+    tx.execute("DELETE FROM calendar.events WHERE id = $1", params![event_id]).await?;
+    tx.commit().await?;
+    Ok(())
 }

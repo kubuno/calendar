@@ -19,14 +19,16 @@
 //! the organisation contains.
 
 use chrono::{DateTime, Duration, Utc};
+use kubuno_db::dialect::Backend;
+use kubuno_db::{params, DbPool, DbQueryBuilder};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::errors::{CalendarError, Result};
 use crate::models::event::Event;
 use crate::services::recurrence_service::RecurrenceService;
+use crate::sync;
 
 /// How far ahead a recurring booking is checked for clashes.
 ///
@@ -197,7 +199,7 @@ impl RoomService {
     /// matters here: a room is most often held by the weekly meeting, and a
     /// check that missed it would hand out the room every time.
     pub async fn clashes(
-        db: &PgPool,
+        db: &DbPool,
         resource_id: Uuid,
         event: &Event,
     ) -> Result<Vec<RoomClash>> {
@@ -206,25 +208,23 @@ impl RoomService {
         let until = windows.iter().map(|w| w.1).max().unwrap_or(event.ends_at);
 
         // Candidates: the room is on their guest list and has not declined them.
-        // A cancelled meeting holds nothing. The event being booked is excluded —
-        // a room does not clash with itself.
-        let candidates: Vec<Event> = sqlx::query_as::<_, Event>(
-            r#"
-            SELECT e.* FROM calendar.events e
-            JOIN calendar.attendees a ON a.event_id = e.id
-            WHERE a.resource_id = $1
-              AND a.status <> 'declined'
-              AND e.status <> 'cancelled'
-              AND e.id <> $2
-              AND (e.rrule IS NOT NULL OR (e.starts_at < $4 AND e.ends_at > $3))
-            "#,
-        )
-        .bind(resource_id)
-        .bind(event.id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+        // The event being booked is excluded — a room does not clash with itself.
+        // Placeholders ascend in text order (`until` before `from`), so they are
+        // bound in that order.
+        let candidates: Vec<Event> = db
+            .fetch_all_as::<Event>(
+                r#"
+                SELECT e.* FROM calendar.events e
+                JOIN calendar.attendees a ON a.event_id = e.id
+                WHERE a.resource_id = $1
+                  AND a.status <> 'declined'
+                  AND e.status <> 'cancelled'
+                  AND e.id <> $2
+                  AND (e.rrule IS NOT NULL OR (e.starts_at < $3 AND e.ends_at > $4))
+                "#,
+                params![resource_id, event.id, until, from],
+            )
+            .await?;
 
         let mut clashes = Vec::new();
         for other in &candidates {
@@ -313,7 +313,7 @@ impl RoomService {
     /// and grouped in memory. Asking per room would be a query per row of a list
     /// that is redrawn each time the organiser nudges the hour.
     pub async fn availability(
-        db: &PgPool,
+        db: &DbPool,
         rooms: &[Uuid],
         slot: &Event,
     ) -> Result<HashMap<Uuid, Vec<RoomClash>>> {
@@ -336,24 +336,23 @@ impl RoomService {
             event: Event,
         }
 
-        let held: Vec<Held> = sqlx::query_as::<_, Held>(
-            r#"
-            SELECT a.resource_id, e.*
-              FROM calendar.events e
-              JOIN calendar.attendees a ON a.event_id = e.id
-             WHERE a.resource_id = ANY($1)
-               AND a.status <> 'declined'
-               AND e.status <> 'cancelled'
-               AND e.id <> $2
-               AND (e.rrule IS NOT NULL OR (e.starts_at < $4 AND e.ends_at > $3))
-            "#,
-        )
-        .bind(rooms)
-        .bind(slot.id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+        // `= ANY(array)` has no portable form; the room list is rendered as an
+        // `IN (...)` by the query builder, and the remaining values are bound in
+        // ascending placeholder order.
+        let mut qb = DbQueryBuilder::new(
+            db.backend(),
+            "SELECT a.resource_id, e.* FROM calendar.events e \
+             JOIN calendar.attendees a ON a.event_id = e.id WHERE a.resource_id ",
+        );
+        qb.push_in(rooms.iter().copied())
+            .push(" AND a.status <> 'declined' AND e.status <> 'cancelled' AND e.id <> ")
+            .push_bind(slot.id)
+            .push(" AND (e.rrule IS NOT NULL OR (e.starts_at < ")
+            .push_bind(until)
+            .push(" AND e.ends_at > ")
+            .push_bind(from)
+            .push("))");
+        let held: Vec<Held> = qb.fetch_all_as::<Held>(db).await?;
 
         for row in &held {
             let (resource_id, other) = (row.resource_id, &row.event);
@@ -401,39 +400,40 @@ impl RoomService {
     /// Best effort by design: the meeting has already been saved, and a room
     /// that cannot be re-decided must not undo somebody's edit. Returns the
     /// rooms that ended up declining, for the caller to tell the organiser.
-    pub async fn rebook(db: &PgPool, event: &Event) -> Result<Vec<Uuid>> {
-        let held: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT resource_id FROM calendar.attendees
-              WHERE event_id = $1 AND resource_id IS NOT NULL",
-        )
-        .bind(event.id)
-        .fetch_all(db)
-        .await?;
+    pub async fn rebook(db: &DbPool, event: &Event) -> Result<Vec<Uuid>> {
+        let held: Vec<(Uuid,)> = db
+            .fetch_all_as(
+                "SELECT resource_id FROM calendar.attendees
+                  WHERE event_id = $1 AND resource_id IS NOT NULL",
+                params![event.id],
+            )
+            .await?;
+        let held: Vec<Uuid> = held.into_iter().map(|r| r.0).collect();
         if held.is_empty() {
             return Ok(Vec::new());
         }
 
         let busy = Self::availability(db, &held, event).await?;
         let mut declined = Vec::new();
-        for id in held {
-            let free = !busy.contains_key(&id);
+        let mut tx = db.begin().await?;
+        for id in &held {
+            let free = !busy.contains_key(id);
             // `released_at` is cleared on the way through: a room re-decided by a
-            // move was not handed back by an empty meeting, and counting it as
-            // released would inflate the "hours released" figure.
-            sqlx::query(
+            // move was not handed back by an empty meeting.
+            tx.execute(
                 "UPDATE calendar.attendees
-                    SET status = $3, released_at = NULL
-                  WHERE event_id = $1 AND resource_id = $2",
+                    SET status = $1, released_at = NULL
+                  WHERE event_id = $2 AND resource_id = $3",
+                params![if free { "accepted" } else { "declined" }, event.id, id],
             )
-            .bind(event.id)
-            .bind(id)
-            .bind(if free { "accepted" } else { "declined" })
-            .execute(db)
             .await?;
             if !free {
-                declined.push(id);
+                declined.push(*id);
             }
         }
+        // Attendee writes bump their event so the change reaches the event delta.
+        sync::touch_event(&mut tx, event.id).await?;
+        tx.commit().await?;
         Ok(declined)
     }
 
@@ -441,52 +441,70 @@ impl RoomService {
     ///
     /// Returns the clashes that made it decline, empty when it accepted.
     pub async fn invite(
-        db: &PgPool,
+        db: &DbPool,
         event: &Event,
         room: &Room,
     ) -> Result<Vec<RoomClash>> {
         let clashes = Self::clashes(db, room.id, event).await?;
         let status = if clashes.is_empty() { "accepted" } else { "declined" };
+        let now = Utc::now();
 
-        sqlx::query(
-            r#"
-            INSERT INTO calendar.attendees (event_id, resource_id, display_name, status, responded_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (event_id, resource_id) WHERE resource_id IS NOT NULL
-            DO UPDATE SET status = EXCLUDED.status,
-                          display_name = EXCLUDED.display_name,
-                          responded_at = NOW()
-            "#,
+        // The conflict target is a PARTIAL unique index (`WHERE resource_id IS NOT
+        // NULL`), which `dialect::upsert` does not express; the clause is built
+        // by hand per engine. `NOW()` is bound as a value so `excluded`/`VALUES`
+        // can reuse it.
+        let clause = room_upsert_clause(db.backend());
+        let mut tx = db.begin().await?;
+        tx.execute(
+            &format!(
+                "INSERT INTO calendar.attendees (id, event_id, resource_id, display_name, status, responded_at)
+                 VALUES ($1, $2, $3, $4, $5, $6){clause}"
+            ),
+            params![kubuno_db::new_id(), event.id, room.id, &room.generated_name, status, now],
         )
-        .bind(event.id)
-        .bind(room.id)
-        .bind(&room.generated_name)
-        .bind(status)
-        .execute(db)
         .await?;
+        sync::touch_event(&mut tx, event.id).await?;
+        tx.commit().await?;
 
         Ok(clashes)
     }
 
     /// Takes the room off the guest list. Freeing it is the point, so a room
     /// that was not on it is not an error to report.
-    pub async fn remove(db: &PgPool, event_id: Uuid, resource_id: Uuid) -> Result<()> {
-        sqlx::query("DELETE FROM calendar.attendees WHERE event_id = $1 AND resource_id = $2")
-            .bind(event_id)
-            .bind(resource_id)
-            .execute(db)
-            .await?;
+    pub async fn remove(db: &DbPool, event_id: Uuid, resource_id: Uuid) -> Result<()> {
+        let mut tx = db.begin().await?;
+        tx.execute(
+            "DELETE FROM calendar.attendees WHERE event_id = $1 AND resource_id = $2",
+            params![event_id, resource_id],
+        )
+        .await?;
+        sync::touch_event(&mut tx, event_id).await?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// The owner check every room verb shares.
-    pub async fn require_owner(db: &PgPool, event_id: Uuid, user_id: Uuid) -> Result<Event> {
-        sqlx::query_as::<_, Event>("SELECT * FROM calendar.events WHERE id = $1 AND owner_id = $2")
-            .bind(event_id)
-            .bind(user_id)
-            .fetch_optional(db)
-            .await?
-            .ok_or(CalendarError::Forbidden)
+    pub async fn require_owner(db: &DbPool, event_id: Uuid, user_id: Uuid) -> Result<Event> {
+        db.fetch_optional_as::<Event>(
+            "SELECT * FROM calendar.events WHERE id = $1 AND owner_id = $2",
+            params![event_id, user_id],
+        )
+        .await?
+        .ok_or(CalendarError::Forbidden)
+    }
+}
+
+/// The upsert `SET` clause for a room row, keyed on the partial unique index
+/// `(event_id, resource_id) WHERE resource_id IS NOT NULL`.
+fn room_upsert_clause(backend: Backend) -> String {
+    match backend {
+        Backend::Postgres | Backend::Sqlite =>
+            " ON CONFLICT (event_id, resource_id) WHERE resource_id IS NOT NULL \
+             DO UPDATE SET status = excluded.status, display_name = excluded.display_name, \
+             responded_at = excluded.responded_at".to_string(),
+        Backend::MySql =>
+            " ON DUPLICATE KEY UPDATE status = VALUES(status), \
+             display_name = VALUES(display_name), responded_at = VALUES(responded_at)".to_string(),
     }
 }
 
@@ -537,16 +555,15 @@ impl RoomService {
     ///
     /// Returns the rooms actually given back, or why nothing was.
     pub async fn release_if_deserted(
-        db: &PgPool,
+        db: &DbPool,
         http: &reqwest::Client,
         core_url: &str,
         secret: &str,
         event_id: Uuid,
         internal_domain: impl Fn(&str) -> bool,
     ) -> Result<std::result::Result<Vec<Uuid>, NotReleased>> {
-        let Some(event) = sqlx::query_as::<_, Event>("SELECT * FROM calendar.events WHERE id = $1")
-            .bind(event_id)
-            .fetch_optional(db)
+        let Some(event) = db
+            .fetch_optional_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![event_id])
             .await?
         else {
             return Ok(Err(NotReleased::TooLate));
@@ -565,13 +582,13 @@ impl RoomService {
 
         // The people. Rooms answer too, but a room declining does not mean the
         // meeting emptied — that is the very thing being decided here.
-        let guests: Vec<(Option<String>, String, bool)> = sqlx::query_as(
-            "SELECT email, status, is_organizer FROM calendar.attendees
-              WHERE event_id = $1 AND resource_id IS NULL",
-        )
-        .bind(event_id)
-        .fetch_all(db)
-        .await?;
+        let guests: Vec<(Option<String>, String, bool)> = db
+            .fetch_all_as(
+                "SELECT email, status, is_organizer FROM calendar.attendees
+                  WHERE event_id = $1 AND resource_id IS NULL",
+                params![event_id],
+            )
+            .await?;
 
         let invitees: Vec<&(Option<String>, String, bool)> =
             guests.iter().filter(|(_, _, organizer)| !organizer).collect();
@@ -588,15 +605,15 @@ impl RoomService {
         // A population whose meetings keep their room, wherever they meet. Asked
         // of the directory only once the meeting is otherwise releasable — it is
         // one call per invitee, and the cheap refusals above spare it.
-        let ids: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT user_id FROM calendar.attendees
-              WHERE event_id = $1 AND resource_id IS NULL AND is_organizer = FALSE
-                AND user_id IS NOT NULL",
-        )
-        .bind(event_id)
-        .fetch_all(db)
-        .await?;
-        for user_id in ids {
+        let ids: Vec<(Uuid,)> = db
+            .fetch_all_as(
+                "SELECT user_id FROM calendar.attendees
+                  WHERE event_id = $1 AND resource_id IS NULL AND is_organizer = FALSE
+                    AND user_id IS NOT NULL",
+                params![event_id],
+            )
+            .await?;
+        for (user_id,) in ids {
             if Self::in_exempt_group(http, core_url, secret, user_id).await {
                 return Ok(Err(NotReleased::ExemptGroup));
             }
@@ -608,19 +625,21 @@ impl RoomService {
         }
 
         // The rooms still held by this meeting.
-        let held: Vec<(Uuid,)> = sqlx::query_as(
-            "SELECT resource_id FROM calendar.attendees
-              WHERE event_id = $1 AND resource_id IS NOT NULL AND status <> 'declined'",
-        )
-        .bind(event_id)
-        .fetch_all(db)
-        .await?;
+        let held: Vec<(Uuid,)> = db
+            .fetch_all_as(
+                "SELECT resource_id FROM calendar.attendees
+                  WHERE event_id = $1 AND resource_id IS NOT NULL AND status <> 'declined'",
+                params![event_id],
+            )
+            .await?;
         if held.is_empty() {
             return Ok(Ok(vec![]));
         }
 
         let catalogue = Self::catalogue(http, core_url, secret).await.unwrap_or_default();
+        let now = Utc::now();
         let mut freed = Vec::new();
+        let mut tx = db.begin().await?;
         for (resource_id,) in held {
             // A large room is exempt. A room the catalogue no longer describes is
             // left alone too: we cannot tell whether it is one of those.
@@ -628,18 +647,19 @@ impl RoomService {
             if room.release_exempt || room.capacity >= RELEASE_MAX_CAPACITY {
                 continue;
             }
-            sqlx::query(
+            tx.execute(
                 "UPDATE calendar.attendees
-                    SET status = 'declined', released_at = NOW(), responded_at = NOW()
-                  WHERE event_id = $1 AND resource_id = $2",
+                    SET status = 'declined', released_at = $1, responded_at = $2
+                  WHERE event_id = $3 AND resource_id = $4",
+                params![now, now, event_id, resource_id],
             )
-            .bind(event_id)
-            .bind(resource_id)
-            .execute(db)
             .await?;
             freed.push(resource_id);
             tracing::info!(%event_id, %resource_id, "Salle libérée : la réunion s'est vidée");
         }
+        // Attendee writes bump their event so the change reaches the event delta.
+        sync::touch_event(&mut tx, event_id).await?;
+        tx.commit().await?;
         Ok(Ok(freed))
     }
 }

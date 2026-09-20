@@ -5,7 +5,9 @@
 //! background task. Sync is a mirror: events are upserted by their iCalendar
 //! UID and events that disappeared from the feed are removed from the calendar.
 
-use sqlx::PgPool;
+use chrono::Utc;
+use kubuno_db::{params, DbPool, DbValue};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::{
@@ -18,6 +20,7 @@ use crate::{
         calendar_service::CalendarService, event_service::EventService,
         icalendar_service::ICalendarService,
     },
+    sync,
 };
 
 /// Hard limits keeping a hostile/broken feed from hurting the service.
@@ -79,7 +82,7 @@ impl SubscriptionService {
         user_id: Uuid,
         dto: SubscribeCalendarDto,
         instance: &crate::config::InstanceConfig,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Calendar> {
         let url = Self::validate_url(&dto.url)?;
 
@@ -99,11 +102,15 @@ impl SubscriptionService {
         )
         .await?;
 
-        sqlx::query("UPDATE calendar.calendars SET subscription_url = $2 WHERE id = $1")
-            .bind(cal.id)
-            .bind(&url)
-            .execute(db)
-            .await?;
+        // Stamp the feed URL onto the just-created calendar (a versioned write).
+        let mut tx = db.begin().await?;
+        let seq = sync::next_calendar_seq(&mut tx).await?;
+        tx.execute(
+            "UPDATE calendar.calendars SET subscription_url = $1, change_seq = $2 WHERE id = $3",
+            params![&url, seq, cal.id],
+        )
+        .await?;
+        tx.commit().await?;
 
         // First sync: a failure here must not lose the created calendar — the
         // user can retry with the refresh action.
@@ -120,7 +127,7 @@ impl SubscriptionService {
         calendar_id: Uuid,
         owner_id: Uuid,
         url: &str,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<(usize, usize, usize)> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
@@ -195,41 +202,60 @@ impl SubscriptionService {
             uids.push(ical_uid);
         }
 
-        // Prune: events gone from the feed disappear from the mirror.
-        let removed = sqlx::query(
-            r#"
-            DELETE FROM calendar.events
-            WHERE calendar_id = $1
-              AND (ical_uid IS NULL OR NOT (ical_uid = ANY($2)))
-            "#,
-        )
-        .bind(calendar_id)
-        .bind(&uids)
-        .execute(db)
-        .await?
-        .rows_affected() as usize;
+        // Prune: events gone from the feed disappear from the mirror. `= ANY(...)`
+        // has no portable form, and the deleted rows need explicit tombstones (an
+        // FK cascade runs no application code), so the calendar's events are read,
+        // the ones absent from the feed are filtered in Rust, tombstoned and then
+        // deleted by an explicit id list.
+        let existing: Vec<(Uuid, Uuid, String)> = db
+            .fetch_all_as(
+                "SELECT id, owner_id, ical_uid FROM calendar.events WHERE calendar_id = $1",
+                params![calendar_id],
+            )
+            .await?;
+        let keep: HashSet<&str> = uids.iter().map(String::as_str).collect();
+        let doomed: Vec<(Uuid, Uuid)> = existing
+            .iter()
+            .filter(|(_, _, uid)| !keep.contains(uid.as_str()))
+            .map(|(id, owner, _)| (*id, *owner))
+            .collect();
+        let removed = doomed.len();
 
-        sqlx::query(
-            "UPDATE calendar.calendars
-                SET last_synced_at = NOW(), ctag = md5(random()::text)
-              WHERE id = $1",
+        if !doomed.is_empty() {
+            let mut tx = db.begin().await?;
+            for (id, owner) in &doomed {
+                let seq = sync::next_event_seq(&mut tx).await?;
+                kubuno_db::journal::record_tombstone(&mut tx, sync::EVENT_TOMBSTONES, *id, *owner, seq).await?;
+            }
+            let in_list = tx.backend().in_list(1, doomed.len());
+            let binds: Vec<DbValue> = doomed.iter().map(|(id, _)| (*id).into()).collect();
+            tx.execute(&format!("DELETE FROM calendar.events WHERE id IN ({in_list})"), binds)
+                .await?;
+            tx.commit().await?;
+        }
+
+        // Sync-metadata refresh (last_synced_at + ctag), deliberately without a
+        // change_seq bump — an hourly mirror pass is not a user-facing calendar
+        // change, and events ride their own delta feed.
+        db.execute(
+            "UPDATE calendar.calendars SET last_synced_at = $1, ctag = $2 WHERE id = $3",
+            params![Utc::now(), sync::new_tag(), calendar_id],
         )
-        .bind(calendar_id)
-        .execute(db)
         .await?;
 
         Ok((imported, updated, removed))
     }
 
     /// Background pass: refresh every subscription calendar (called hourly).
-    pub async fn sync_all(db: &PgPool) {
-        let subs: Vec<(Uuid, Uuid, String)> = match sqlx::query_as(
-            "SELECT id, owner_id, subscription_url
-               FROM calendar.calendars
-              WHERE subscription_url IS NOT NULL",
-        )
-        .fetch_all(db)
-        .await
+    pub async fn sync_all(db: &DbPool) {
+        let subs: Vec<(Uuid, Uuid, String)> = match db
+            .fetch_all_as(
+                "SELECT id, owner_id, subscription_url
+                   FROM calendar.calendars
+                  WHERE subscription_url IS NOT NULL",
+                params![],
+            )
+            .await
         {
             Ok(rows) => rows,
             Err(e) => {

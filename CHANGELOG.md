@@ -9,6 +9,19 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+
+- **Runs on PostgreSQL, MySQL/MariaDB or SQLite.** The module now talks to the
+  database through the shared `kubuno-db` foundation, so an administrator can
+  pick the engine in configuration (`database.engine`) and the same build
+  connects to whichever is named — no per-engine binary. The delta-sync layer
+  (the local-first pull for calendars, events and time blocks) moved off
+  PostgreSQL sequences and triggers onto a portable, application-driven change
+  journal; array columns (event exception dates and cross-module links, time
+  block weekdays) are stored as JSON arrays; and time-of-day columns round-trip
+  identically on the three engines. Existing PostgreSQL installations migrate in
+  place.
+
 ### Security
 
 - **Input validation library updated.** The version in use carried

@@ -3,16 +3,20 @@ use axum::{
     Json,
 };
 use chrono::Utc;
+use kubuno_db::params;
 
 use crate::{
     errors::{CalendarError, Result},
-    models::attendee::RsvpDto,
+    models::attendee::{Attendee, RsvpDto},
+    models::calendar::Calendar,
+    models::event::Event,
     models::scheduling::PollRespondDto,
     services::{
         icalendar_service::ICalendarService,
         scheduling_service::SchedulingService,
     },
     state::AppState,
+    sync,
 };
 
 /// Information about an RSVP (from the e-mail link)
@@ -20,25 +24,21 @@ pub async fn rsvp_info(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
-    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-        r#"
-        SELECT a.* FROM calendar.attendees a
-        WHERE a.rsvp_token = $1
-          AND (a.rsvp_expires_at IS NULL OR a.rsvp_expires_at > NOW())
-        "#,
-    )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
+    let attendee = state
+        .db
+        .fetch_optional_as::<Attendee>(
+            "SELECT a.* FROM calendar.attendees a \
+             WHERE a.rsvp_token = $1 AND (a.rsvp_expires_at IS NULL OR a.rsvp_expires_at > $2)",
+            params![token, Utc::now()],
+        )
+        .await?
+        .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
 
-    let event: crate::models::event::Event = sqlx::query_as::<_, crate::models::event::Event>(
-        "SELECT * FROM calendar.events WHERE id = $1",
-    )
-    .bind(attendee.event_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Événement introuvable".to_string()))?;
+    let event = state
+        .db
+        .fetch_optional_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![attendee.event_id])
+        .await?
+        .ok_or_else(|| CalendarError::NotFound("Événement introuvable".to_string()))?;
 
     Ok(Json(serde_json::json!({
         "attendee": attendee,
@@ -64,26 +64,34 @@ pub async fn rsvp_respond(
         return Err(CalendarError::Validation(format!("Statut invalide: {}", dto.status)));
     }
 
-    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-        r#"
-        UPDATE calendar.attendees
-        SET status = $2, comment = $3, responded_at = NOW()
-        WHERE rsvp_token = $1
-          AND (rsvp_expires_at IS NULL OR rsvp_expires_at > NOW())
-        RETURNING *
-        "#,
-    )
-    .bind(&token)
-    .bind(&dto.status)
-    .bind(&dto.comment)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
+    // Locate the (unexpired) attendee first — the event id is needed to bump the
+    // event, and the guarded update has no portable `RETURNING`.
+    let target: Option<(uuid::Uuid, uuid::Uuid)> = state
+        .db
+        .fetch_optional_as(
+            "SELECT id, event_id FROM calendar.attendees \
+             WHERE rsvp_token = $1 AND (rsvp_expires_at IS NULL OR rsvp_expires_at > $2)",
+            params![token, Utc::now()],
+        )
+        .await?;
+    let (attendee_id, event_id) =
+        target.ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
 
-    // Same rule as the signed-in path: a refusal that empties the meeting hands
-    // the room back. Most refusals arrive through this link — an invitation
-    // e-mail — so leaving it out here would make the feature work only for the
-    // few who answer from inside the application.
+    let mut tx = state.db.begin().await?;
+    tx.execute(
+        "UPDATE calendar.attendees SET status = $1, comment = $2, responded_at = $3 WHERE id = $4",
+        params![&dto.status, dto.comment, Utc::now(), attendee_id],
+    )
+    .await?;
+    sync::touch_event(&mut tx, event_id).await?;
+    tx.commit().await?;
+
+    let attendee = state
+        .db
+        .fetch_one_as::<Attendee>("SELECT * FROM calendar.attendees WHERE id = $1", params![attendee_id])
+        .await?;
+
+    // A refusal that empties the meeting hands the room back.
     if dto.status == "declined" {
         let instance = state.instance();
         let released = crate::services::room_service::RoomService::release_if_deserted(
@@ -99,19 +107,13 @@ pub async fn rsvp_respond(
             tracing::warn!(error = %e, event_id = %attendee.event_id, "Libération de salle : échec");
         }
 
-        // Tell the organiser and the guests: their meeting no longer has a room.
-        // The in-app channel the module already uses for "this event changed" —
-        // which is precisely what happened. Not an iTIP message: that vocabulary
-        // would announce a CANCELLED event, and the meeting is very much alive.
         if let Ok(Ok(freed)) = &released {
             if !freed.is_empty() {
-                if let Ok((title,)) = sqlx::query_as::<_, (String,)>(
-                    "SELECT title FROM calendar.events WHERE id = $1",
-                )
-                .bind(attendee.event_id)
-                .fetch_one(&state.db)
-                .await
-                {
+                let title: Option<String> = state
+                    .db
+                    .fetch_optional_scalar("SELECT title FROM calendar.events WHERE id = $1", params![attendee.event_id])
+                    .await?;
+                if let Some(title) = title {
                     crate::events::publisher::publish_event_modified(
                         &state, attendee.event_id, attendee.user_id.unwrap_or_default(), &title, "updated",
                     )
@@ -124,10 +126,7 @@ pub async fn rsvp_respond(
     Ok(Json(serde_json::json!({ "attendee": attendee, "message": "Réponse enregistrée" })))
 }
 
-/// Standalone RSVP page (minimal HTML, no shell nor authentication): the guest
-/// opens the received link, sees the event and answers Yes / Maybe / No.
-/// An answer carried by the link itself, so the three buttons of an invitation
-/// e-mail land on a page that has already recorded the choice.
+/// Standalone RSVP page (minimal HTML, no shell nor authentication).
 #[derive(serde::Deserialize)]
 pub struct RsvpPageQuery {
     pub answer: Option<String>,
@@ -138,45 +137,46 @@ pub async fn rsvp_page(
     Path(token): Path<String>,
     axum::extract::Query(q): axum::extract::Query<RsvpPageQuery>,
 ) -> Result<axum::response::Html<String>> {
-    // «?answer=…» comes from a button in the invitation e-mail: record it before
-    // rendering, so the guest sees the answer already taken into account. An
-    // unknown value is ignored rather than refused — the page still opens.
+    let mut attendee = state
+        .db
+        .fetch_optional_as::<Attendee>(
+            "SELECT a.* FROM calendar.attendees a \
+             WHERE a.rsvp_token = $1 AND (a.rsvp_expires_at IS NULL OR a.rsvp_expires_at > $2)",
+            params![&token, Utc::now()],
+        )
+        .await?
+        .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
+
+    // «?answer=…» comes from a button in the invitation e-mail: record it (and
+    // bump the event) before rendering. An unknown value is ignored.
     if let Some(answer) = q.answer.as_deref() {
         if ["accepted", "declined", "tentative"].contains(&answer) {
-            if let Err(e) = sqlx::query(
-                "UPDATE calendar.attendees SET status = $2, responded_at = NOW() \
-                 WHERE rsvp_token = $1 AND (rsvp_expires_at IS NULL OR rsvp_expires_at > NOW())",
-            )
-            .bind(&token)
-            .bind(answer)
-            .execute(&state.db)
-            .await
-            {
-                tracing::error!(error = %e, "rsvp : enregistrement de la réponse par lien");
+            let mut tx = state.db.begin().await?;
+            let updated = tx
+                .execute(
+                    "UPDATE calendar.attendees SET status = $1, responded_at = $2 WHERE id = $3",
+                    params![answer, Utc::now(), attendee.id],
+                )
+                .await;
+            match updated {
+                Ok(_) => {
+                    sync::touch_event(&mut tx, attendee.event_id).await?;
+                    tx.commit().await?;
+                    attendee.status = answer.to_string();
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "rsvp : enregistrement de la réponse par lien");
+                    let _ = tx.rollback().await;
+                }
             }
         }
     }
 
-    // Reuse the same validation as rsvp_info.
-    let attendee = sqlx::query_as::<_, crate::models::attendee::Attendee>(
-        r#"
-        SELECT a.* FROM calendar.attendees a
-        WHERE a.rsvp_token = $1
-          AND (a.rsvp_expires_at IS NULL OR a.rsvp_expires_at > NOW())
-        "#,
-    )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Lien RSVP invalide ou expiré".to_string()))?;
-
-    let event: crate::models::event::Event = sqlx::query_as::<_, crate::models::event::Event>(
-        "SELECT * FROM calendar.events WHERE id = $1",
-    )
-    .bind(attendee.event_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Événement introuvable".to_string()))?;
+    let event = state
+        .db
+        .fetch_optional_as::<Event>("SELECT * FROM calendar.events WHERE id = $1", params![attendee.event_id])
+        .await?
+        .ok_or_else(|| CalendarError::NotFound("Événement introuvable".to_string()))?;
 
     let esc = |s: &str| {
         s.replace('&', "&amp;")
@@ -188,8 +188,6 @@ pub async fn rsvp_page(
     let location = event.location.as_deref().map(esc).unwrap_or_default();
     let date_str = event.starts_at.format("%d/%m/%Y %H:%M").to_string();
     let end_str  = event.ends_at.format("%H:%M").to_string();
-    // This page answers an RSVP link, which only a person ever receives — a room
-    // has neither a mailbox nor a display name. The fallback is defensive.
     let guest    = esc(attendee.display_name.as_deref()
         .or(attendee.email.as_deref())
         .unwrap_or("—"));
@@ -268,7 +266,6 @@ pub async fn poll_info(
     let slots = SchedulingService::get_poll_slots(poll.id, &state.db).await?;
     let responses = SchedulingService::get_poll_responses(poll.id, &state.db).await?;
 
-    // Check expiration
     if let Some(expires_at) = poll.expires_at {
         if expires_at < Utc::now() {
             return Err(CalendarError::Validation("Ce sondage a expiré".to_string()));
@@ -297,14 +294,7 @@ pub async fn poll_respond(
     let email = dto.email.clone()
         .ok_or_else(|| CalendarError::Validation("Email requis pour répondre sans compte".to_string()))?;
 
-    let responses = SchedulingService::respond_to_poll(
-        poll.id,
-        None,
-        &email,
-        dto,
-        &state.db,
-    )
-    .await?;
+    let responses = SchedulingService::respond_to_poll(poll.id, None, &email, dto, &state.db).await?;
 
     Ok(Json(serde_json::json!({ "responses": responses })))
 }
@@ -315,28 +305,26 @@ pub async fn calendar_feed(
     Path(token): Path<String>,
 ) -> Result<([(axum::http::HeaderName, String); 1], String)> {
     let instance = state.instance();
-    // Closing publication has to close the feeds already out there, not just
-    // forbid new ones — a link handed out yesterday is exactly what the
-    // administration is taking back. Answering "introuvable" rather than
-    // "interdit" keeps the route from confirming that the token exists.
     if !instance.allow_public_calendars {
         return Err(CalendarError::NotFound("Calendrier introuvable".to_string()));
     }
 
-    let calendar = sqlx::query_as::<_, crate::models::calendar::Calendar>(
-        "SELECT * FROM calendar.calendars WHERE caldav_token = $1 AND is_public = TRUE",
-    )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| CalendarError::NotFound("Calendrier introuvable".to_string()))?;
+    let calendar = state
+        .db
+        .fetch_optional_as::<Calendar>(
+            "SELECT * FROM calendar.calendars WHERE caldav_token = $1 AND is_public = TRUE",
+            params![token],
+        )
+        .await?
+        .ok_or_else(|| CalendarError::NotFound("Calendrier introuvable".to_string()))?;
 
-    let events: Vec<crate::models::event::Event> = sqlx::query_as::<_, crate::models::event::Event>(
-        "SELECT * FROM calendar.events WHERE calendar_id = $1 AND status != 'cancelled' ORDER BY starts_at",
-    )
-    .bind(calendar.id)
-    .fetch_all(&state.db)
-    .await?;
+    let events = state
+        .db
+        .fetch_all_as::<Event>(
+            "SELECT * FROM calendar.events WHERE calendar_id = $1 AND status != 'cancelled' ORDER BY starts_at",
+            params![calendar.id],
+        )
+        .await?;
 
     let ics = match instance.public_calendar_detail {
         crate::config::PublicDetail::Full     => ICalendarService::calendar_to_ics(&events, &calendar.name),

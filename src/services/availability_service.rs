@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use sqlx::PgPool;
+use kubuno_db::{DbPool, DbQueryBuilder};
 use uuid::Uuid;
 
 use crate::{
@@ -22,24 +22,29 @@ impl AvailabilityService {
         requester: Uuid,
         user_ids: &[Uuid],
         visibility: FreeBusyVisibility,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<Uuid>> {
         if visibility == FreeBusyVisibility::Everyone {
             return Ok(user_ids.to_vec());
         }
-        let sharers: Vec<Uuid> = sqlx::query_scalar(
-            r#"
-            SELECT DISTINCT c.owner_id
-            FROM calendar.calendars c
-            JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id
-            WHERE cs.shared_with = $1
-              AND c.owner_id = ANY($2)
-            "#,
-        )
-        .bind(requester)
-        .bind(user_ids.to_vec())
-        .fetch_all(db)
-        .await?;
+        // `owner_id = ANY($2)` becomes a portable `IN (...)` list built for the
+        // engine; `push_in` renders `IN (NULL)` for an empty set.
+        let mut qb = DbQueryBuilder::new(
+            db.backend(),
+            "SELECT DISTINCT c.owner_id \
+             FROM calendar.calendars c \
+             JOIN calendar.calendar_shares cs ON cs.calendar_id = c.id \
+             WHERE cs.shared_with = ",
+        );
+        qb.push_bind(requester)
+            .push(" AND c.owner_id ")
+            .push_in(user_ids.iter().copied());
+        let sharers: Vec<Uuid> = qb
+            .fetch_all_as::<(Uuid,)>(db)
+            .await?
+            .into_iter()
+            .map(|r| r.0)
+            .collect();
 
         Ok(user_ids
             .iter()
@@ -58,32 +63,31 @@ impl AvailabilityService {
     /// [`visible_users`] first: this function reads whatever it is given.
     pub async fn find_common_slots(
         query: AvailabilityQuery,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<AvailableSlot>> {
         if query.user_ids.is_empty() {
             return Ok(vec![]);
         }
 
         // Every "busy" event of the window — including recurring masters
-        // whose occurrences may fall inside it (earlier starts_at).
-        let events: Vec<crate::models::event::Event> = sqlx::query_as(
-            r#"
-            SELECT e.*
-            FROM calendar.events e
-            WHERE e.owner_id = ANY($1)
-              AND e.busy = TRUE
-              AND e.status != 'cancelled'
-              AND (
-                    (e.rrule IS NULL AND e.starts_at < $3 AND e.ends_at > $2)
-                 OR (e.rrule IS NOT NULL AND e.starts_at < $3)
-              )
-            "#,
-        )
-        .bind(&query.user_ids)
-        .bind(query.from)
-        .bind(query.until)
-        .fetch_all(db)
-        .await?;
+        // whose occurrences may fall inside it (earlier starts_at). `owner_id =
+        // ANY(...)` becomes an `IN (...)` list; `until` was bound twice on
+        // PostgreSQL and must carry its own placeholder each time here.
+        let mut qb = DbQueryBuilder::new(
+            db.backend(),
+            "SELECT e.* FROM calendar.events e WHERE e.owner_id ",
+        );
+        qb.push_in(query.user_ids.iter().copied())
+            .push(" AND e.busy = ")
+            .push_bind(true)
+            .push(" AND e.status != 'cancelled' AND ( (e.rrule IS NULL AND e.starts_at < ")
+            .push_bind(query.until)
+            .push(" AND e.ends_at > ")
+            .push_bind(query.from)
+            .push(") OR (e.rrule IS NOT NULL AND e.starts_at < ")
+            .push_bind(query.until)
+            .push(") )");
+        let events: Vec<crate::models::event::Event> = qb.fetch_all_as(db).await?;
 
         // Busy intervals per user (recurrences expanded).
         let mut busy: Vec<(Uuid, DateTime<Utc>, DateTime<Utc>)> = Vec::new();
@@ -141,26 +145,26 @@ impl AvailabilityService {
         user_id: Uuid,
         from: DateTime<Utc>,
         until: DateTime<Utc>,
-        db: &PgPool,
+        db: &DbPool,
     ) -> Result<Vec<(DateTime<Utc>, DateTime<Utc>)>> {
-        let rows: Vec<(DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-            r#"
+        // Placeholders must ascend in text order (the portable rewriter refuses
+        // `$3 ... $2`), so `until` takes $2 and `from` takes $3.
+        let rows: Vec<(DateTime<Utc>, DateTime<Utc>)> = db
+            .fetch_all_as(
+                r#"
             SELECT e.starts_at, e.ends_at
             FROM calendar.events e
             WHERE e.owner_id = $1
               AND e.busy = TRUE
               AND e.status != 'cancelled'
               AND e.rrule IS NULL
-              AND e.starts_at < $3
-              AND e.ends_at > $2
+              AND e.starts_at < $2
+              AND e.ends_at > $3
             ORDER BY e.starts_at
             "#,
-        )
-        .bind(user_id)
-        .bind(from)
-        .bind(until)
-        .fetch_all(db)
-        .await?;
+                kubuno_db::params![user_id, until, from],
+            )
+            .await?;
 
         Ok(rows)
     }

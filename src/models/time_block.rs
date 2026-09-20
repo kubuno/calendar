@@ -8,6 +8,8 @@ pub struct TimeBlock {
     pub owner_id:   Uuid,
     pub label:      String,
     pub color:      String,
+    /// A JSON array of weekday integers on every engine — see kubuno-db §2.8.
+    #[sqlx(json)]
     pub days:       Vec<i32>,
     pub start_time: NaiveTime,
     pub end_time:   NaiveTime,

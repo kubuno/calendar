@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
+use kubuno_db::params;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -29,15 +30,16 @@ pub async fn list_locations(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
 ) -> Result<Json<serde_json::Value>> {
-    let locations = sqlx::query_as::<_, WeatherLocation>(
-        "SELECT id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at
-         FROM calendar.weather_locations
-         WHERE user_id = $1
-         ORDER BY sort_order, created_at",
-    )
-    .bind(user.id)
-    .fetch_all(&state.db)
-    .await?;
+    let locations = state
+        .db
+        .fetch_all_as::<WeatherLocation>(
+            "SELECT id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at
+             FROM calendar.weather_locations
+             WHERE user_id = $1
+             ORDER BY sort_order, created_at",
+            params![user.id],
+        )
+        .await?;
 
     Ok(Json(serde_json::json!({ "locations": locations })))
 }
@@ -62,37 +64,49 @@ pub async fn add_location(
         return Err(crate::errors::CalendarError::Validation("Le nom est requis".into()));
     }
 
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM calendar.weather_locations WHERE user_id = $1",
-    )
-    .bind(user.id)
-    .fetch_one(&state.db)
-    .await?;
+    let count_expr = state.db.backend().count_bigint("*");
+    let count: i64 = state
+        .db
+        .fetch_scalar(
+            &format!("SELECT {count_expr} FROM calendar.weather_locations WHERE user_id = $1"),
+            params![user.id],
+        )
+        .await?;
 
     let is_default = dto.is_default.unwrap_or(count == 0);
 
     if is_default {
-        sqlx::query("UPDATE calendar.weather_locations SET is_default = FALSE WHERE user_id = $1")
-            .bind(user.id)
-            .execute(&state.db)
+        state
+            .db
+            .execute(
+                "UPDATE calendar.weather_locations SET is_default = FALSE WHERE user_id = $1",
+                params![user.id],
+            )
             .await?;
     }
 
-    let loc = sqlx::query_as::<_, WeatherLocation>(
-        "INSERT INTO calendar.weather_locations
-             (user_id, name, latitude, longitude, timezone, is_default, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at",
-    )
-    .bind(user.id)
-    .bind(dto.name.trim())
-    .bind(dto.latitude)
-    .bind(dto.longitude)
-    .bind(&dto.timezone)
-    .bind(is_default)
-    .bind(count as i32)
-    .fetch_one(&state.db)
-    .await?;
+    // RETURNING is not portable: mint the id, insert, then re-select it.
+    let id = kubuno_db::new_id();
+    state
+        .db
+        .execute(
+            "INSERT INTO calendar.weather_locations
+                 (id, user_id, name, latitude, longitude, timezone, is_default, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            params![
+                id, user.id, dto.name.trim(), dto.latitude, dto.longitude, dto.timezone,
+                is_default, count as i32
+            ],
+        )
+        .await?;
+    let loc = state
+        .db
+        .fetch_one_as::<WeatherLocation>(
+            "SELECT id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at
+             FROM calendar.weather_locations WHERE id = $1",
+            params![id],
+        )
+        .await?;
 
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "location": loc }))))
 }
@@ -113,28 +127,39 @@ pub async fn update_location(
     Json(dto): Json<UpdateLocationDto>,
 ) -> Result<Json<serde_json::Value>> {
     if dto.is_default == Some(true) {
-        sqlx::query("UPDATE calendar.weather_locations SET is_default = FALSE WHERE user_id = $1")
-            .bind(user.id)
-            .execute(&state.db)
+        state
+            .db
+            .execute(
+                "UPDATE calendar.weather_locations SET is_default = FALSE WHERE user_id = $1",
+                params![user.id],
+            )
             .await?;
     }
 
-    let loc = sqlx::query_as::<_, WeatherLocation>(
-        "UPDATE calendar.weather_locations
-         SET name       = COALESCE($1, name),
-             is_default = COALESCE($2, is_default),
-             sort_order = COALESCE($3, sort_order)
-         WHERE id = $4 AND user_id = $5
-         RETURNING id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at",
-    )
-    .bind(dto.name.as_deref().map(str::trim))
-    .bind(dto.is_default)
-    .bind(dto.sort_order)
-    .bind(id)
-    .bind(user.id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| crate::errors::CalendarError::NotFound("Lieu météo introuvable".into()))?;
+    // Guarded update (id + user_id) with COALESCE, then re-select the row — the
+    // portable stand-in for `UPDATE … RETURNING`. An absent row re-selects to
+    // None, which is the NotFound the guard used to express.
+    let name = dto.name.as_deref().map(str::trim).map(str::to_owned);
+    state
+        .db
+        .execute(
+            "UPDATE calendar.weather_locations
+             SET name       = COALESCE($1, name),
+                 is_default = COALESCE($2, is_default),
+                 sort_order = COALESCE($3, sort_order)
+             WHERE id = $4 AND user_id = $5",
+            params![name, dto.is_default, dto.sort_order, id, user.id],
+        )
+        .await?;
+    let loc = state
+        .db
+        .fetch_optional_as::<WeatherLocation>(
+            "SELECT id, user_id, name, latitude, longitude, timezone, is_default, sort_order, created_at
+             FROM calendar.weather_locations WHERE id = $1 AND user_id = $2",
+            params![id, user.id],
+        )
+        .await?
+        .ok_or_else(|| crate::errors::CalendarError::NotFound("Lieu météo introuvable".into()))?;
 
     Ok(Json(serde_json::json!({ "location": loc })))
 }
@@ -146,15 +171,15 @@ pub async fn delete_location(
     Extension(user): Extension<CalendarUser>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let result = sqlx::query(
-        "DELETE FROM calendar.weather_locations WHERE id = $1 AND user_id = $2",
-    )
-    .bind(id)
-    .bind(user.id)
-    .execute(&state.db)
-    .await?;
+    let affected = state
+        .db
+        .execute(
+            "DELETE FROM calendar.weather_locations WHERE id = $1 AND user_id = $2",
+            params![id, user.id],
+        )
+        .await?;
 
-    if result.rows_affected() == 0 {
+    if affected == 0 {
         return Err(crate::errors::CalendarError::NotFound("Lieu météo introuvable".into()));
     }
     Ok(StatusCode::NO_CONTENT)
