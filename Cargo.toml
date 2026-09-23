@@ -101,7 +101,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Crates partagées du core, consommées via dépendances git taguées.
 kubuno-seccomp     = { git = "https://github.com/kubuno/core", tag = "seccomp-v0.1.1", package = "kubuno-seccomp" }
 kubuno-modauth     = { git = "https://github.com/kubuno/core", tag = "modauth-v0.1.0", package = "kubuno-modauth" }
-kubuno-db          = { git = "https://github.com/kubuno/core", tag = "db-v0.7.0", package = "kubuno-db" }
+kubuno-db          = { git = "https://github.com/kubuno/core", tag = "db-v0.8.0", package = "kubuno-db" }
 
 # Erreurs
 thiserror = "1"
