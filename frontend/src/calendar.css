@@ -1,0 +1,40 @@
+/* Le module suit désormais l'accent de la plateforme (bleu).
+ *
+ * Il portait ici son propre accent, le violet de son logo, posé sur le sous-arbre
+ * [data-module="calendar"] par le host. L'override a été RETIRÉ plutôt que
+ * repeint en bleu : réécrire la variable avec la valeur qu'elle a déjà crée une
+ * seconde source de vérité, qui cessera un jour de suivre la première. Le module
+ * hérite donc, et un accent propre se réintroduit en rétablissant ce bloc. */
+
+/* Vue Année — panneau de détails du jour sélectionné (inspiré du pen peanav/DmZEEp).
+ * Le panneau apparaît en fondu/glissé, et chaque événement entre avec un léger
+ * décalage (stagger via --i). La flèche glisse horizontalement (transition left). */
+@keyframes calDetailsIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes calEventIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cal-details { animation: calDetailsIn .22s ease both; }
+.cal-details .cal-arrow { transition: left .3s cubic-bezier(.4,0,.2,1); }
+.cal-event { animation: calEventIn .3s ease both; animation-delay: calc(var(--i, 0) * 45ms); }
+
+/* ── « Rechercher un horaire » ────────────────────────────────────────────────
+ * Someone else's busy hour. A hatch, not a solid block: free/busy is all the
+ * instance discloses about another person's day, and a filled block would read
+ * as an event whose title we simply failed to print. */
+.kb-sched-busy {
+  background: repeating-linear-gradient(135deg,
+    rgb(95 99 104 / 16%) 0 4px,
+    transparent 4px 8px);
+}
+
+/* The meeting being placed. Outlined in the accent and filled with nothing
+ * solid: it is a proposal, not something that exists yet. */
+.kb-sched-ghost {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+}
