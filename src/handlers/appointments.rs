@@ -132,6 +132,7 @@ pub async fn public_book(
     use validator::Validate;
     assert_public_booking_enabled(&state)?;
     dto.validate().map_err(|e| crate::errors::CalendarError::Validation(e.to_string()))?;
+    dto.check_answers().map_err(crate::errors::CalendarError::Validation)?;
     let booking = AppointmentService::book(&token, dto, &state.db).await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "booking": booking }))))
 }

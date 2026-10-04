@@ -322,6 +322,51 @@ async fn full_suite(pool: &kubuno_db::DbPool) {
         ev_changes.iter().any(|c| c.id == a.id && c.deleted),
         "the calendar's cascade must tombstone its surviving event A"
     );
+
+    poll_answers_stay_in_their_poll(pool).await;
+}
+
+/// An answer naming a slot of ANOTHER poll is refused before any write, and leaves that poll's votes untouched.
+async fn poll_answers_stay_in_their_poll(pool: &kubuno_db::DbPool) {
+    use kubuno_calendar::models::scheduling::{CreatePollDto, PollRespondDto, PollSlotDto, SlotResponseDto};
+    use kubuno_calendar::services::scheduling_service::SchedulingService;
+
+    let organizer = Uuid::new_v4();
+    let start = Utc::now() + Duration::days(3);
+    let mk = |title: &str| CreatePollDto {
+        title: title.into(),
+        description: None,
+        duration_minutes: Some(30),
+        location: None,
+        expires_at: None,
+        slots: vec![PollSlotDto { starts_at: start, ends_at: start + Duration::minutes(30) }],
+    };
+    let a = SchedulingService::create_poll(organizer, mk("A"), pool).await.expect("poll A");
+    let b = SchedulingService::create_poll(organizer, mk("B"), pool).await.expect("poll B");
+    let slot_a = SchedulingService::get_poll_slots(a.id, pool).await.expect("slots A")[0].id;
+    let slot_b = SchedulingService::get_poll_slots(b.id, pool).await.expect("slots B")[0].id;
+    let vote = |slot, availability: &str| PollRespondDto {
+        responses: vec![SlotResponseDto { slot_id: slot, availability: availability.into() }],
+        email: None,
+        display_name: None,
+    };
+
+    // A genuine vote on B.
+    SchedulingService::respond_to_poll(b.id, None, "bob@example.org", vote(slot_b, "available"), pool)
+        .await
+        .expect("vote on B");
+    // Through poll A, overwrite Bob's vote on B's slot: refused.
+    let forged = SchedulingService::respond_to_poll(a.id, None, "bob@example.org", vote(slot_b, "unavailable"), pool).await;
+    assert!(forged.is_err(), "a slot of another poll must be refused");
+    let b_votes = SchedulingService::get_poll_responses(b.id, pool).await.expect("B votes");
+    assert_eq!(b_votes.len(), 1);
+    assert_eq!(b_votes[0].availability, "available", "poll B's vote must be untouched");
+    let a_votes = SchedulingService::get_poll_responses(a.id, pool).await.expect("A votes");
+    assert!(a_votes.is_empty(), "nothing may be recorded under poll A");
+    // Its own slot is fine.
+    SchedulingService::respond_to_poll(a.id, None, "bob@example.org", vote(slot_a, "maybe"), pool)
+        .await
+        .expect("vote on A");
 }
 
 #[tokio::test]

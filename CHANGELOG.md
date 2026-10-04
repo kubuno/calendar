@@ -24,6 +24,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Security
 
+- **Meeting polls, bookings and RSVP answers are validated.** A public poll answer
+  can no longer name a time slot of another poll (which allowed overwriting
+  someone's vote there), must carry a valid e-mail address and a known
+  availability, and is refused once the poll is closed or expired. The public
+  poll page no longer shows voters' e-mail addresses. A signed-in voter always
+  votes under their own address. Public booking fields (name, e-mail, note,
+  answers) and RSVP comments now have size limits.
+
 - **Security fixes from the shared database layer (kubuno-db 0.9.0).** The
   database password can no longer appear in a log through the debug output of
   the database settings.

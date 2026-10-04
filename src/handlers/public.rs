@@ -53,6 +53,9 @@ pub async fn rsvp_info(
     })))
 }
 
+/// Longest comment a guest may attach to an answer from the e-mail link.
+const MAX_RSVP_COMMENT: usize = 2000;
+
 /// RSVP response from the e-mail link (no authentication)
 pub async fn rsvp_respond(
     State(state): State<AppState>,
@@ -61,7 +64,10 @@ pub async fn rsvp_respond(
 ) -> Result<Json<serde_json::Value>> {
     let valid = ["needs-action", "accepted", "declined", "tentative"];
     if !valid.contains(&dto.status.as_str()) {
-        return Err(CalendarError::Validation(format!("Statut invalide: {}", dto.status)));
+        return Err(CalendarError::Validation("Statut invalide".to_string()));
+    }
+    if dto.comment.as_deref().is_some_and(|c| c.chars().count() > MAX_RSVP_COMMENT) {
+        return Err(CalendarError::Validation("Commentaire trop long".to_string()));
     }
 
     // Locate the (unexpired) attendee first — the event id is needed to bump the
@@ -263,8 +269,6 @@ pub async fn poll_info(
     Path(token): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     let poll  = SchedulingService::get_poll_by_token(&token, &state.db).await?;
-    let slots = SchedulingService::get_poll_slots(poll.id, &state.db).await?;
-    let responses = SchedulingService::get_poll_responses(poll.id, &state.db).await?;
 
     if let Some(expires_at) = poll.expires_at {
         if expires_at < Utc::now() {
@@ -272,8 +276,34 @@ pub async fn poll_info(
         }
     }
 
+    let slots = SchedulingService::get_poll_slots(poll.id, &state.db).await?;
+    let responses = SchedulingService::get_poll_responses(poll.id, &state.db).await?;
+
+    // Anyone holding the link reads this: no respondent e-mail address, no account
+    // id, and only the poll fields the answer page needs (not the organizer's id).
+    let responses: Vec<serde_json::Value> = responses
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "slot_id":      r.slot_id,
+                "display_name": r.display_name,
+                "availability": r.availability,
+                "responded_at": r.responded_at,
+            })
+        })
+        .collect();
+
     Ok(Json(serde_json::json!({
-        "poll":      poll,
+        "poll": {
+            "id":                poll.id,
+            "title":             poll.title,
+            "description":       poll.description,
+            "duration_minutes":  poll.duration_minutes,
+            "location":          poll.location,
+            "status":            poll.status,
+            "confirmed_slot_id": poll.confirmed_slot_id,
+            "expires_at":        poll.expires_at,
+        },
         "slots":     slots,
         "responses": responses,
     })))
@@ -287,10 +317,8 @@ pub async fn poll_respond(
 ) -> Result<Json<serde_json::Value>> {
     let poll = SchedulingService::get_poll_by_token(&token, &state.db).await?;
 
-    if poll.status != "open" {
-        return Err(CalendarError::Validation("Ce sondage est fermé".to_string()));
-    }
-
+    // Status, expiry, e-mail format and slot ownership are all checked by
+    // `respond_to_poll` (`validate_poll_answer`) before anything is written.
     let email = dto.email.clone()
         .ok_or_else(|| CalendarError::Validation("Email requis pour répondre sans compte".to_string()))?;
 
