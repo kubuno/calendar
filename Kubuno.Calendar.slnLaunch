@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Calendar (Kubuno Core + browser)",
+    "Projects": [
+      {
+        "Path": "Kubuno.Calendar.Server.rsproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "frontend\\Kubuno.Calendar.Web.esproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
