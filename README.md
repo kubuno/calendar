@@ -64,8 +64,9 @@ core (kubuno/core)  ──proxy──►  kubuno-calendar (this repo, :3102)
        └─ serves /modules/calendar/entry.js (React frontend, loaded at runtime)
 ```
 
-- **Backend** — `src/`: Axum + SQLx through the shared `kubuno-db` layer — PostgreSQL (schema `calendar`), MySQL/MariaDB or SQLite; migrations in `migrations/`.
-- **Frontend** — `frontend/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
+- **Server** — `server/`: Axum + SQLx through the shared `kubuno-db` layer — PostgreSQL (schema `calendar`), MySQL/MariaDB or SQLite; migrations in `server/migrations/`.
+- **Web** — `web/`: a React bundle built to `entry.js`, consuming `@kubuno/sdk`, `@kubuno/ui` and `@kubuno/drive` from npm (provided by the host at runtime via the import map).
+- **Mobile** — `mobile/`: reserved for the mobile apps (see `mobile/README.md`).
 
 ## Install
 
@@ -93,8 +94,8 @@ A `.kbpkg` is attached to every tagged [GitHub Release](https://github.com/kubun
 **Requirements:** Rust ≥ 1.82, Node.js ≥ 24, and PostgreSQL 16, MySQL/MariaDB or SQLite (no server needed).
 
 ```bash
-cargo build --release                      # → target/release/kubuno-calendar
-cd frontend && npm ci && npm run build      # → dist/{entry.js, entry.css, chunks/}
+cd server && cargo build --release         # → server/target/release/kubuno-calendar
+cd web && npm ci && npm run build           # → web/dist/{entry.js, entry.css, chunks/}
 bash build_kbpkg.sh                         # → dist/calendar-<version>-<os>-<arch>.kbpkg
 ```
 
@@ -104,7 +105,7 @@ bash build_kbpkg.sh                         # → dist/calendar-<version>-<os>-<
 
 ## Configuration
 
-Copy `config.toml.example` → `config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). The database engine is the administrator's choice, set in `[database] engine` — `postgres` (default), `mysql`/`mariadb` or `sqlite` — and read at start-up: the same binary connects to whichever is named, and SQLite needs no server at all. Under the Kubuno supervisor the connection settings are injected by the core. See `module.toml` for the manifest (id, port, routes, sidebar entry, settings).
+Copy `server/config.toml.example` → `server/config.toml`, or use environment variables (`KUBUNO_CORE_URL`, `KUBUNO_INTERNAL_SECRET`, `KUBUNO_DB_*`). The database engine is the administrator's choice, set in `[database] engine` — `postgres` (default), `mysql`/`mariadb` or `sqlite` — and read at start-up: the same binary connects to whichever is named, and SQLite needs no server at all. Under the Kubuno supervisor the connection settings are injected by the core. See `module.toml` for the manifest (id, port, routes, sidebar entry, settings).
 
 ## Tech stack
 

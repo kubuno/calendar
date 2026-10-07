@@ -3,11 +3,11 @@
     "Name": "Calendar (Kubuno Core + browser)",
     "Projects": [
       {
-        "Path": "Kubuno.Calendar.Server.rsproj",
+        "Path": "server\\Kubuno.Calendar.Server.rsproj",
         "Action": "Start"
       },
       {
-        "Path": "frontend\\Kubuno.Calendar.Web.esproj",
+        "Path": "web\\Kubuno.Calendar.Web.esproj",
         "Action": "Start"
       }
     ]
