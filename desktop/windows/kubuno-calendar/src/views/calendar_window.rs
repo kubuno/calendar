@@ -292,6 +292,27 @@ impl CalendarWindow {
         }
     }
 
+    /// « Partager »: open the share dialog for the target calendar (shares + public link), then reload.
+    fn share_click(&mut self) {
+        let cal = self.mgmt_target();
+        if cal.is_empty() {
+            return;
+        }
+        let (name, is_public, token, fr) = {
+            let m = self.model.borrow();
+            let c = m.calendars.iter().find(|c| c.id == cal);
+            (
+                c.map(|c| c.name.clone()).unwrap_or_default(),
+                c.map(|c| c.is_public).unwrap_or(false),
+                c.map(|c| c.caldav_token.clone()).unwrap_or_default(),
+                m.view.lang == kubuno_calendar_core::date::Lang::Fr,
+            )
+        };
+        if crate::views::share_dialog::ShareDialog::new(&cal, &name, is_public, &token, fr).run(self) {
+            self.reload_calendars();
+        }
+    }
+
     /// Re-fetch the calendars list (after a management action) and repaint the sidebar.
     fn reload_calendars(&mut self) {
         if self.doc.is_some() {

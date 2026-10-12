@@ -118,6 +118,8 @@ pub struct Palette {
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_tertiary: Color,
+    /// `--color-danger` — the destructive accent (« Retirer », delete).
+    pub danger: Color,
 }
 
 impl Palette {
@@ -134,6 +136,7 @@ impl Palette {
             text_primary: hex(0x444444),
             text_secondary: hex(0x5f6368),
             text_tertiary: hex(0x80868b),
+            danger: hex(0xd93025),
         }
     }
 
@@ -150,6 +153,7 @@ impl Palette {
             text_primary: hex(0xe8eaed),
             text_secondary: hex(0x9aa0a6),
             text_tertiary: hex(0x80868b),
+            danger: hex(0xf28b82),
         }
     }
 

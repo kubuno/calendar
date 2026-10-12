@@ -326,6 +326,76 @@ pub fn set_calendar_public(calendar_id: &str, is_public: bool) -> Result<bool, S
     Ok(v.get("calendar").and_then(|c| c.get("is_public")).and_then(|b| b.as_bool()).unwrap_or(is_public))
 }
 
+/// Resolve a set of user ids to `(id, display_name)` pairs (`GET /users/lookup?ids=…`), for naming the people
+/// a calendar is shared with. Ids the directory does not return keep their raw id.
+pub fn lookup_users(ids: &[String]) -> Result<Vec<(String, String)>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let joined = ids.iter().map(|s| urlencode(s)).collect::<Vec<_>>().join(",");
+    let (status, body) = request("GET", &format!("/api/v1/users/lookup?ids={joined}"), None)?;
+    if status != 200 {
+        return Err(format!("GET lookup → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("users").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|u| {
+            let id = u.get("id")?.as_str()?.to_string();
+            let name = u.get("display_name").and_then(|n| n.as_str()).filter(|s| !s.is_empty()).or_else(|| u.get("username").and_then(|n| n.as_str())).unwrap_or(&id).to_string();
+            Some((id, name))
+        })
+        .collect())
+}
+
+/// Search the directory for a user (`GET /users/search?q=…`): `(id, display_name, username)`, best matches first.
+pub fn search_users(query: &str) -> Result<Vec<(String, String, String)>, String> {
+    let (status, body) = request("GET", &format!("/api/v1/users/search?limit=8&q={}", urlencode(query)), None)?;
+    if status != 200 {
+        return Err(format!("GET user search → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("users").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|u| {
+            let id = u.get("id")?.as_str()?.to_string();
+            let username = u.get("username").and_then(|n| n.as_str()).unwrap_or("").to_string();
+            let display = u.get("display_name").and_then(|n| n.as_str()).filter(|s| !s.is_empty()).unwrap_or(&username).to_string();
+            Some((id, display, username))
+        })
+        .collect())
+}
+
+/// Share a calendar with a user (`POST /calendar/calendars/:id/share { user_id, permission }`). `permission`
+/// is `"read"` or `"write"`. Re-sharing an existing user updates their permission.
+pub fn share_calendar(calendar_id: &str, user_id: &str, permission: &str) -> Result<(), String> {
+    let dto = serde_json::json!({ "user_id": user_id, "permission": permission });
+    let (status, _) = request("POST", &format!("{CAL_PREFIX}/calendars/{}/share", urlencode(calendar_id)), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST share → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// Revoke a user's access to a calendar (`DELETE /calendar/calendars/:id/share/:user_id`).
+pub fn unshare_calendar(calendar_id: &str, user_id: &str) -> Result<(), String> {
+    let (status, _) = request("DELETE", &format!("{CAL_PREFIX}/calendars/{}/share/{}", urlencode(calendar_id), urlencode(user_id)), None)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("DELETE share → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// The public read-only `.ics` feed URL of a calendar (web `calendarApi.publicFeedUrl`): the account's server
+/// origin plus the calendar's CalDAV token. Valid only while the calendar `is_public`.
+pub fn public_feed_url(caldav_token: &str) -> String {
+    let base = account().map(|a| a.server_url).unwrap_or_default();
+    let base = base.trim_end_matches('/');
+    format!("{base}/api/v1/calendar/public/calendars/{}/feed.ics", urlencode(caldav_token))
+}
+
 /// The calendars the signed-in user can see (`GET /calendar/calendars`), for the editor's calendar picker and
 /// the sidebar. The server returns `{ "calendars": [ … ] }`.
 pub fn fetch_calendars() -> Result<Vec<kubuno_calendar_core::model::Calendar>, String> {

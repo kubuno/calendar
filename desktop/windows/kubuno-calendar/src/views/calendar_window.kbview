@@ -35,6 +35,7 @@
     <Label Text="{Res my_calendars}" Role="Caption" ForeColor="TextSecondary" X="14" Y="262" Width="150" Height="18"/>
     <DropDownButton x:Name="mgmt_btn" Text="{Res mgmt_menu}" Variant="Ghost" Size="Sm" X="162" Y="256" Width="86" Height="24">
       <MenuItem Text="{Res mgmt_subscribe}" Icon="Rss" OnClick="subscribe_click"/>
+      <MenuItem Text="{Res mgmt_share}" Icon="Users" OnClick="share_click"/>
       <MenuItem Text="{Res mgmt_import}" Icon="Upload" OnClick="import_click"/>
       <MenuItem Text="{Res mgmt_export}" Icon="Download" OnClick="export_click"/>
     </DropDownButton>

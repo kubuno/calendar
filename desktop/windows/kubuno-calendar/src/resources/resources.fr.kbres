@@ -68,4 +68,13 @@
   <String Name="sub_name">Nom</String>
   <String Name="sub_url">URL de l'agenda (.ics)</String>
   <String Name="sub_ok">S'abonner</String>
+  <String Name="share_with_user">Partager avec un utilisateur</String>
+  <String Name="share_search_ph">Nom ou identifiant…</String>
+  <String Name="share_add">Ajouter</String>
+  <String Name="share_current">Personnes ayant accès</String>
+  <String Name="share_public">Lien public (lecture seule)</String>
+  <String Name="share_public_hint">Toute personne disposant du lien peut consulter cet agenda (flux .ics, compatible avec les autres applications d'agenda).</String>
+  <String Name="share_perm_read">Lecture seule</String>
+  <String Name="share_perm_write">Modification</String>
+  <String Name="share_close">Fermer</String>
 </Resources>

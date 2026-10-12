@@ -1,0 +1,29 @@
+<!--
+  Share a calendar (web CalendarShareModal.tsx): share with other Kubuno users (read / write), list and revoke
+  the existing shares, and publish a public read-only .ics link. A share-with-user row, the people-with-access
+  list (ShareList), and the public-link section with its feed URL.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="480" DesignHeight="540"
+       AcceptButton="close" OnLoad="share_load">
+
+  <!-- Share with a user. -->
+  <Label Text="{Res share_with_user}" Role="Caption" ForeColor="TextSecondary" X="24" Y="18" Width="432" Height="16"/>
+  <TextField x:Name="user_box" Text="{Binding UserQuery, Mode=TwoWay}" Placeholder="{Res share_search_ph}" X="24" Y="38" Width="236" Height="36"/>
+  <Dropdown x:Name="perm_box" SelectedValue="{Binding PermValue, Mode=TwoWay}" ItemsSource="{Binding PermItems}" X="266" Y="38" Width="112" Height="36"/>
+  <Button x:Name="add" Text="{Res share_add}" Variant="Secondary" X="384" Y="38" Width="72" Height="36" OnClick="add_click"/>
+
+  <!-- People with access. -->
+  <Label Text="{Res share_current}" Role="Caption" ForeColor="TextSecondary" X="24" Y="90" Width="432" Height="16"/>
+  <ShareList x:Name="shares" X="24" Y="112" Width="432" Height="150" OnRemove="remove_share"/>
+
+  <!-- Public read-only .ics link. -->
+  <Panel X="24" Y="278" Width="432" Height="1" BackColor="Border"/>
+  <CheckBox x:Name="pub_box" Text="{Res share_public}" Checked="{Binding IsPublic, Mode=TwoWay}" X="24" Y="294" Width="432" Height="24" OnCheckedChanged="public_changed"/>
+  <Label Text="{Res share_public_hint}" Role="Caption" ForeColor="TextTertiary" X="24" Y="322" Width="432" Height="40"/>
+  <TextField x:Name="feed_box" Text="{Binding FeedUrl}" ReadOnly="true" Visible="{Binding FeedVisible}" X="24" Y="368" Width="432" Height="34"/>
+
+  <Label Text="{Binding Status}" Role="Caption" ForeColor="Danger" X="24" Y="414" Width="432" Height="18"/>
+
+  <Button x:Name="close" ActionBar.Region="Right" Text="{Res share_close}" Variant="Secondary" Width="120" Height="36" OnClick="close_click"/>
+</Panel>

@@ -11,6 +11,7 @@ pub mod moon_widget;
 pub mod model;
 pub mod month_grid;
 pub mod search_results;
+pub mod share_list;
 pub mod time_grid;
 pub mod weekday_picker;
 pub mod year_grid;

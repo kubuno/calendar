@@ -68,4 +68,13 @@
   <String Name="sub_name">Name</String>
   <String Name="sub_url">Calendar URL (.ics)</String>
   <String Name="sub_ok">Subscribe</String>
+  <String Name="share_with_user">Share with a user</String>
+  <String Name="share_search_ph">Name or username…</String>
+  <String Name="share_add">Add</String>
+  <String Name="share_current">People with access</String>
+  <String Name="share_public">Public link (read-only)</String>
+  <String Name="share_public_hint">Anyone with the link can view this calendar (.ics feed, compatible with other calendar apps).</String>
+  <String Name="share_perm_read">Read only</String>
+  <String Name="share_perm_write">Can edit</String>
+  <String Name="share_close">Close</String>
 </Resources>

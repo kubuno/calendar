@@ -17,6 +17,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: share a calendar.** The sidebar's « Gérer » menu gains « Partager… » (web
+  `CalendarShareModal.tsx`): a dialog to share the calendar with other Kubuno users (read / write) via a
+  directory search, to list and revoke the existing shares, and to publish a public read-only `.ics` link
+  (toggle + the feed URL). Each action calls the calendar REST API directly (`/calendars/:id/share`,
+  `/shares`, `/users/search`, `PATCH { is_public }`) and refreshes in place. Round-trips proven live
+  (public toggle on/off with the feed served, share/unshare of a second user with its name resolved).
+
 - **Desktop Calendar: import and export `.ics`.** The sidebar's « Gérer » menu gains « Importer .ics… » and
   « Exporter (.ics) » (web `CalendarImportModal.tsx` / the export download). Import opens a native file picker,
   reads the chosen iCalendar file and uploads its events to the calendar (`POST /calendar/import`, preserving
