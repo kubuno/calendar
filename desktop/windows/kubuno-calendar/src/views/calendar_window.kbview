@@ -33,7 +33,20 @@
     <MiniMonth x:Name="mini" X="4" Y="10" Width="248" Height="232" OnDatePicked="mini_date_picked"/>
     <Panel X="12" Y="250" Width="232" Height="1" BackColor="Border"/>
     <Label Text="{Res my_calendars}" Role="Caption" ForeColor="TextSecondary" X="14" Y="262" Width="220" Height="18"/>
-    <CalendarList x:Name="cal_list" X="6" Y="286" Width="244" Height="220" OnVisibilityChanged="cal_visibility_changed"/>
+    <CalendarList x:Name="cal_list" X="6" Y="286" Width="244" Height="72" OnVisibilityChanged="cal_visibility_changed"/>
+
+    <!-- Weather, Moon and Booking sections (web CalendarSidebarBody). -->
+    <Panel X="12" Y="370" Width="232" Height="1" BackColor="Border"/>
+    <Label Text="{Res sb_weather}" Role="Caption" ForeColor="TextSecondary" X="14" Y="382" Width="220" Height="18"/>
+    <Label Text="{Res sb_weather_add}" Role="Caption" ForeColor="Primary" X="14" Y="406" Width="220" Height="18"/>
+
+    <Panel X="12" Y="438" Width="232" Height="1" BackColor="Border"/>
+    <Label Text="{Res sb_moon}" Role="Caption" ForeColor="TextSecondary" X="14" Y="450" Width="220" Height="18"/>
+    <MoonWidget x:Name="moon" X="12" Y="474" Width="232" Height="28"/>
+
+    <Panel X="12" Y="514" Width="232" Height="1" BackColor="Border"/>
+    <Label Text="{Res sb_booking}" Role="Caption" ForeColor="TextSecondary" X="14" Y="526" Width="220" Height="18"/>
+    <Label Text="{Res sb_booking_none}" Role="Caption" ForeColor="TextTertiary" X="14" Y="550" Width="220" Height="18"/>
   </Panel>
 
   <!-- The body: the active view. -->

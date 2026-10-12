@@ -93,6 +93,35 @@ pub fn draw_principal_moon(
     g.draw_ellipse(&Pen::new(stroke, 1.0), rect);
 }
 
+/// A moon disc for any phase (`phase` 0..1, 0 = new / 0.5 = full; `illum` the lit fraction): the dark base,
+/// the lit limb (right while waxing, left while waning) carved to a crescent or extended to a gibbous by the
+/// terminator ellipse, and the outline — the shape the sidebar's Moon widget shows (`web MoonIcon`).
+#[allow(clippy::too_many_arguments)]
+pub fn draw_moon(g: &kubuno_desktop::ui::graphics::Graphics<'_>, cx: f32, cy: f32, r: f32, phase: f64, illum: f64, fill: Color, stroke: Color) {
+    let rect = Rect::new(cx - r, cy - r, cx + r, cy + r);
+    let lit = hex(MOON_LIT);
+    g.fill_ellipse(Brush::solid(fill), rect);
+    if illum > 0.985 {
+        g.fill_ellipse(Brush::solid(lit), rect);
+    } else if illum > 0.015 {
+        let waxing = phase < 0.5;
+        let mut p = GraphicsPath::new();
+        // The lit half: north→east→south (right) while waxing, south→west→north (left) while waning.
+        if waxing {
+            p.add_pie(rect, -90.0, 180.0);
+        } else {
+            p.add_pie(rect, 90.0, 180.0);
+        }
+        g.fill_path(Brush::solid(lit), &p);
+        // The terminator ellipse carves (crescent, < half lit) or extends (gibbous, > half lit) the lit half.
+        let tf = (2.0 * illum - 1.0).abs() as f32;
+        let term = Rect::new(cx - r * tf, cy - r, cx + r * tf, cy + r);
+        let term_color = if illum < 0.5 { fill } else { lit };
+        g.fill_ellipse(Brush::solid(term_color), term);
+    }
+    g.draw_ellipse(&Pen::new(stroke, 1.0), rect);
+}
+
 /// A timed-event block in the Day/Week grid (`WeekView.tsx` / `DayView.tsx`): the title on the first line
 /// (semibold) and, when the block is tall enough, the time range (and location) faded on a second line — not a
 /// time prefix. Carries the thin white inner ring and the web radius.

@@ -28,6 +28,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   count, then each result with a colour dot, its title and the day + time — replacing the current view while a
   query is typed. Clicking a result opens that event's Day. Hidden calendars are excluded. Light and dark.
 
+- **Desktop Calendar: the sidebar's Moon, Weather and Booking sections.** Below the calendars, the sidebar now
+  shows a « Lune » row with today's moon drawn to its phase and its name + illuminated percentage (from the
+  shared core's moon maths), a « Météo » section with an « Ajouter un lieu » link, and a « Pages de réservation »
+  section — matching the web `CalendarSidebarBody`. (The full weather forecast widget and the booking/scheduling
+  page are later increments.)
+
 - **Desktop Calendar: the left sidebar (mini-month + calendars).** A sidebar now sits left of the views,
   matching the web `CalendarSidebarBody.tsx`: a mini-month navigator (`CalendarMiniPanel`) with ‹ › month
   arrows, the weekday row and round day cells (today a filled accent circle, other-month days dimmed), and the

@@ -19,6 +19,7 @@ use kubuno_calendar_desktop_common::live::EventWrite;
 use crate::controls::agenda_list::AgendaList;
 use crate::controls::calendar_list::CalendarList;
 use crate::controls::mini_month::{MiniDateArgs, MiniMonth};
+use crate::controls::moon_widget::MoonWidget;
 use crate::controls::model::{shared, Shared, State};
 use crate::controls::month_grid::{ActivateArgs, MonthGrid};
 use crate::controls::search_results::{SearchNavArgs, SearchResults};
@@ -40,6 +41,8 @@ pub struct CalendarWindow {
     mini: Custom<MiniMonth>,
     #[control]
     cal_list: Custom<CalendarList>,
+    #[control]
+    moon: Custom<MoonWidget>,
     #[control]
     year: Custom<YearGrid>,
     #[control]
@@ -124,6 +127,7 @@ impl CalendarWindow {
         self.agenda.with(|v| v.set_model(m.clone()));
         self.mini.with(|v| v.set_model(m.clone()));
         self.cal_list.with(|v| v.set_model(m.clone()));
+        self.moon.with(|v| v.set_model(m.clone()));
         self.year.with(|v| v.set_model(m.clone()));
         self.search_view.with(|v| v.set_model(m.clone()));
         // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.

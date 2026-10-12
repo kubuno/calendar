@@ -7,6 +7,7 @@ pub mod calendar_list;
 pub mod color_swatches;
 pub mod draw;
 pub mod mini_month;
+pub mod moon_widget;
 pub mod model;
 pub mod month_grid;
 pub mod search_results;

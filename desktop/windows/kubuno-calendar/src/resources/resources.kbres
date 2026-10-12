@@ -53,4 +53,9 @@
   <String Name="rec_unit_year">year</String>
   <String Name="my_calendars">My calendars</String>
   <String Name="search_ph">Search events</String>
+  <String Name="sb_weather">Weather</String>
+  <String Name="sb_weather_add">Add a location</String>
+  <String Name="sb_moon">Moon</String>
+  <String Name="sb_booking">Booking pages</String>
+  <String Name="sb_booking_none">No schedules</String>
 </Resources>
