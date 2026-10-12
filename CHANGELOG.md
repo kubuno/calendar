@@ -56,9 +56,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
-- **Desktop Calendar: the live network runs off the UI thread.** The live load and the create/delete calls now
-  run on a background thread and post their result back to the UI thread, so the window stays responsive during
-  a request instead of blocking on the network.
+- **Desktop Calendar: the live network runs off the UI thread.** The live load and the create, edit and delete
+  calls now run on a background thread and post their result back to the UI thread, so the window stays
+  responsive during a request instead of blocking on the network.
 
 - **Desktop Calendar: closer visual match to the web.** The Month, Week, Day and Agenda views were tuned to
   the web app's exact styling: events are now solid filled pills with white text and the proper corner radius
