@@ -778,6 +778,94 @@ pub fn weather_delete_location(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ── Module settings (per-user preferences) ──────────────────────────────────────────────────────────────────
+// The desktop counterpart of the web `CalendarSettingsPage` / `ModuleSettingsForm` / `calendarSettings.ts`.
+
+/// The module's resolved settings as `key → effective value` (`GET /modules/calendar/config`). The `effective`
+/// value is the user override ?? instance default ?? factory default.
+pub fn fetch_calendar_settings() -> Result<std::collections::HashMap<String, SettingValue>, String> {
+    let (status, body) = request("GET", "/api/v1/modules/calendar/config", None)?;
+    if status != 200 {
+        return Err(format!("GET config → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("settings").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|s| {
+            let key = s.get("key")?.as_str()?.to_string();
+            let eff = s.get("effective")?;
+            let val = if let Some(b) = eff.as_bool() {
+                SettingValue::Bool(b)
+            } else if let Some(n) = eff.as_i64() {
+                SettingValue::Int(n)
+            } else {
+                SettingValue::Str(eff.as_str().unwrap_or("").to_string())
+            };
+            Some((key, val))
+        })
+        .collect())
+}
+
+/// A setting value to persist, so callers need not depend on `serde_json`.
+#[derive(Debug, Clone)]
+pub enum SettingValue {
+    Str(String),
+    Int(i64),
+    Bool(bool),
+}
+
+impl SettingValue {
+    fn to_json(&self) -> serde_json::Value {
+        match self {
+            SettingValue::Str(s) => serde_json::Value::from(s.clone()),
+            SettingValue::Int(n) => serde_json::Value::from(*n),
+            SettingValue::Bool(b) => serde_json::Value::from(*b),
+        }
+    }
+
+    /// The value as the string a dropdown binds to (numbers are rendered decimal).
+    pub fn as_string(&self) -> String {
+        match self {
+            SettingValue::Str(s) => s.clone(),
+            SettingValue::Int(n) => n.to_string(),
+            SettingValue::Bool(b) => b.to_string(),
+        }
+    }
+
+    /// The value as a bool (false unless it is a `Bool`).
+    pub fn as_bool(&self) -> bool {
+        matches!(self, SettingValue::Bool(true))
+    }
+}
+
+/// Persist changed settings as user preferences (`PATCH /me { preferences: { calendar: { … } } }`). The whole
+/// module bag is re-sent merged with the current one, since the server merges `preferences` only at the root.
+pub fn save_calendar_settings(changes: &[(String, SettingValue)]) -> Result<(), String> {
+    // Read the current calendar preferences so we merge rather than drop sibling keys.
+    let (status, body) = request("GET", "/api/v1/me", None)?;
+    if status != 200 {
+        return Err(format!("GET me → HTTP {status}"));
+    }
+    let me: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let mut cal = me
+        .get("user")
+        .and_then(|u| u.get("preferences"))
+        .and_then(|p| p.get("calendar"))
+        .and_then(|c| c.as_object())
+        .cloned()
+        .unwrap_or_default();
+    for (k, v) in changes {
+        cal.insert(k.clone(), v.to_json());
+    }
+    let dto = serde_json::json!({ "preferences": { "calendar": serde_json::Value::Object(cal) } });
+    let (status, _) = request("PATCH", "/api/v1/me", Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("PATCH me → HTTP {status}"));
+    }
+    Ok(())
+}
+
 /// Today's forecast for a location (`GET /calendar/weather/forecast?lat&lon&tz`).
 pub fn weather_forecast_today(latitude: f64, longitude: f64, timezone: &str) -> Result<ForecastToday, String> {
     let (status, body) = request("GET", &format!("{CAL_PREFIX}/weather/forecast?lat={latitude}&lon={longitude}&tz={}", urlencode(timezone)), None)?;

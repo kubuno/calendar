@@ -175,6 +175,15 @@ impl CalendarWindow {
         self.weather_list.with(|v| v.set_rows(rows, fr));
     }
 
+    /// The settings gear (web module header gear → `/calendar/user-settings`): open the per-user settings.
+    fn settings_click(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        let fr = self.lang_fr();
+        crate::views::settings_dialog::SettingsDialog::new(fr).run(self);
+    }
+
     /// « Ajouter un lieu »: search a city and save it as a weather location, then refresh the sidebar.
     fn weather_add_click(&mut self) {
         if self.doc.is_none() {

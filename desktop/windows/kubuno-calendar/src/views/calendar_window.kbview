@@ -22,7 +22,10 @@
     <TextField x:Name="search_box" Text="{Binding SearchQuery, Mode=TwoWay}" Placeholder="{Res search_ph}" X="570" Y="12" Width="236" Height="32" Visible="{Binding IsLive}" OnTextChanged="search_changed"/>
 
     <!-- Create an event (live only); double-clicking a day or an event opens the editor too. -->
-    <Button x:Name="btn_new" Text="{Res new_event}" Variant="Secondary" AccessibleName="{Res new_event}" X="820" Y="12" Width="188" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" OnClick="new_click"/>
+    <Button x:Name="btn_new" Text="{Res new_event}" Variant="Secondary" AccessibleName="{Res new_event}" X="820" Y="12" Width="150" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" OnClick="new_click"/>
+
+    <!-- The settings gear (web module header gear → /calendar/user-settings). -->
+    <Button x:Name="btn_settings" Icon="Settings" Variant="Ghost" AccessibleName="{Res set_open}" X="978" Y="12" Width="30" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" OnClick="settings_click"/>
 
     <Dropdown x:Name="view_box" SelectedValue="{Binding ViewValue}" ItemsSource="{Binding ViewItems}" AccessibleName="{Res view_month}" X="1016" Y="12" Width="128" Height="32" Anchor="Top, Right" OnSelectedValueChanged="view_changed"/>
   </Panel>

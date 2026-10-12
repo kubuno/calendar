@@ -129,4 +129,22 @@
   <String Name="weather_search_ph">City…</String>
   <String Name="weather_search">Search</String>
   <String Name="weather_pick">Choose a result</String>
+  <String Name="settings_title">Calendar settings</String>
+  <String Name="set_region">Region</String>
+  <String Name="set_time_format">Time format</String>
+  <String Name="set_week_start">Week starts on</String>
+  <String Name="set_default_view">Default view</String>
+  <String Name="set_events">Events</String>
+  <String Name="set_duration">Default duration</String>
+  <String Name="set_reminder">Default reminder</String>
+  <String Name="set_speedy">Speedy meetings</String>
+  <String Name="set_notifications">Notifications</String>
+  <String Name="set_notif_mode">Mode</String>
+  <String Name="set_notif_sound">Notification sound</String>
+  <String Name="set_display">Display</String>
+  <String Name="set_weekends">Show weekends</String>
+  <String Name="set_week_numbers">Show week numbers</String>
+  <String Name="set_dim_past">Dim past events</String>
+  <String Name="set_shortcuts">Keyboard shortcuts</String>
+  <String Name="set_open">Settings</String>
 </Resources>

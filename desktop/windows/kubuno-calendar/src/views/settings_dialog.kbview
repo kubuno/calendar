@@ -1,0 +1,41 @@
+<!--
+  Calendar settings (web CalendarSettingsPage.tsx / ModuleSettingsForm.tsx): the module's per-user preferences,
+  grouped Region / Events / Notifications / Display. Loaded from GET /modules/calendar/config, saved to PATCH /me.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Res settings_title}" DesignWidth="520" DesignHeight="560"
+       AcceptButton="save" OnLoad="settings_load">
+
+  <!-- Region -->
+  <Label Text="{Res set_region}" Role="Subtitle" ForeColor="TextPrimary" X="24" Y="18" Width="472" Height="22"/>
+  <Label Text="{Res set_time_format}" ForeColor="TextSecondary" X="24" Y="46" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding TimeFormat, Mode=TwoWay}" ItemsSource="{Binding TimeFormatItems}" X="240" Y="44" Width="256" Height="34"/>
+  <Label Text="{Res set_week_start}" ForeColor="TextSecondary" X="24" Y="84" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding WeekStart, Mode=TwoWay}" ItemsSource="{Binding WeekStartItems}" X="240" Y="82" Width="256" Height="34"/>
+  <Label Text="{Res set_default_view}" ForeColor="TextSecondary" X="24" Y="122" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding DefaultView, Mode=TwoWay}" ItemsSource="{Binding DefaultViewItems}" X="240" Y="120" Width="256" Height="34"/>
+
+  <!-- Events -->
+  <Label Text="{Res set_events}" Role="Subtitle" ForeColor="TextPrimary" X="24" Y="166" Width="472" Height="22"/>
+  <Label Text="{Res set_duration}" ForeColor="TextSecondary" X="24" Y="194" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding Duration, Mode=TwoWay}" ItemsSource="{Binding DurationItems}" X="240" Y="192" Width="256" Height="34"/>
+  <Label Text="{Res set_reminder}" ForeColor="TextSecondary" X="24" Y="232" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding Reminder, Mode=TwoWay}" ItemsSource="{Binding ReminderItems}" X="240" Y="230" Width="256" Height="34"/>
+  <CheckBox Text="{Res set_speedy}" Checked="{Binding Speedy, Mode=TwoWay}" X="24" Y="270" Width="472" Height="26"/>
+
+  <!-- Notifications -->
+  <Label Text="{Res set_notifications}" Role="Subtitle" ForeColor="TextPrimary" X="24" Y="306" Width="472" Height="22"/>
+  <Label Text="{Res set_notif_mode}" ForeColor="TextSecondary" X="24" Y="334" Width="200" Height="34"/>
+  <Dropdown SelectedValue="{Binding NotifMode, Mode=TwoWay}" ItemsSource="{Binding NotifModeItems}" X="240" Y="332" Width="256" Height="34"/>
+  <CheckBox Text="{Res set_notif_sound}" Checked="{Binding NotifSound, Mode=TwoWay}" X="24" Y="372" Width="472" Height="26"/>
+
+  <!-- Display -->
+  <Label Text="{Res set_display}" Role="Subtitle" ForeColor="TextPrimary" X="24" Y="408" Width="472" Height="22"/>
+  <CheckBox Text="{Res set_weekends}" Checked="{Binding ShowWeekends, Mode=TwoWay}" X="24" Y="436" Width="230" Height="26"/>
+  <CheckBox Text="{Res set_week_numbers}" Checked="{Binding ShowWeekNumbers, Mode=TwoWay}" X="266" Y="436" Width="230" Height="26"/>
+  <CheckBox Text="{Res set_dim_past}" Checked="{Binding DimPast, Mode=TwoWay}" X="24" Y="466" Width="230" Height="26"/>
+  <CheckBox Text="{Res set_shortcuts}" Checked="{Binding Shortcuts, Mode=TwoWay}" X="266" Y="466" Width="230" Height="26"/>
+
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="save" ActionBar.Region="Right" Text="{Res appt_save}" Variant="Primary" Width="120" Height="36" OnClick="save_click"/>
+</Panel>

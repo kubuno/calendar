@@ -17,6 +17,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: the settings page.** A settings gear in the toolbar (web module header gear →
+  `/calendar/user-settings`) opens the per-user preferences (web `CalendarSettingsPage` / `ModuleSettingsForm`),
+  grouped Region / Events / Notifications / Display: time format, week start, default view, default duration and
+  reminder, speedy meetings, notifications mode and sound, show weekends/week numbers, dim past events and
+  keyboard shortcuts. The current values are loaded from the resolved module config
+  (`GET /modules/calendar/config`) and changes are persisted as user preferences (`PATCH /me`); a setting
+  round-trip is proven live. (A representative subset of the manifest's settings is shown; the work schedule,
+  holiday calendars and secondary timezone are later increments.)
+
 - **Desktop Calendar: the sidebar weather forecast.** The sidebar's « Météo » section now shows today's
   forecast for the saved default location (the place name, the condition and the high/low temperatures, plus the
   precipitation probability when notable) and « Ajouter un lieu » opens a dialog to search the geocoder for a
