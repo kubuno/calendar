@@ -391,9 +391,29 @@ pub fn unshare_calendar(calendar_id: &str, user_id: &str) -> Result<(), String> 
 /// The public read-only `.ics` feed URL of a calendar (web `calendarApi.publicFeedUrl`): the account's server
 /// origin plus the calendar's CalDAV token. Valid only while the calendar `is_public`.
 pub fn public_feed_url(caldav_token: &str) -> String {
-    let base = account().map(|a| a.server_url).unwrap_or_default();
-    let base = base.trim_end_matches('/');
-    format!("{base}/api/v1/calendar/public/calendars/{}/feed.ics", urlencode(caldav_token))
+    format!("{}/api/v1/calendar/public/calendars/{}/feed.ics", server_origin(), urlencode(caldav_token))
+}
+
+/// The account's server origin (no trailing slash), for building the CalDAV / feed URLs the way the web does
+/// from `window.location.origin`.
+pub fn server_origin() -> String {
+    account().map(|a| a.server_url.trim_end_matches('/').to_string()).unwrap_or_default()
+}
+
+/// The signed-in user's username (`GET /api/v1/me`), used in the CalDAV endpoint URLs. Falls back to the email.
+pub fn fetch_username() -> Result<String, String> {
+    let (status, body) = request("GET", "/api/v1/me", None)?;
+    if status != 200 {
+        return Err(format!("GET me → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let u = v.get("user").unwrap_or(&v);
+    Ok(u.get("username")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| u.get("email").and_then(|x| x.as_str()))
+        .unwrap_or("")
+        .to_string())
 }
 
 /// The calendars the signed-in user can see (`GET /calendar/calendars`), for the editor's calendar picker and

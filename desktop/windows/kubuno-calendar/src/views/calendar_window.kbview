@@ -38,6 +38,7 @@
       <MenuItem Text="{Res mgmt_share}" Icon="Users" OnClick="share_click"/>
       <MenuItem Text="{Res mgmt_import}" Icon="Upload" OnClick="import_click"/>
       <MenuItem Text="{Res mgmt_export}" Icon="Download" OnClick="export_click"/>
+      <MenuItem Text="{Res mgmt_caldav}" Icon="Link" OnClick="caldav_click"/>
     </DropDownButton>
     <CalendarList x:Name="cal_list" X="6" Y="286" Width="244" Height="72" OnVisibilityChanged="cal_visibility_changed"/>
 

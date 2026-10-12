@@ -17,6 +17,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: CalDAV access.** The sidebar's « Gérer » menu gains « CalDAV… » (web
+  `CalendarCalDavSettings.tsx`): a dialog showing the CalDAV connection details to sync the calendars with
+  Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. — the main endpoint (server URL + username,
+  read from `GET /api/v1/me`), and, per calendar, its CalDAV URL built from the calendar's token. Display
+  only; verified the built URLs are live (the CalDAV endpoint answers PROPFIND/OPTIONS for the token shown).
+
 - **Desktop Calendar: share a calendar.** The sidebar's « Gérer » menu gains « Partager… » (web
   `CalendarShareModal.tsx`): a dialog to share the calendar with other Kubuno users (read / write) via a
   directory search, to list and revoke the existing shares, and to publish a public read-only `.ics` link

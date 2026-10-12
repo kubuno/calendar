@@ -77,4 +77,13 @@
   <String Name="share_perm_read">Lecture seule</String>
   <String Name="share_perm_write">Modification</String>
   <String Name="share_close">Fermer</String>
+  <String Name="caldav_title">Accès CalDAV</String>
+  <String Name="caldav_access_help">Synchronisez vos agendas avec Apple Calendar, Thunderbird, Android, etc.</String>
+  <String Name="caldav_main_endpoint">Point d'accès principal</String>
+  <String Name="caldav_server_url">Adresse du serveur</String>
+  <String Name="caldav_username">Identifiant</String>
+  <String Name="caldav_password_note">Utilisez votre mot de passe Kubuno. Si la double authentification est active, créez un mot de passe d'application.</String>
+  <String Name="caldav_per_calendar">URL par calendrier</String>
+  <String Name="caldav_default">défaut</String>
+  <String Name="caldav_how_to">Pour vous connecter : ajoutez un compte CalDAV dans votre application, saisissez l'adresse du serveur ci-dessus et vos identifiants Kubuno. (Apple Calendar, Thunderbird, Android/DAVx5, Windows.)</String>
 </Resources>

@@ -3,6 +3,7 @@
 //! The Year view is a later increment.
 
 pub mod agenda_list;
+pub mod caldav_list;
 pub mod calendar_list;
 pub mod color_swatches;
 pub mod draw;

@@ -313,6 +313,15 @@ impl CalendarWindow {
         }
     }
 
+    /// « CalDAV »: show the CalDAV connection details (endpoint + per-calendar URLs). Display only.
+    fn caldav_click(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        let cals = self.model.borrow().calendars.clone();
+        crate::views::caldav_dialog::CalDavDialog::new(cals).run(self);
+    }
+
     /// Re-fetch the calendars list (after a management action) and repaint the sidebar.
     fn reload_calendars(&mut self) {
         if self.doc.is_some() {

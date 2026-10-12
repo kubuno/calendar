@@ -1,0 +1,29 @@
+<!--
+  CalDAV access (web CalendarCalDavSettings.tsx): the connection details to sync the calendars with external
+  apps. The main endpoint (server URL + username), a password note, then the per-calendar CalDAV URLs and a
+  short "how to connect" note. Display only.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Res caldav_title}" DesignWidth="560" DesignHeight="560"
+       AcceptButton="close" OnLoad="caldav_load">
+
+  <Label Text="{Res caldav_access_help}" Role="Caption" ForeColor="TextSecondary" X="24" Y="18" Width="512" Height="18"/>
+
+  <!-- Main endpoint. -->
+  <Label Text="{Res caldav_main_endpoint}" Role="Caption" ForeColor="TextTertiary" X="24" Y="48" Width="512" Height="16"/>
+  <Label Text="{Res caldav_server_url}" Role="Caption" ForeColor="TextTertiary" X="24" Y="72" Width="120" Height="34"/>
+  <TextField x:Name="server_box" Text="{Binding ServerUrl}" ReadOnly="true" X="150" Y="70" Width="386" Height="34"/>
+  <Label Text="{Res caldav_username}" Role="Caption" ForeColor="TextTertiary" X="24" Y="112" Width="120" Height="34"/>
+  <TextField x:Name="user_box" Text="{Binding Username}" ReadOnly="true" X="150" Y="110" Width="386" Height="34"/>
+  <Label Text="{Res caldav_password_note}" Role="Caption" ForeColor="TextTertiary" X="24" Y="150" Width="512" Height="34"/>
+
+  <!-- Per-calendar URLs. -->
+  <Label Text="{Res caldav_per_calendar}" Role="Caption" ForeColor="TextTertiary" X="24" Y="192" Width="512" Height="16"/>
+  <CalDavList x:Name="cals" X="24" Y="214" Width="512" Height="200"/>
+
+  <!-- How to connect. -->
+  <Panel X="24" Y="424" Width="512" Height="1" BackColor="Border"/>
+  <Label Text="{Res caldav_how_to}" Role="Caption" ForeColor="TextSecondary" X="24" Y="436" Width="512" Height="56"/>
+
+  <Button x:Name="close" ActionBar.Region="Right" Text="{Res share_close}" Variant="Secondary" Width="120" Height="36" OnClick="close_click"/>
+</Panel>
