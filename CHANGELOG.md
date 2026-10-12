@@ -17,6 +17,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: reminder notifications.** A background worker (web `CalendarNotificationWorker`) checks
+  the upcoming events every minute and raises a native desktop notification when an event's reminder falls due
+  (within a ±1-minute window, de-duplicated), honouring the user's notifications mode (off / in-app / desktop).
+  The reminder-due logic is unit-tested; the notification is shown through the notification-area balloon
+  (`Shell_NotifyIcon`, the mechanism the Kubuno desktop shell uses).
+
 - **Desktop Calendar: the settings page.** A settings gear in the toolbar (web module header gear →
   `/calendar/user-settings`) opens the per-user preferences (web `CalendarSettingsPage` / `ModuleSettingsForm`),
   grouped Region / Events / Notifications / Display: time format, week start, default view, default duration and

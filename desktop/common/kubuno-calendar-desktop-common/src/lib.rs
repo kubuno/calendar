@@ -11,6 +11,7 @@
 pub mod app;
 pub mod live;
 pub mod platform;
+pub mod reminders;
 pub mod sample;
 pub mod state;
 

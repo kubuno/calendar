@@ -143,6 +143,11 @@ impl CalendarWindow {
             }
             self.load_schedules();
             self.load_weather();
+            // Start the reminder worker (fires native notifications for upcoming events' reminders).
+            if let Some(doc) = self.doc.clone() {
+                let (offset, fr) = { let m = self.model.borrow(); (m.offset_minutes, m.view.lang == kubuno_calendar_core::date::Lang::Fr) };
+                crate::notify::start_worker(doc, offset, fr);
+            }
         }
         self.reload_live();
         self.refresh();

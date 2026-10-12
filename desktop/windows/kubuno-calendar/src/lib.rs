@@ -11,6 +11,7 @@
 
 pub mod controls;
 pub mod file_dialog;
+pub mod notify;
 pub mod platform;
 pub mod views;
 mod windows_ui;

@@ -21,7 +21,7 @@ pub struct EventReminder {
 /// One occurrence of an event, as the server returns it (`EventInstance`, `api.ts:66`). A recurring series is
 /// returned as one `EventInstance` per occurrence in the window; `rrule`/`is_recurring` describe the series it
 /// belongs to but the client does not expand them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EventInstance {
     pub id: String,
     pub event_id: String,
@@ -135,7 +135,7 @@ impl LocalDateTime {
 }
 
 /// A UTC instant, in whole seconds since the Unix epoch — what an ISO 8601 timestamp denotes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Instant {
     pub epoch_seconds: i64,
 }
