@@ -52,4 +52,5 @@
   <String Name="rec_unit_month">month</String>
   <String Name="rec_unit_year">year</String>
   <String Name="my_calendars">My calendars</String>
+  <String Name="search_ph">Search events</String>
 </Resources>

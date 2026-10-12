@@ -18,6 +18,9 @@
     <Button x:Name="btn_next" Text="›" Variant="Ghost" AccessibleName="{Res next}" X="150" Y="12" Width="32" Height="32" OnClick="next_click"/>
     <Label x:Name="period_label" Text="{Binding PeriodTitle}" Role="Title" ForeColor="TextPrimary" TextAlign="MiddleLeft" X="198" Y="12" Width="360" Height="32"/>
 
+    <!-- Search events (live only): typing filters a ±1-year pool; the results list replaces the view. -->
+    <TextField x:Name="search_box" Text="{Binding SearchQuery, Mode=TwoWay}" Placeholder="{Res search_ph}" X="570" Y="12" Width="236" Height="32" Visible="{Binding IsLive}" OnTextChanged="search_changed"/>
+
     <!-- Create an event (live only); double-clicking a day or an event opens the editor too. -->
     <Button x:Name="btn_new" Text="{Res new_event}" Variant="Secondary" AccessibleName="{Res new_event}" X="820" Y="12" Width="188" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" OnClick="new_click"/>
 
@@ -38,4 +41,5 @@
   <TimeGrid x:Name="time_grid" AccessibleName="{Res view_week}" Dock="Fill" Visible="{Binding IsTimeGrid}"/>
   <AgendaList x:Name="agenda" AccessibleName="{Res view_agenda}" Dock="Fill" Visible="{Binding IsAgenda}"/>
   <YearGrid x:Name="year" AccessibleName="{Res view_year}" Dock="Fill" Visible="{Binding IsYear}" OnYearNav="year_nav"/>
+  <SearchResults x:Name="search_view" AccessibleName="{Res search_ph}" Dock="Fill" Visible="{Binding IsSearch}" OnResultPicked="search_picked"/>
 </Panel>

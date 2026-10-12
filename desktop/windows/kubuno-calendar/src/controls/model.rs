@@ -20,6 +20,8 @@ pub struct State {
     pub offset_minutes: i32,
     /// Calendar ids whose events the sidebar has hidden (`hiddenCalendarIds` in the web store).
     pub hidden_calendars: Vec<String>,
+    /// The events matching the current search query (shown by the search results list).
+    pub search_results: Vec<EventInstance>,
 }
 
 impl State {
@@ -56,6 +58,7 @@ impl Default for State {
             view: CalendarView::new(today, ViewMode::Month, Lang::Fr),
             offset_minutes: 0,
             hidden_calendars: Vec::new(),
+            search_results: Vec::new(),
         }
     }
 }
@@ -77,6 +80,7 @@ pub fn sample_state() -> State {
         view: CalendarView::new(today, ViewMode::Month, Lang::Fr),
         offset_minutes: 0,
             hidden_calendars: Vec::new(),
+            search_results: Vec::new(),
         }
 }
 

@@ -52,4 +52,5 @@
   <String Name="rec_unit_month">mois</String>
   <String Name="rec_unit_year">an</String>
   <String Name="my_calendars">Mes agendas</String>
+  <String Name="search_ph">Rechercher des événements</String>
 </Resources>

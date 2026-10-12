@@ -82,6 +82,13 @@ pub fn fetch_year(calendar_id: &str, anchor: Date) -> Result<Vec<EventInstance>,
     fetch_events(calendar_id, from, until)
 }
 
+/// A wide window (`today` ± one year) to search over, matching the web search range.
+pub fn fetch_search_range(calendar_id: &str, today: Date) -> Result<Vec<EventInstance>, String> {
+    let from = Date { year: today.year - 1, ..today };
+    let until = Date { year: today.year + 1, ..today };
+    fetch_events(calendar_id, from, until)
+}
+
 /// What the event editor collected, ready for the REST API. `edit_id` present = edit (PATCH), absent = create
 /// (POST); `occurrence`/`scope` target a recurring series on an edit.
 #[derive(Debug, Clone, Default)]

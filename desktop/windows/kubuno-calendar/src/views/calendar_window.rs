@@ -21,6 +21,7 @@ use crate::controls::calendar_list::CalendarList;
 use crate::controls::mini_month::{MiniDateArgs, MiniMonth};
 use crate::controls::model::{shared, Shared, State};
 use crate::controls::month_grid::{ActivateArgs, MonthGrid};
+use crate::controls::search_results::{SearchNavArgs, SearchResults};
 use crate::controls::time_grid::TimeGrid;
 use crate::controls::year_grid::{YearGrid, YearNavArgs};
 use crate::views::event_editor::EventEditor;
@@ -41,6 +42,8 @@ pub struct CalendarWindow {
     cal_list: Custom<CalendarList>,
     #[control]
     year: Custom<YearGrid>,
+    #[control]
+    search_view: Custom<SearchResults>,
     #[bind]
     window_title: String,
     #[bind]
@@ -54,6 +57,10 @@ pub struct CalendarWindow {
     #[bind]
     is_year: bool,
     #[bind]
+    is_search: bool,
+    #[bind]
+    search_query: String,
+    #[bind]
     view_value: String,
     #[bind]
     view_items: Rows,
@@ -62,6 +69,8 @@ pub struct CalendarWindow {
     model: Shared,
     /// `--doc <calendar-id>`: when set, the events are loaded live from the server for each visible window.
     doc: Option<String>,
+    /// The ±1-year event pool fetched once when a search begins, filtered client-side on each keystroke.
+    search_pool: Vec<kubuno_calendar_core::model::EventInstance>,
 }
 
 /// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
@@ -83,7 +92,7 @@ impl CalendarWindow {
         let offset = kubuno_calendar_desktop_common::platform::current().clock.utc_offset_minutes();
         let mut view = options.initial_state();
         view.today = kubuno_calendar_desktop_common::platform::current().clock.today();
-        let state = State { calendars, events, view, offset_minutes: offset, hidden_calendars: Vec::new() };
+        let state = State { calendars, events, view, offset_minutes: offset, hidden_calendars: Vec::new(), search_results: Vec::new() };
         let model = shared(state);
         let mut window = Self {
             window_title: Resources::app_title().to_string(),
@@ -116,6 +125,7 @@ impl CalendarWindow {
         self.mini.with(|v| v.set_model(m.clone()));
         self.cal_list.with(|v| v.set_model(m.clone()));
         self.year.with(|v| v.set_model(m.clone()));
+        self.search_view.with(|v| v.set_model(m.clone()));
         // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.
         if self.doc.is_some() {
             if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
@@ -220,6 +230,52 @@ impl CalendarWindow {
         self.refresh();
     }
 
+    /// The toolbar search field changed: filter the ±1-year event pool by the query (title / description /
+    /// location) and show the results list, like the web's `SearchResultsView`.
+    fn search_changed(&mut self) {
+        let q = self.search_query.trim().to_lowercase();
+        self.is_search = !q.is_empty();
+        if self.is_search {
+            if self.doc.is_some() && self.search_pool.is_empty() {
+                let (doc, today) = { let m = self.model.borrow(); (self.doc.clone().unwrap_or_default(), m.view.today) };
+                self.search_pool = kubuno_calendar_desktop_common::live::fetch_search_range(&doc, today).unwrap_or_default();
+            }
+            let hidden: Vec<String> = self.model.borrow().hidden_calendars.clone();
+            let mut results: Vec<_> = self
+                .search_pool
+                .iter()
+                .filter(|ev| !hidden.contains(&ev.calendar_id))
+                .filter(|ev| {
+                    ev.title.to_lowercase().contains(&q)
+                        || ev.description.as_deref().unwrap_or("").to_lowercase().contains(&q)
+                        || ev.location.as_deref().unwrap_or("").to_lowercase().contains(&q)
+                })
+                .cloned()
+                .collect();
+            results.sort_by(|a, b| a.starts_at.cmp(&b.starts_at));
+            self.model.borrow_mut().search_results = results;
+        } else {
+            self.model.borrow_mut().search_results.clear();
+        }
+        self.refresh();
+    }
+
+    /// A search result was clicked: open that event's Day.
+    fn search_picked(&mut self, args: &SearchNavArgs) {
+        if let Some(d) = Date::parse(&args.date_iso) {
+            self.search_query = String::new();
+            self.is_search = false;
+            {
+                let mut m = self.model.borrow_mut();
+                m.view.current = d;
+                m.view.view = ViewMode::Day;
+                m.search_results.clear();
+            }
+            self.reload_live();
+            self.refresh();
+        }
+    }
+
     /// Navigation from the Year view: open the clicked day as a Day view, or the clicked month as a Month view.
     fn year_nav(&mut self, args: &YearNavArgs) {
         if let Some(d) = Date::parse(&args.date_iso) {
@@ -292,10 +348,12 @@ impl CalendarWindow {
         let m = self.model.borrow();
         self.period_title = capitalize(&m.view.title());
         let view = m.view.view;
-        self.is_month = view == ViewMode::Month;
-        self.is_time_grid = matches!(view, ViewMode::Day | ViewMode::Week | ViewMode::Custom);
-        self.is_agenda = view == ViewMode::Schedule;
-        self.is_year = view == ViewMode::Year;
+        // While a search is active, the results list replaces the normal views.
+        let searching = self.is_search;
+        self.is_month = view == ViewMode::Month && !searching;
+        self.is_time_grid = matches!(view, ViewMode::Day | ViewMode::Week | ViewMode::Custom) && !searching;
+        self.is_agenda = view == ViewMode::Schedule && !searching;
+        self.is_year = view == ViewMode::Year && !searching;
         self.view_value = view_id(view).to_string();
         drop(m);
         self.is_live = self.doc.is_some();
@@ -310,6 +368,7 @@ impl CalendarWindow {
         self.mini.with(|v| v.invalidate());
         self.cal_list.with(|v| v.invalidate());
         self.year.with(|v| v.invalidate());
+        self.search_view.with(|v| v.invalidate());
     }
 
     /// A day was clicked in the sidebar mini-month: move the main view's date there.

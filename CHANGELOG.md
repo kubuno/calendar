@@ -23,6 +23,11 @@ number at release time, and CI publishes that section as the GitHub Release note
   three colour dots per day for the events on it. Clicking a day opens that Day, clicking a month name opens
   that Month. The whole year's events are fetched for the density dots. Faithful to the web in light and dark.
 
+- **Desktop Calendar: event search.** A search field in the toolbar filters the events (title, description or
+  location) over a ±1-year window and shows the matches in a results list (web `SearchResultsView.tsx`) — a
+  count, then each result with a colour dot, its title and the day + time — replacing the current view while a
+  query is typed. Clicking a result opens that event's Day. Hidden calendars are excluded. Light and dark.
+
 - **Desktop Calendar: the left sidebar (mini-month + calendars).** A sidebar now sits left of the views,
   matching the web `CalendarSidebarBody.tsx`: a mini-month navigator (`CalendarMiniPanel`) with ‹ › month
   arrows, the weekday row and round day cells (today a filled accent circle, other-month days dimmed), and the
