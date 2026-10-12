@@ -35,6 +35,8 @@ kubuno-calendar-desktop-common = { path = "common/kubuno-calendar-desktop-common
 kubuno-desktop                = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
 kubuno-desktop-shell-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
 kubuno-desktop-header-data    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+# The HTTP client to the Kubuno core through the shell's token broker (the live `--doc` path).
+kubuno-desktop-sync           = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
 
 serde      = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }

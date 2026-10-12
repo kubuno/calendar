@@ -43,6 +43,8 @@ pub struct CalendarWindow {
     #[bind]
     view_items: Rows,
     model: Shared,
+    /// `--doc <calendar-id>`: when set, the events are loaded live from the server for each visible window.
+    doc: Option<String>,
 }
 
 /// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
@@ -59,7 +61,8 @@ fn view_id(view: ViewMode) -> &'static str {
 
 impl CalendarWindow {
     pub fn new(options: Options) -> Self {
-        let (calendars, events) = options.dataset();
+        // `--doc` opens the calendar live from the server: start empty, the first load fetches the window.
+        let (calendars, events) = if options.doc.is_some() { (Vec::new(), Vec::new()) } else { options.dataset() };
         let offset = kubuno_calendar_desktop_common::platform::current().clock.utc_offset_minutes();
         let mut view = options.initial_state();
         view.today = kubuno_calendar_desktop_common::platform::current().clock.today();
@@ -68,6 +71,7 @@ impl CalendarWindow {
         let mut window = Self {
             window_title: Resources::app_title().to_string(),
             model,
+            doc: options.doc.clone(),
             ..Self::default()
         };
         window.view_items = Rows::from(
@@ -91,23 +95,42 @@ impl CalendarWindow {
         self.month.with(|v| v.set_model(m.clone()));
         self.time_grid.with(|v| v.set_model(m.clone()));
         self.agenda.with(|v| v.set_model(m.clone()));
+        self.reload_live();
         self.refresh();
+    }
+
+    /// When opened live (`--doc`), (re)load the events of the visible month window from the server.
+    fn reload_live(&mut self) {
+        let Some(doc) = self.doc.clone() else { return };
+        let (anchor, wso) = {
+            let m = self.model.borrow();
+            (m.view.current, m.view.week_starts_on)
+        };
+        match kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso) {
+            Ok(events) => {
+                self.model.borrow_mut().events = events;
+            }
+            Err(e) => kubuno_desktop::tracing::error!("[calendar] live load failed: {e}"),
+        }
     }
 
     // ── Navigation ──────────────────────────────────────────────────────────
 
     fn today_click(&mut self) {
         self.model.borrow_mut().view.go_today();
+        self.reload_live();
         self.refresh();
     }
 
     fn prev_click(&mut self) {
         self.model.borrow_mut().view.step(false);
+        self.reload_live();
         self.refresh();
     }
 
     fn next_click(&mut self) {
         self.model.borrow_mut().view.step(true);
+        self.reload_live();
         self.refresh();
     }
 

@@ -17,6 +17,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: live server connection (`--doc`).** Opening a calendar with `--doc <calendar-id>` now
+  loads its real events from the server (`GET /calendar/events`) over the Kubuno desktop shell's token broker —
+  the app borrows access tokens from the shell and never holds a password. The visible month's window is
+  (re)fetched on open and on every navigation, so the desktop shows exactly what the web shows for the same
+  calendar (recurring series expanded by the server, multi-day and all-day events, locations). Without `--doc`
+  the app still renders the offline sample.
+
 - **Shared calendar core (`kubuno-calendar-core`, `common/core`).** A platform-neutral, sans-IO Rust crate
   that ports the web app's pure logic so the desktop and mobile clients compute exactly the same results as
   the web: the civil-date and local wall-clock math, the month grid, the day/week overlap columns and the

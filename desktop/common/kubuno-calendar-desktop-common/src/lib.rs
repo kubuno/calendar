@@ -9,6 +9,7 @@
 //! window. The calendar engine is the shared core [`kubuno_calendar_core`].
 
 pub mod app;
+pub mod live;
 pub mod platform;
 pub mod sample;
 pub mod state;

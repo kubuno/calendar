@@ -8,9 +8,11 @@ repository.workspace = true
 
 # Portable on purpose: no `windows` crate, no UI framework. The native user interfaces live in the OS folders
 # (desktop/windows: the Win32 window painted through the framework's Graphics). The live-server REST path (the
-# shell's token broker) is deferred to a later increment; Increment A renders from the sample dataset.
+# shell's token broker, `--doc`) borrows access tokens from the Kubuno desktop shell and never holds a password.
 [dependencies]
 kubuno-calendar-core.workspace = true
+# The HTTP client to the Kubuno core through the shell's token broker (the live `--doc` path).
+kubuno-desktop-sync.workspace = true
 serde.workspace      = true
 serde_json.workspace = true
 tracing.workspace    = true

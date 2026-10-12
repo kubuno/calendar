@@ -30,7 +30,9 @@ pub struct Options {
     pub view: Option<String>,
     /// `--date yyyy-mm-dd`: the date to anchor on (else today).
     pub date: Option<String>,
-    /// Render the offline sample dataset (the default until the live path lands).
+    /// `--doc <calendar-id>`: open this calendar live from the server (via the shell's token broker).
+    pub doc: Option<String>,
+    /// Render the offline sample dataset (the default when no `--doc` is given).
     pub sample: bool,
 }
 
@@ -51,6 +53,7 @@ impl Options {
                 "--culture" => options.culture = args.next(),
                 "--view" => options.view = args.next(),
                 "--date" => options.date = args.next(),
+                "--doc" => options.doc = args.next(),
                 "--sample" => options.sample = true,
                 _ => {}
             }
@@ -91,6 +94,11 @@ pub fn run(platform: Platform, ui: &dyn UiHost) -> i32 {
         tracing::warn!("[calendar] a platform was already registered; `{name}` is ignored");
     }
     let options = Options::from_args();
+    // A calendar of the server (`--doc <id>`) borrows its access tokens from the Kubuno shell's token broker
+    // (the installed shell's, or the sandbox's under `KUBUNO_SANDBOX_DIR`): Calendar never holds a password.
+    if options.doc.is_some() {
+        crate::live::install_broker();
+    }
     ui.run(&options)
 }
 
