@@ -69,6 +69,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Desktop Calendar: the event editor is a two-column modal, like the web.** The editor now matches the web
+  `EventEditor.tsx` layout — a full-width header (title, the date/time row, the all-day toggle and the
+  recurrence field) above two columns: the left « details » column (location, calendar + colour, description)
+  and a right column reserved for guests. The single stacked column had grown taller than the screen on a
+  high-DPI display, pushing « Enregistrer » off-screen; the two columns keep it in view.
+
 - **Desktop Calendar: the live network runs off the UI thread.** The live load and the create, edit and delete
   calls now run on a background thread and post their result back to the UI thread, so the window stays
   responsive during a request instead of blocking on the network.
