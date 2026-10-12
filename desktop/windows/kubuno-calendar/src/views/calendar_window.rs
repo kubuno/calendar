@@ -42,9 +42,15 @@ pub struct CalendarWindow {
     view_value: String,
     #[bind]
     view_items: Rows,
+    #[bind]
+    is_live: bool,
+    #[bind]
+    can_delete: bool,
     model: Shared,
     /// `--doc <calendar-id>`: when set, the events are loaded live from the server for each visible window.
     doc: Option<String>,
+    /// The id of the last event this window created, so the « Delete » button can remove it.
+    last_created: Option<String>,
 }
 
 /// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
@@ -146,6 +152,34 @@ impl CalendarWindow {
         self.refresh();
     }
 
+    // ── Live CRUD (demonstration) ─────────────────────────────────────────────
+
+    /// Create a one-hour demo event on the 15th of the visible month (`POST /calendar/events`), then reload.
+    fn new_click(&mut self) {
+        let Some(doc) = self.doc.clone() else { return };
+        let anchor = self.model.borrow().view.current;
+        // 10:00–11:00 local (the dev data is GMT+2, so 08:00–09:00 UTC); a fixed day keeps the demo visible.
+        let starts = format!("{:04}-{:02}-15T08:00:00Z", anchor.year, anchor.month);
+        let ends = format!("{:04}-{:02}-15T09:00:00Z", anchor.year, anchor.month);
+        match kubuno_calendar_desktop_common::live::create_event(&doc, "Créé au bureau", &starts, &ends, false) {
+            Ok(id) => self.last_created = Some(id),
+            Err(e) => kubuno_desktop::tracing::error!("[calendar] create failed: {e}"),
+        }
+        self.reload_live();
+        self.refresh();
+    }
+
+    /// Delete the event this window last created (`DELETE /calendar/events/:id`), then reload.
+    fn del_click(&mut self) {
+        let Some(id) = self.last_created.take() else { return };
+        if let Err(e) = kubuno_calendar_desktop_common::live::delete_event(&id, None, None) {
+            kubuno_desktop::tracing::error!("[calendar] delete failed: {e}");
+            self.last_created = Some(id);
+        }
+        self.reload_live();
+        self.refresh();
+    }
+
     /// Compute the bound fields from the current view state (no control access — safe before load).
     fn sync_bindings(&mut self) {
         let m = self.model.borrow();
@@ -155,6 +189,9 @@ impl CalendarWindow {
         self.is_time_grid = matches!(view, ViewMode::Day | ViewMode::Week | ViewMode::Custom);
         self.is_agenda = view == ViewMode::Schedule;
         self.view_value = view_id(view).to_string();
+        drop(m);
+        self.is_live = self.doc.is_some();
+        self.can_delete = self.last_created.is_some();
     }
 
     /// Push the bound fields and repaint the visible view.

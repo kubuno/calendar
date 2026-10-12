@@ -9,4 +9,6 @@
   <String Name="view_month">Mois</String>
   <String Name="view_year">Année</String>
   <String Name="view_agenda">Planning</String>
+  <String Name="new_event">Nouvel événement test</String>
+  <String Name="delete_event">Supprimer</String>
 </Resources>

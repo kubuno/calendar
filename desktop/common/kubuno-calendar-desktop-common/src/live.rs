@@ -83,12 +83,15 @@ pub fn create_event(calendar_id: &str, title: &str, starts_at: &str, ends_at: &s
     if !(200..300).contains(&status) {
         return Err(format!("POST event → HTTP {status}"));
     }
-    #[derive(serde::Deserialize)]
-    struct Created {
-        event: EventInstance,
-    }
-    let parsed: Created = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
-    Ok(parsed.event.event_id)
+    // Read the new id leniently (`{ "event": { "event_id" | "id": … } }`): the create response carries fields
+    // this model may not name, and all we need back is the id to delete/edit it.
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let ev = v.get("event").unwrap_or(&v);
+    ev.get("event_id")
+        .or_else(|| ev.get("id"))
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "create response had no event id".to_string())
 }
 
 /// Rename an event (`PATCH /calendar/events/:id`). `scope`/`occurrence` target a recurring series.

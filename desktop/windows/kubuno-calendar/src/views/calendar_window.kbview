@@ -18,6 +18,10 @@
     <Button x:Name="btn_next" Text="›" Variant="Ghost" AccessibleName="{Res next}" X="150" Y="12" Width="32" Height="32" OnClick="next_click"/>
     <Label x:Name="period_label" Text="{Binding PeriodTitle}" Role="Title" ForeColor="TextPrimary" TextAlign="MiddleLeft" X="198" Y="12" Width="360" Height="32"/>
 
+    <!-- Live CRUD (shown only with --doc): create a demo event, delete the one just created. -->
+    <Button x:Name="btn_new" Text="{Res new_event}" Variant="Secondary" AccessibleName="{Res new_event}" X="700" Y="12" Width="176" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" OnClick="new_click"/>
+    <Button x:Name="btn_del" Text="{Res delete_event}" Variant="Secondary" AccessibleName="{Res delete_event}" X="884" Y="12" Width="124" Height="32" Anchor="Top, Right" Visible="{Binding IsLive}" Enabled="{Binding CanDelete}" OnClick="del_click"/>
+
     <Dropdown x:Name="view_box" SelectedValue="{Binding ViewValue}" ItemsSource="{Binding ViewItems}" AccessibleName="{Res view_month}" X="1016" Y="12" Width="128" Height="32" Anchor="Top, Right" OnSelectedValueChanged="view_changed"/>
   </Panel>
 

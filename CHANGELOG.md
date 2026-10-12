@@ -24,6 +24,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   calendar (recurring series expanded by the server, multi-day and all-day events, locations). Without `--doc`
   the app still renders the offline sample.
 
+- **Desktop Calendar: live event create and delete.** In live mode the toolbar offers creating a demo event
+  and deleting the one just created; both go to the calendar REST API over the broker (`POST`/`DELETE
+  /calendar/events`) and the view re-fetches, so a change made in the desktop shows up in the web (and the
+  reverse). The edit (rename) and recurrence paths are wired in the core (`rename_event`, scope/occurrence
+  aware) and come to the UI next.
+
 - **Shared calendar core (`kubuno-calendar-core`, `common/core`).** A platform-neutral, sans-IO Rust crate
   that ports the web app's pure logic so the desktop and mobile clients compute exactly the same results as
   the web: the civil-date and local wall-clock math, the month grid, the day/week overlap columns and the
