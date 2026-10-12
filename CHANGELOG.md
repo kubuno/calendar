@@ -9,6 +9,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Visual Studio solution lists the desktop projects.** `Kubuno.Calendar.slnx` now sets the Rust project type
+  on the two desktop projects (Common and Windows); without it the local master multi-repository solution failed to
+  load ("ProjectType '' not found") and Visual Studio showed nothing.
+
 ### Removed
 
 - **The round dot at the start of the current-time line** (web and desktop). The week and day views (and the
