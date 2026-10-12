@@ -77,6 +77,35 @@ pub struct EventEditor {
     /// Whether another reminder row can still be added (fewer than two shown).
     #[bind]
     can_add_rem: bool,
+    // Guests — an e-mail field plus up to four invited rows, and the three permission toggles (web
+    // GuestField / GuestRow / GuestPermissions). Guests are sent on create; editing guests of an existing
+    // event goes through the attendee API and is a later sub-increment.
+    #[bind]
+    guest_email: String,
+    #[bind]
+    guest1: String,
+    #[bind]
+    guest1_vis: bool,
+    #[bind]
+    guest2: String,
+    #[bind]
+    guest2_vis: bool,
+    #[bind]
+    guest3: String,
+    #[bind]
+    guest3_vis: bool,
+    #[bind]
+    guest4: String,
+    #[bind]
+    guest4_vis: bool,
+    #[bind]
+    can_add_guest: bool,
+    #[bind]
+    perm_modify: bool,
+    #[bind]
+    perm_invite: bool,
+    #[bind]
+    perm_see: bool,
     offset: i32,
     lang: Lang,
     edit_id: Option<String>,
@@ -105,6 +134,11 @@ impl EventEditor {
         d.rem1_min = "10".into();
         d.rem1_vis = true;
         d.can_add_rem = true;
+        // Guest permission defaults, like the web.
+        d.perm_modify = false;
+        d.perm_invite = true;
+        d.perm_see = true;
+        d.can_add_guest = true;
         d.window_title = if lang == Lang::Fr { "Nouvel événement".into() } else { "New event".into() };
         d.timed = true;
         d.start_date = date.iso();
@@ -125,6 +159,10 @@ impl EventEditor {
         d.fill_calendars(calendars, &ev.calendar_id);
         d.fill_reminder_items();
         d.load_reminders(&ev.reminders);
+        d.perm_modify = ev.guests_can_modify.unwrap_or(false);
+        d.perm_invite = ev.guests_can_invite.unwrap_or(true);
+        d.perm_see = ev.guests_can_see_guests.unwrap_or(true);
+        d.can_add_guest = true;
         d.init_color = ev.color.clone();
         d.window_title = if lang == Lang::Fr { "Modifier l'événement".into() } else { "Edit event".into() };
         d.title = ev.title.clone();
@@ -280,6 +318,74 @@ impl EventEditor {
         self.can_add_rem = true;
     }
 
+    // ── Guests ────────────────────────────────────────────────────────────────
+
+    /// The invited e-mail addresses currently shown, in order.
+    fn guests(&self) -> Vec<String> {
+        let mut v = Vec::new();
+        for (vis, g) in [(self.guest1_vis, &self.guest1), (self.guest2_vis, &self.guest2), (self.guest3_vis, &self.guest3), (self.guest4_vis, &self.guest4)] {
+            if vis {
+                v.push(g.clone());
+            }
+        }
+        v
+    }
+
+    /// Lay a list of guests back into the four rows.
+    fn set_guests(&mut self, list: Vec<String>) {
+        self.guest1 = String::new();
+        self.guest2 = String::new();
+        self.guest3 = String::new();
+        self.guest4 = String::new();
+        self.guest1_vis = false;
+        self.guest2_vis = false;
+        self.guest3_vis = false;
+        self.guest4_vis = false;
+        for (i, g) in list.into_iter().take(4).enumerate() {
+            match i {
+                0 => (self.guest1, self.guest1_vis) = (g, true),
+                1 => (self.guest2, self.guest2_vis) = (g, true),
+                2 => (self.guest3, self.guest3_vis) = (g, true),
+                _ => (self.guest4, self.guest4_vis) = (g, true),
+            }
+        }
+        self.can_add_guest = self.guests().len() < 4;
+    }
+
+    fn add_guest(&mut self) {
+        let email = self.guest_email.trim().to_string();
+        if !is_email(&email) {
+            return;
+        }
+        let mut g = self.guests();
+        if g.len() < 4 {
+            g.push(email);
+            self.set_guests(g);
+            self.guest_email = String::new();
+        }
+    }
+
+    fn remove_guest_at(&mut self, i: usize) {
+        let mut g = self.guests();
+        if i < g.len() {
+            g.remove(i);
+        }
+        self.set_guests(g);
+    }
+
+    fn remove_guest1(&mut self) {
+        self.remove_guest_at(0);
+    }
+    fn remove_guest2(&mut self) {
+        self.remove_guest_at(1);
+    }
+    fn remove_guest3(&mut self) {
+        self.remove_guest_at(2);
+    }
+    fn remove_guest4(&mut self) {
+        self.remove_guest_at(3);
+    }
+
     /// Show it over `owner`; returns the collected form on Save, `None` on cancel/close.
     pub fn run(mut self, owner: &dyn AsForm) -> Option<EventWrite> {
         match self.show_dialog(owner) {
@@ -368,12 +474,30 @@ impl EventEditor {
             rrule,
             color: self.picked_color.clone(),
             reminders: Some(self.reminders_list()),
+            // Guests are sent only on create (editing attendees goes through the attendee API).
+            attendees: if self.edit_id.is_none() {
+                let g = self.guests();
+                if g.is_empty() { None } else { Some(g) }
+            } else {
+                None
+            },
+            guests_can_modify: Some(self.perm_modify),
+            guests_can_invite: Some(self.perm_invite),
+            guests_can_see_guests: Some(self.perm_see),
             calendar_target: if self.cal_value.is_empty() { None } else { Some(self.cal_value.clone()) },
             edit_id: self.edit_id.clone(),
             occurrence: if self.is_recurring_edit { self.occurrence.clone() } else { None },
             scope: if self.is_recurring_edit { Some(self.scope.clone()) } else { None },
-            ..Default::default()
         }
+    }
+}
+
+/// A lenient e-mail check for the guest field (`local@domain.tld`), mirroring the web's add guard.
+fn is_email(s: &str) -> bool {
+    let s = s.trim();
+    match s.split_once('@') {
+        Some((local, domain)) => !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !domain.contains(' '),
+        None => false,
     }
 }
 

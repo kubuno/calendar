@@ -46,7 +46,24 @@
   <Label Text="{Res ev_description}" Role="Caption" ForeColor="TextTertiary" X="24" Y="510" Width="300" Height="16"/>
   <TextArea x:Name="desc_box" Text="{Binding Description, Mode=TwoWay}" MinLines="2" MaxLines="3" X="24" Y="530" Width="512" Height="60"/>
 
-  <!-- Right column (X≈600, 320 wide): guests + permissions — added in the next sub-increment. -->
+  <!-- Right column (X≈600, 320 wide): guests + permissions (web GuestField / GuestRow / GuestPermissions). -->
+  <Label Text="{Res ev_guests}" Role="Caption" ForeColor="TextTertiary" X="600" Y="178" Width="320" Height="16"/>
+  <TextField x:Name="guest_email_box" Text="{Binding GuestEmail, Mode=TwoWay}" Placeholder="{Res guest_add_ph}" X="600" Y="198" Width="228" Height="36"/>
+  <Button x:Name="guest_add_btn" Text="{Res guest_add}" Variant="Secondary" X="834" Y="198" Width="86" Height="36" OnClick="add_guest"/>
+
+  <Label Text="{Binding Guest1}" Role="Caption" ForeColor="TextPrimary" Visible="{Binding Guest1Vis}" X="602" Y="250" Width="286" Height="24"/>
+  <Button x:Name="guest1_remove" Text="✕" Variant="Ghost" Visible="{Binding Guest1Vis}" AccessibleName="{Res guest_remove}" X="892" Y="246" Width="28" Height="28" OnClick="remove_guest1"/>
+  <Label Text="{Binding Guest2}" Role="Caption" ForeColor="TextPrimary" Visible="{Binding Guest2Vis}" X="602" Y="284" Width="286" Height="24"/>
+  <Button x:Name="guest2_remove" Text="✕" Variant="Ghost" Visible="{Binding Guest2Vis}" AccessibleName="{Res guest_remove}" X="892" Y="280" Width="28" Height="28" OnClick="remove_guest2"/>
+  <Label Text="{Binding Guest3}" Role="Caption" ForeColor="TextPrimary" Visible="{Binding Guest3Vis}" X="602" Y="318" Width="286" Height="24"/>
+  <Button x:Name="guest3_remove" Text="✕" Variant="Ghost" Visible="{Binding Guest3Vis}" AccessibleName="{Res guest_remove}" X="892" Y="314" Width="28" Height="28" OnClick="remove_guest3"/>
+  <Label Text="{Binding Guest4}" Role="Caption" ForeColor="TextPrimary" Visible="{Binding Guest4Vis}" X="602" Y="352" Width="286" Height="24"/>
+  <Button x:Name="guest4_remove" Text="✕" Variant="Ghost" Visible="{Binding Guest4Vis}" AccessibleName="{Res guest_remove}" X="892" Y="348" Width="28" Height="28" OnClick="remove_guest4"/>
+
+  <Label Text="{Res perm_title}" Role="Caption" ForeColor="TextSecondary" X="600" Y="404" Width="320" Height="16"/>
+  <CheckBox x:Name="perm_modify_box" Text="{Res perm_modify}" Checked="{Binding PermModify, Mode=TwoWay}" X="600" Y="428" Width="320" Height="24"/>
+  <CheckBox x:Name="perm_invite_box" Text="{Res perm_invite}" Checked="{Binding PermInvite, Mode=TwoWay}" X="600" Y="458" Width="320" Height="24"/>
+  <CheckBox x:Name="perm_see_box" Text="{Res perm_see}" Checked="{Binding PermSee, Mode=TwoWay}" X="600" Y="488" Width="320" Height="24"/>
 
   <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
   <Button x:Name="save" ActionBar.Region="Right" Text="{Res ev_save}" Variant="Primary" Width="140" Height="36" OnClick="save_click"/>

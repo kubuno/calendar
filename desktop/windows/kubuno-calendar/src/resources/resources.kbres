@@ -30,6 +30,14 @@
   <String Name="rem_remove">Remove the reminder</String>
   <String Name="rem_notification">Notification</String>
   <String Name="rem_email">Email</String>
+  <String Name="ev_guests">Guests</String>
+  <String Name="guest_add_ph">Add guests</String>
+  <String Name="guest_add">Add</String>
+  <String Name="guest_remove">Remove the guest</String>
+  <String Name="perm_title">Guest permissions</String>
+  <String Name="perm_modify">Modify event</String>
+  <String Name="perm_invite">Invite others</String>
+  <String Name="perm_see">See guest list</String>
   <String Name="rec_title">Custom recurrence</String>
   <String Name="rec_every">Repeat every</String>
   <String Name="rec_on">Repeat on</String>

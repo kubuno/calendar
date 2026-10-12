@@ -86,8 +86,8 @@ pub struct EventWrite {
     /// The reminders to store, as `(method, minutes_before)` pairs. `None` leaves them unchanged; an empty
     /// vector clears them.
     pub reminders: Option<Vec<(String, i64)>>,
-    /// Guests to invite (create only; the server's `attendees` input): `[{ "email": "…" }, …]`.
-    pub attendees: Option<serde_json::Value>,
+    /// Guest e-mail addresses to invite (create only; the server's `attendees` input). `None` = unchanged.
+    pub attendees: Option<Vec<String>>,
     pub guests_can_modify: Option<bool>,
     pub guests_can_invite: Option<bool>,
     pub guests_can_see_guests: Option<bool>,
@@ -126,8 +126,9 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
             .collect();
         body.insert("reminders".into(), serde_json::Value::Array(arr));
     }
-    if let Some(a) = &w.attendees {
-        body.insert("attendees".into(), a.clone());
+    if let Some(emails) = &w.attendees {
+        let arr: Vec<serde_json::Value> = emails.iter().map(|e| serde_json::json!({ "email": e })).collect();
+        body.insert("attendees".into(), serde_json::Value::Array(arr));
     }
     if let Some(v) = w.guests_can_modify {
         body.insert("guests_can_modify".into(), serde_json::Value::Bool(v));
