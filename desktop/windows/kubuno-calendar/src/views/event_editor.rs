@@ -9,14 +9,17 @@ use kubuno_desktop::prelude::*;
 use kubuno_desktop::{Row, Rows, Value as BValue};
 
 use kubuno_calendar_core::date::{Date, Lang};
-use kubuno_calendar_core::model::{EventInstance, Instant};
+use kubuno_calendar_core::model::{Calendar, EventInstance, Instant};
 use kubuno_calendar_core::rrule;
 use kubuno_calendar_desktop_common::live::EventWrite;
 
+use crate::controls::color_swatches::ColorSwatches;
 use crate::Resources;
 
 #[kubuno_desktop::view("event_editor.kbview")]
 pub struct EventEditor {
+    #[control]
+    colors: Custom<ColorSwatches>,
     #[bind]
     window_title: String,
     #[bind]
@@ -50,10 +53,20 @@ pub struct EventEditor {
     scope: String,
     #[bind]
     scope_items: Rows,
+    #[bind]
+    cal_items: Rows,
+    #[bind]
+    cal_value: String,
     offset: i32,
     lang: Lang,
     edit_id: Option<String>,
     occurrence: Option<String>,
+    /// `(calendar id, colour)` for every offered calendar, so the colour swatches follow the picked calendar.
+    cal_colors: Vec<(String, String)>,
+    /// The per-event colour to preselect on the swatches once the control exists (set in OnLoad).
+    init_color: Option<String>,
+    /// The colour read from the swatch control on Save (the control is gone by the time `collect` runs).
+    picked_color: Option<String>,
     /// The RRULE built by the custom-recurrence dialog, used when `recurrence == "custom"`.
     custom_rrule: Option<String>,
     /// The recurrence value before the current dropdown change, to restore if the custom dialog is cancelled.
@@ -61,10 +74,11 @@ pub struct EventEditor {
 }
 
 impl EventEditor {
-    /// A new-event editor anchored on `date`.
-    pub fn for_create(date: Date, offset: i32, lang: Lang) -> Self {
+    /// A new-event editor anchored on `date`, with the writable `calendars` and the default one preselected.
+    pub fn for_create(date: Date, offset: i32, lang: Lang, calendars: &[Calendar], default_calendar: &str) -> Self {
         let mut d = Self { offset, lang, ..Self::default() };
         d.fill_lists();
+        d.fill_calendars(calendars, default_calendar);
         d.window_title = if lang == Lang::Fr { "Nouvel événement".into() } else { "New event".into() };
         d.timed = true;
         d.start_date = date.iso();
@@ -78,10 +92,12 @@ impl EventEditor {
         d
     }
 
-    /// An editor for an existing event, prefilled.
-    pub fn for_edit(ev: &EventInstance, offset: i32, lang: Lang) -> Self {
+    /// An editor for an existing event, prefilled, with the writable `calendars` offered in the picker.
+    pub fn for_edit(ev: &EventInstance, offset: i32, lang: Lang, calendars: &[Calendar]) -> Self {
         let mut d = Self { offset, lang, ..Self::default() };
         d.fill_lists();
+        d.fill_calendars(calendars, &ev.calendar_id);
+        d.init_color = ev.color.clone();
         d.window_title = if lang == Lang::Fr { "Modifier l'événement".into() } else { "Edit event".into() };
         d.title = ev.title.clone();
         d.all_day = ev.all_day;
@@ -134,6 +150,28 @@ impl EventEditor {
         self.scope_items = Rows::from(scope.iter().map(|(v, l)| Row::new().with("Value", BValue::Str(v.to_string())).with("Label", BValue::Str(l.to_string()))).collect::<Vec<_>>());
     }
 
+    /// Build the calendar-picker options and remember each calendar's colour, selecting `selected` (or the
+    /// first offered calendar when it is not writable / absent).
+    fn fill_calendars(&mut self, calendars: &[Calendar], selected: &str) {
+        self.cal_items = Rows::from(
+            calendars
+                .iter()
+                .map(|c| Row::new().with("Value", BValue::Str(c.id.clone())).with("Label", BValue::Str(c.name.clone())))
+                .collect::<Vec<_>>(),
+        );
+        self.cal_colors = calendars.iter().map(|c| (c.id.clone(), c.color.clone())).collect();
+        self.cal_value = if calendars.iter().any(|c| c.id == selected) {
+            selected.to_string()
+        } else {
+            calendars.first().map(|c| c.id.clone()).unwrap_or_default()
+        };
+    }
+
+    /// The colour of the currently-picked calendar.
+    fn current_cal_color(&self) -> String {
+        self.cal_colors.iter().find(|(id, _)| *id == self.cal_value).map(|(_, c)| c.clone()).unwrap_or_default()
+    }
+
     /// Show it over `owner`; returns the collected form on Save, `None` on cancel/close.
     pub fn run(mut self, owner: &dyn AsForm) -> Option<EventWrite> {
         match self.show_dialog(owner) {
@@ -142,8 +180,25 @@ impl EventEditor {
         }
     }
 
+    /// Push the calendar colour and the preselected event colour into the swatch control (it exists only now).
+    fn editor_load(&mut self) {
+        let cal = self.current_cal_color();
+        // A per-event colour equal to the calendar colour is « default » (no per-event colour), like the web.
+        let sel = self.init_color.clone().filter(|c| !c.eq_ignore_ascii_case(&cal));
+        self.colors.with(|v| {
+            v.set_calendar_color(cal);
+            v.set_selected(sel);
+        });
+    }
+
     fn allday_changed(&mut self) {
         self.timed = !self.all_day;
+    }
+
+    /// The calendar picker changed: the first colour swatch follows the picked calendar's colour.
+    fn cal_changed(&mut self) {
+        let cal = self.current_cal_color();
+        self.colors.with(|v| v.set_calendar_color(cal));
     }
 
     /// The recurrence dropdown changed. « Personnalisé… » opens the custom-recurrence dialog; cancelling it
@@ -168,6 +223,8 @@ impl EventEditor {
     }
 
     fn save_click(&mut self) {
+        // Read the colour now, while the swatch control is still alive (it is gone once the dialog closes).
+        self.picked_color = self.colors.with(|v| v.selected_color()).flatten();
         self.set_dialog_result(DialogResult::Ok);
         self.close();
     }
@@ -201,6 +258,8 @@ impl EventEditor {
             location: self.location.clone(),
             description: self.description.clone(),
             rrule,
+            color: self.picked_color.clone(),
+            calendar_target: if self.cal_value.is_empty() { None } else { Some(self.cal_value.clone()) },
             edit_id: self.edit_id.clone(),
             occurrence: if self.is_recurring_edit { self.occurrence.clone() } else { None },
             scope: if self.is_recurring_edit { Some(self.scope.clone()) } else { None },

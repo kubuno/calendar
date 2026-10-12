@@ -101,8 +101,30 @@ impl CalendarWindow {
         self.month.with(|v| v.set_model(m.clone()));
         self.time_grid.with(|v| v.set_model(m.clone()));
         self.agenda.with(|v| v.set_model(m.clone()));
+        // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.
+        if self.doc.is_some() {
+            if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
+                self.model.borrow_mut().calendars = cals;
+            }
+        }
         self.reload_live();
         self.refresh();
+    }
+
+    /// The writable calendars the editor offers in its picker.
+    fn writable_calendars(&self) -> Vec<kubuno_calendar_core::model::Calendar> {
+        self.model.borrow().calendars.iter().filter(|c| c.is_writable()).cloned().collect()
+    }
+
+    /// The default calendar id for a new event (the writable default, else the first writable one).
+    fn default_calendar(&self) -> String {
+        let m = self.model.borrow();
+        m.calendars
+            .iter()
+            .find(|c| c.is_writable() && c.is_default)
+            .or_else(|| m.calendars.iter().find(|c| c.is_writable()))
+            .map(|c| c.id.clone())
+            .unwrap_or_default()
     }
 
     /// When opened live (`--doc`), (re)load the events of the visible month window from the server on a
@@ -181,7 +203,7 @@ impl CalendarWindow {
             let m = self.model.borrow();
             (m.view.current, m.offset_minutes, m.view.lang)
         };
-        self.open_editor(EventEditor::for_create(date, offset, lang));
+        self.open_editor(EventEditor::for_create(date, offset, lang, &self.writable_calendars(), &self.default_calendar()));
     }
 
     /// A double-click in a view: edit the event, or create one on the day that was double-clicked.
@@ -194,10 +216,10 @@ impl CalendarWindow {
             // Edit the event whose first occurrence we have loaded.
             let found = self.model.borrow().events.iter().find(|ev| ev.event_id == args.event_id).cloned();
             if let Some(ev) = found {
-                self.open_editor(EventEditor::for_edit(&ev, offset, lang));
+                self.open_editor(EventEditor::for_edit(&ev, offset, lang, &self.writable_calendars()));
             }
         } else if let Some(date) = Date::parse(&args.date_iso) {
-            self.open_editor(EventEditor::for_create(date, offset, lang));
+            self.open_editor(EventEditor::for_create(date, offset, lang, &self.writable_calendars(), &self.default_calendar()));
         }
     }
 

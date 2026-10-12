@@ -29,8 +29,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   daily / weekly / monthly / yearly), the scope when editing a recurring series (this / this and following /
   all), a location and a description — matching the web editor's fields and look in both light and dark. Save
   writes to the calendar REST API over the broker (`POST` to create, `PATCH` to edit, with the recurring
-  scope/occurrence) off the UI thread, and the view re-fetches. Guests, reminders, the colour picker and the
-  calendar picker are later sub-increments.
+  scope/occurrence) off the UI thread, and the view re-fetches. Guests and reminders are later sub-increments.
+
+- **Desktop Calendar: the calendar picker and the event colour picker.** The editor now has an « Agenda »
+  dropdown listing the writable calendars (the default one preselected, or the event's own on edit) and a
+  « Couleur » row of swatches — the calendar's own colour (the default) followed by the fixed event palette,
+  with a ring on the selected one — matching the web. Choosing a calendar moves the event there; choosing a
+  swatch sets the event colour (and the first « default » swatch clears it). Both round-trip to the server
+  (`calendar_id` and `color`/`clear_color`), proven in light and dark.
 
 - **Desktop Calendar: the custom-recurrence dialog.** Choosing « Personnalisé… » in the recurrence field opens
   a full RRULE builder matching the web `RecurrenceCustomDialog.tsx`: « Répéter tous les N jour/semaine/mois/an »,

@@ -23,6 +23,8 @@
   <String Name="ev_save">Save</String>
   <String Name="ev_cancel">Cancel</String>
   <String Name="ev_recur_custom">Custom…</String>
+  <String Name="ev_calendar">Calendar</String>
+  <String Name="ev_color">Color</String>
   <String Name="rec_title">Custom recurrence</String>
   <String Name="rec_every">Repeat every</String>
   <String Name="rec_on">Repeat on</String>

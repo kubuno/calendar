@@ -5,7 +5,7 @@
   later sub-increments. The shared field metric matches the web (36px tall, 8px radius, 14px text).
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
-       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="540" DesignHeight="600" AcceptButton="save">
+       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="540" DesignHeight="760" AcceptButton="save" OnLoad="editor_load">
 
   <TextField x:Name="title_box" Text="{Binding Title, Mode=TwoWay}" Placeholder="{Res ev_title_ph}" X="24" Y="20" Width="492" Height="40"/>
 
@@ -28,8 +28,14 @@
   <Label Text="{Res ev_location}" Role="Caption" ForeColor="TextTertiary" X="24" Y="384" Width="200" Height="16"/>
   <TextField x:Name="location_box" Text="{Binding Location, Mode=TwoWay}" Placeholder="{Res ev_location_ph}" X="24" Y="404" Width="492" Height="36"/>
 
-  <Label Text="{Res ev_description}" Role="Caption" ForeColor="TextTertiary" X="24" Y="452" Width="200" Height="16"/>
-  <TextArea x:Name="desc_box" Text="{Binding Description, Mode=TwoWay}" MinLines="3" MaxLines="4" X="24" Y="472" Width="492" Height="78"/>
+  <Label Text="{Res ev_calendar}" Role="Caption" ForeColor="TextTertiary" X="24" Y="452" Width="200" Height="16"/>
+  <Dropdown x:Name="cal_box" SelectedValue="{Binding CalValue, Mode=TwoWay}" ItemsSource="{Binding CalItems}" X="24" Y="472" Width="492" Height="36" OnSelectedValueChanged="cal_changed"/>
+
+  <Label Text="{Res ev_color}" Role="Caption" ForeColor="TextTertiary" X="24" Y="520" Width="200" Height="16"/>
+  <ColorSwatches x:Name="colors" X="24" Y="540" Width="492" Height="32"/>
+
+  <Label Text="{Res ev_description}" Role="Caption" ForeColor="TextTertiary" X="24" Y="586" Width="200" Height="16"/>
+  <TextArea x:Name="desc_box" Text="{Binding Description, Mode=TwoWay}" MinLines="3" MaxLines="4" X="24" Y="606" Width="492" Height="90"/>
 
   <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
   <Button x:Name="save" ActionBar.Region="Right" Text="{Res ev_save}" Variant="Primary" Width="140" Height="36" OnClick="save_click"/>
