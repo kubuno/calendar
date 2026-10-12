@@ -270,7 +270,6 @@ function DayView({
               className="absolute left-11 right-0 flex items-center z-20 pointer-events-none"
               style={{ top: `${currentTimeOffset}px` }}
             >
-              <div className="w-2 h-2 rounded-full bg-danger -ml-1 shrink-0" />
               <div className="flex-1 h-px bg-danger" />
             </div>
           )}

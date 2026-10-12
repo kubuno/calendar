@@ -213,6 +213,8 @@ const EN_LONG: [&str; 12] = ["January", "February", "March", "April", "May", "Ju
 const EN_SHORT: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const FR_WEEKDAY_SHORT: [&str; 7] = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const EN_WEEKDAY_SHORT: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const FR_WEEKDAY_LONG: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const EN_WEEKDAY_LONG: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /// The `Intl.DateTimeFormat` shapes the calendar views use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,6 +229,10 @@ pub enum DateFormat {
     Month,
     /// « lun. » / « Mon ».
     WeekdayShort,
+    /// `dateLong` — « 12 octobre 2026 » / « October 12, 2026 » (the week-of title).
+    DateLong,
+    /// « mercredi 14 octobre 2026 » / « Wednesday, October 14, 2026 » (the Day view title).
+    FullDate,
 }
 
 /// `formatDate(date, shape)` in `lang`.
@@ -243,6 +249,10 @@ pub fn format(d: Date, shape: DateFormat, lang: Lang) -> String {
         (DateFormat::Month, Lang::En) => EN_LONG[mi].to_string(),
         (DateFormat::WeekdayShort, Lang::Fr) => FR_WEEKDAY_SHORT[d.weekday_mon0() as usize].to_string(),
         (DateFormat::WeekdayShort, Lang::En) => EN_WEEKDAY_SHORT[d.weekday_mon0() as usize].to_string(),
+        (DateFormat::DateLong, Lang::Fr) => format!("{} {} {}", d.day, FR_LONG[mi], d.year),
+        (DateFormat::DateLong, Lang::En) => format!("{} {}, {}", EN_LONG[mi], d.day, d.year),
+        (DateFormat::FullDate, Lang::Fr) => format!("{} {} {} {}", FR_WEEKDAY_LONG[d.weekday_mon0() as usize], d.day, FR_LONG[mi], d.year),
+        (DateFormat::FullDate, Lang::En) => format!("{}, {} {}, {}", EN_WEEKDAY_LONG[d.weekday_mon0() as usize], EN_LONG[mi], d.day, d.year),
     }
 }
 

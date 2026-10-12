@@ -14,7 +14,7 @@ use kubuno_calendar_core::layout::{layout_banners, layout_day, timed_events_for_
 use kubuno_calendar_core::model::Instant;
 use kubuno_calendar_desktop_common::state::ViewMode;
 
-use crate::controls::draw::{draw_banner, draw_event_pill};
+use crate::controls::draw::{draw_banner, draw_timed_block};
 use crate::controls::model::{hex, sample_state, Palette, Shared};
 
 const GUTTER: f32 = 60.0; // single-timezone hour gutter (WeekView.tsx:146)
@@ -167,7 +167,11 @@ impl Control for TimeGrid {
                 let height = ((blk.end_min - blk.top_min) as f32 / 60.0 * PX_PER_HOUR).max(20.0);
                 let x = col_x + day_w * blk.left_pct / 100.0 + 2.0;
                 let w = day_w * blk.width_pct / 100.0 - 4.0;
-                draw_event_pill(g, Rect::new(x, top, x + w, top + height), ev.color.as_deref().unwrap_or("#1a73e8"), Some(&hhmm(ev, offset)), &ev.title, &f_time, &f_title, false, true);
+                let mut sub = time_range(ev, offset);
+                if let Some(loc) = ev.location.as_deref().filter(|s| !s.is_empty()) {
+                    sub = format!("{sub} · {loc}");
+                }
+                draw_timed_block(g, Rect::new(x, top, x + w, top + height), ev.color.as_deref().unwrap_or("#1a73e8"), &ev.title, &sub, &f_title, &f_time);
             }
         }
         // The « now » line + gutter pill.
@@ -177,9 +181,8 @@ impl Control for TimeGrid {
             let now_min = ((platform.clock.now_ms() / 1000 + offset as i64 * 60).rem_euclid(86_400)) as f32 / 60.0;
             let y = grid_top + now_min / 60.0 * PX_PER_HOUR - scroll;
             if y >= grid_top && y <= b.bottom {
+                // The leading round dot was removed on request; the line and the gutter time pill remain.
                 let x0 = b.left + GUTTER + col as f32 * day_w;
-                let dot = if day_view { 5.0 } else { 4.0 };
-                g.fill_ellipse(Brush::solid(hex(DANGER)), Rect::new(x0 - dot, y - dot, x0 + dot, y + dot));
                 g.draw_line(&Pen::new(hex(DANGER), 2.0), PointF::new(x0, y), PointF::new(x0 + day_w, y));
                 // Gutter pill with the current time.
                 let pill = Rect::new(b.left + GUTTER - 46.0, y - 9.0, b.left + GUTTER - 4.0, y + 9.0);
@@ -200,12 +203,8 @@ impl Control for TimeGrid {
     }
 }
 
-fn hhmm(ev: &kubuno_calendar_core::model::EventInstance, offset: i32) -> String {
-    match Instant::parse(&ev.starts_at) {
-        Some(i) => {
-            let l = i.local(offset);
-            format!("{}:{:02}", l.hour, l.minute)
-        }
-        None => String::new(),
-    }
+/// « HH:MM – HH:MM » in the viewer's zone (the web day/week block subtitle).
+fn time_range(ev: &kubuno_calendar_core::model::EventInstance, offset: i32) -> String {
+    let hm = |iso: &str| Instant::parse(iso).map(|i| i.local(offset)).map(|l| format!("{}:{:02}", l.hour, l.minute)).unwrap_or_default();
+    format!("{} – {}", hm(&ev.starts_at), hm(&ev.ends_at))
 }

@@ -144,5 +144,9 @@ fn subtitle(ev: &EventInstance, offset: i32, lang: Lang) -> String {
     }
     let s = Instant::parse(&ev.starts_at).map(|i| i.local(offset)).map(|l| format!("{}:{:02}", l.hour, l.minute)).unwrap_or_default();
     let e = Instant::parse(&ev.ends_at).map(|i| i.local(offset)).map(|l| format!("{}:{:02}", l.hour, l.minute)).unwrap_or_default();
-    format!("{s} – {e}")
+    let mut out = format!("{s} – {e}");
+    if let Some(loc) = ev.location.as_deref().filter(|s| !s.is_empty()) {
+        out = format!("{out} · {loc}");
+    }
+    out
 }

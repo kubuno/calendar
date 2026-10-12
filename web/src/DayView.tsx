@@ -341,11 +341,10 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
                 top={sMin / 60 * PX_PER_HOUR} height={Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)}
                 onClick={() => onEventClick(ev)} />
             })}
-            {/* "Now" line — dot and line vertically centered on the current time */}
+            {/* "Now" line (the leading dot was removed on request; the line and the gutter time pill remain). */}
             {showNow && (
               <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                 style={{ top: nowTop, transform: 'translateY(-50%)' }}>
-                <div className="w-2.5 h-2.5 rounded-full bg-danger -ml-1.5 shrink-0" />
                 <div className="flex-1 h-0.5 bg-danger" />
               </div>
             )}

@@ -9,6 +9,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Removed
+
+- **The round dot at the start of the current-time line** (web and desktop). The week and day views (and the
+  embeddable mini panel on the web) drew a small red dot where the "now" line meets the day column; it has
+  been removed on request. The red line and the time label in the hour gutter are unchanged.
+
 ### Added
 
 - **Shared calendar core (`kubuno-calendar-core`, `common/core`).** A platform-neutral, sans-IO Rust crate
@@ -41,7 +47,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   all-day banners get the darker pointed continuation tips, the time grid uses the web's hour/half-hour line
   weights and a red "now" pill, the moon markers show the real phase shape, the Agenda shows a date badge with
   filled cards, and the toolbar matches the web (a secondary Today button, circular arrows, and the view
-  switcher as a dropdown).
+  switcher as a dropdown). The Day/Week event blocks now show the title then the time range (and location)
+  below it, like the web, and the Week/Day period titles read « Semaine du … » and « Mercredi 14 octobre
+  2026 » as on the web.
 
 - **The repository is organised by platform.** The server (its sources, migrations, tests and configuration
   example) moves to `server/` and the web frontend to `web/`, with their history, and `mobile/` is reserved

@@ -327,11 +327,11 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
                     top={sMin / 60 * PX_PER_HOUR} height={Math.max((eMin - sMin) / 60 * PX_PER_HOUR, 20)}
                     onClick={() => onEventClick(ev)} />
                 })}
-                {/* "Now" line in the current day's column */}
+                {/* "Now" line in the current day's column (the leading dot was removed on request;
+                    the line and the gutter time pill remain). */}
                 {isToday(day) && (
                   <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                     style={{ top: nowTop, transform: 'translateY(-50%)' }}>
-                    <div className="w-2 h-2 rounded-full bg-danger -ml-1 shrink-0" />
                     <div className="flex-1 h-0.5 bg-danger" />
                   </div>
                 )}

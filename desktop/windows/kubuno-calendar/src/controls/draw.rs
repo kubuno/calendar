@@ -93,6 +93,35 @@ pub fn draw_principal_moon(
     g.draw_ellipse(&Pen::new(stroke, 1.0), rect);
 }
 
+/// A timed-event block in the Day/Week grid (`WeekView.tsx` / `DayView.tsx`): the title on the first line
+/// (semibold) and, when the block is tall enough, the time range (and location) faded on a second line — not a
+/// time prefix. Carries the thin white inner ring and the web radius.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_timed_block(
+    g: &kubuno_desktop::ui::graphics::Graphics<'_>,
+    rect: Rect,
+    color_hex: &str,
+    title: &str,
+    subtitle: &str,
+    font_title: &Font,
+    font_sub: &Font,
+) {
+    let color = color_of(color_hex, hex(DEFAULT_EVENT_COLOR));
+    g.fill_rounded_rectangle(Brush::solid(color), rect, PILL_RADIUS);
+    let inset = Rect::new(rect.left + 0.5, rect.top + 0.5, rect.right - 0.5, rect.bottom - 0.5);
+    g.draw_rounded_rectangle(&Pen::new(Color::WHITE.with_alpha(0.6), 1.0), inset, PILL_RADIUS);
+    let near = StringFormat { alignment: StringAlignment::Near, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
+    let h = rect.bottom - rect.top;
+    if h >= 34.0 {
+        g.draw_string(title, font_title, Brush::solid(Color::WHITE), Rect::new(rect.left + 6.0, rect.top + 3.0, rect.right - 5.0, rect.top + 20.0), &near);
+        g.draw_string(subtitle, font_sub, Brush::solid(Color::WHITE.with_alpha(0.85)), Rect::new(rect.left + 6.0, rect.top + 19.0, rect.right - 5.0, (rect.top + 35.0).min(rect.bottom)), &near);
+    } else {
+        // Compact: title with the time appended, on one line.
+        let one = format!("{title}  {subtitle}");
+        g.draw_string(&one, font_title, Brush::solid(Color::WHITE), Rect::new(rect.left + 6.0, rect.top, rect.right - 5.0, rect.bottom), &near);
+    }
+}
+
 /// An all-day / multi-day banner bar (`EventBanners.tsx`): a rounded body pill in the event colour with the
 /// title in white, and a darker pointed arrow tip on any end that runs past the visible range. `shorten_right`
 /// leaves the 10px gap the web uses to mark the true end of the event.

@@ -2,7 +2,7 @@
 //! and the display options that drive the layout. Pure navigation logic, unit-tested here so the Win32 window
 //! and the later live app agree.
 
-use kubuno_calendar_core::date::{format, Date, DateFormat, Lang};
+use kubuno_calendar_core::date::{format, start_of_week, Date, DateFormat, Lang};
 
 /// The views the app can show (`store.ViewMode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,26 +76,41 @@ impl CalendarView {
         };
     }
 
-    /// The period title in the toolbar (the web's `CalendarNav` title).
+    /// The period title in the toolbar (the web's `CalendarNav` title, `CalendarToolbar.tsx:55-69`). The web
+    /// `<h1>` carries the CSS `capitalize` class, so each word is title-cased.
     pub fn title(&self) -> String {
-        match self.view {
-            ViewMode::Year => self.current.year.to_string(),
-            ViewMode::Day => format(self.current, DateFormat::Date, self.lang),
-            _ => {
-                let t = format(self.current, DateFormat::MonthYear, self.lang);
-                capitalize(&t)
+        let raw = match self.view {
+            ViewMode::Year => return self.current.year.to_string(),
+            // « mercredi 14 octobre 2026 ».
+            ViewMode::Day => format(self.current, DateFormat::FullDate, self.lang),
+            // « semaine du 12 octobre 2026 » (start of the week).
+            ViewMode::Week | ViewMode::Custom => {
+                let start = start_of_week(self.current, self.week_starts_on);
+                let d = format(start, DateFormat::DateLong, self.lang);
+                match self.lang {
+                    Lang::Fr => format!("semaine du {d}"),
+                    Lang::En => format!("week of {d}"),
+                }
             }
-        }
+            // Month + Schedule.
+            _ => format(self.current, DateFormat::MonthYear, self.lang),
+        };
+        title_case(&raw)
     }
 }
 
-/// The first letter upper-cased (the web's `capitalize`).
+/// The first letter upper-cased (the web's `capitalize` on a single token).
 pub fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
     }
+}
+
+/// Title-case each whitespace-separated word (the CSS `capitalize` class the web title `<h1>` carries).
+pub fn title_case(s: &str) -> String {
+    s.split(' ').map(capitalize).collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
