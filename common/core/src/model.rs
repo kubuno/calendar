@@ -194,6 +194,20 @@ impl Instant {
     pub fn utc_date(self) -> Date {
         Date::from_days(self.epoch_seconds.div_euclid(86_400))
     }
+
+    /// Build the instant for a wall-clock `date` + time in a zone `offset_minutes` east of UTC (what the event
+    /// editor collects locally before sending the server a UTC timestamp).
+    pub fn from_local(date: Date, hour: u32, minute: u32, second: u32, offset_minutes: i32) -> Instant {
+        let local = date.to_days() * 86_400 + (hour as i64 * 3_600 + minute as i64 * 60 + second as i64);
+        Instant { epoch_seconds: local - offset_minutes as i64 * 60 }
+    }
+
+    /// `YYYY-MM-DDTHH:MM:SSZ` — the UTC ISO 8601 form the server stores.
+    pub fn iso_utc(self) -> String {
+        let d = Date::from_days(self.epoch_seconds.div_euclid(86_400));
+        let rem = self.epoch_seconds.rem_euclid(86_400);
+        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", d.year, d.month, d.day, rem / 3_600, (rem % 3_600) / 60, rem % 60)
+    }
 }
 
 /// Separate a time-of-day string from its trailing zone, returning the bare `HH:MM[:SS]` and the zone's offset
@@ -248,6 +262,15 @@ mod tests {
         assert_eq!(end.utc_date(), Date::new(2026, 10, 12).expect("d"));
         let start = Instant::parse("2026-10-12T00:00:00Z").expect("i");
         assert_eq!(start.utc_date(), Date::new(2026, 10, 12).expect("d"));
+    }
+
+    #[test]
+    fn local_round_trip_to_utc_iso() {
+        // 10:00 local at GMT+2 → 08:00:00Z on the same day.
+        let i = Instant::from_local(Date::new(2026, 10, 15).expect("d"), 10, 0, 0, 120);
+        assert_eq!(i.iso_utc(), "2026-10-15T08:00:00Z");
+        // Parsing it back and reading it local gives 10:00 again.
+        assert_eq!(Instant::parse(&i.iso_utc()).expect("i").local(120).minute_of_day(), 10 * 60);
     }
 
     #[test]

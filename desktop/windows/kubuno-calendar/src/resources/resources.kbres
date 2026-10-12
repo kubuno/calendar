@@ -9,6 +9,17 @@
   <String Name="view_month">Month</String>
   <String Name="view_year">Year</String>
   <String Name="view_agenda">Agenda</String>
-  <String Name="new_event">New test event</String>
+  <String Name="new_event">New event</String>
   <String Name="delete_event">Delete</String>
+  <String Name="ev_title_ph">Add a title</String>
+  <String Name="ev_allday">All day</String>
+  <String Name="ev_start">Start</String>
+  <String Name="ev_end">End</String>
+  <String Name="ev_recurrence">Recurrence</String>
+  <String Name="ev_scope">Apply to</String>
+  <String Name="ev_location">Location</String>
+  <String Name="ev_location_ph">Add a location</String>
+  <String Name="ev_description">Description</String>
+  <String Name="ev_save">Save</String>
+  <String Name="ev_cancel">Cancel</String>
 </Resources>

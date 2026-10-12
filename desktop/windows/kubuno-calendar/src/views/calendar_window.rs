@@ -13,10 +13,14 @@ use kubuno_desktop::{Row, Rows, Value as BValue};
 use kubuno_calendar_desktop_common::app::Options;
 use kubuno_calendar_desktop_common::state::{capitalize, ViewMode};
 
+use kubuno_calendar_core::date::Date;
+use kubuno_calendar_desktop_common::live::EventWrite;
+
 use crate::controls::agenda_list::AgendaList;
 use crate::controls::model::{shared, Shared, State};
-use crate::controls::month_grid::MonthGrid;
+use crate::controls::month_grid::{ActivateArgs, MonthGrid};
 use crate::controls::time_grid::TimeGrid;
+use crate::views::event_editor::EventEditor;
 use crate::Resources;
 
 /// Kubuno Calendar's main window.
@@ -44,13 +48,9 @@ pub struct CalendarWindow {
     view_items: Rows,
     #[bind]
     is_live: bool,
-    #[bind]
-    can_delete: bool,
     model: Shared,
     /// `--doc <calendar-id>`: when set, the events are loaded live from the server for each visible window.
     doc: Option<String>,
-    /// The id of the last event this window created, so the « Delete » button can remove it.
-    last_created: Option<String>,
 }
 
 /// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
@@ -173,55 +173,55 @@ impl CalendarWindow {
         self.refresh();
     }
 
-    // ── Live CRUD (demonstration) ─────────────────────────────────────────────
+    // ── Event editor (create / edit) ─────────────────────────────────────────
 
-    /// Create a one-hour demo event on the 15th of the visible month (`POST /calendar/events`) on a background
-    /// thread, then reload. (The full event editor replaces this stub in a later increment.)
+    /// The toolbar « New event » button: open the editor to create an event on the anchor date.
     fn new_click(&mut self) {
+        let (date, offset, lang) = {
+            let m = self.model.borrow();
+            (m.view.current, m.offset_minutes, m.view.lang)
+        };
+        self.open_editor(EventEditor::for_create(date, offset, lang));
+    }
+
+    /// A double-click in a view: edit the event, or create one on the day that was double-clicked.
+    fn event_activated(&mut self, args: &ActivateArgs) {
+        let (offset, lang) = {
+            let m = self.model.borrow();
+            (m.offset_minutes, m.view.lang)
+        };
+        if !args.event_id.is_empty() {
+            // Edit the event whose first occurrence we have loaded.
+            let found = self.model.borrow().events.iter().find(|ev| ev.event_id == args.event_id).cloned();
+            if let Some(ev) = found {
+                self.open_editor(EventEditor::for_edit(&ev, offset, lang));
+            }
+        } else if let Some(date) = Date::parse(&args.date_iso) {
+            self.open_editor(EventEditor::for_create(date, offset, lang));
+        }
+    }
+
+    /// Show the editor modally; on Save, write to the server off the UI thread and reload.
+    fn open_editor(&mut self, editor: EventEditor) {
+        if let Some(write) = editor.run(self) {
+            self.save_form(write);
+        }
+    }
+
+    fn save_form(&mut self, write: EventWrite) {
         let Some(doc) = self.doc.clone() else { return };
         let Some(disp) = self.dispatcher() else { return };
-        let anchor = self.model.borrow().view.current;
-        // 10:00–11:00 local (the dev data is GMT+2, so 08:00–09:00 UTC); a fixed day keeps the demo visible.
-        let starts = format!("{:04}-{:02}-15T08:00:00Z", anchor.year, anchor.month);
-        let ends = format!("{:04}-{:02}-15T09:00:00Z", anchor.year, anchor.month);
         std::thread::spawn(move || {
-            let result = kubuno_calendar_desktop_common::live::create_event(&doc, "Créé au bureau", &starts, &ends, false);
-            drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_created(result)));
+            let result = kubuno_calendar_desktop_common::live::save_event(&doc, &write);
+            drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_saved(result)));
         });
     }
 
-    fn on_created(&mut self, result: Result<String, String>) {
-        match result {
-            Ok(id) => {
-                self.last_created = Some(id);
-                self.reload_live();
-            }
-            Err(e) => kubuno_desktop::tracing::error!("[calendar] create failed: {e}"),
+    fn on_saved(&mut self, result: Result<(), String>) {
+        if let Err(e) = result {
+            kubuno_desktop::tracing::error!("[calendar] save failed: {e}");
         }
-        self.refresh();
-    }
-
-    /// Delete the event this window last created (`DELETE /calendar/events/:id`) on a background thread.
-    fn del_click(&mut self) {
-        let Some(id) = self.last_created.take() else { return };
-        let Some(disp) = self.dispatcher() else {
-            self.last_created = Some(id);
-            return;
-        };
-        std::thread::spawn(move || {
-            let result = kubuno_calendar_desktop_common::live::delete_event(&id, None, None);
-            drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_deleted(id, result)));
-        });
-    }
-
-    fn on_deleted(&mut self, id: String, result: Result<(), String>) {
-        match result {
-            Ok(()) => self.reload_live(),
-            Err(e) => {
-                kubuno_desktop::tracing::error!("[calendar] delete failed: {e}");
-                self.last_created = Some(id);
-            }
-        }
+        self.reload_live();
         self.refresh();
     }
 
@@ -236,7 +236,6 @@ impl CalendarWindow {
         self.view_value = view_id(view).to_string();
         drop(m);
         self.is_live = self.doc.is_some();
-        self.can_delete = self.last_created.is_some();
     }
 
     /// Push the bound fields and repaint the visible view.

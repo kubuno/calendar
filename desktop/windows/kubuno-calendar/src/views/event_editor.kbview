@@ -1,0 +1,36 @@
+<!--
+  The event editor dialog (web EventEditor.tsx): a title field, the all-day toggle, start/end date + time, a
+  recurrence preset, the scope (shown only when editing a recurring series), a location and a description, with
+  Save. Guests, reminders, the colour picker, the calendar picker and the full custom-recurrence dialog are
+  later sub-increments. The shared field metric matches the web (36px tall, 8px radius, 14px text).
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="540" DesignHeight="600" AcceptButton="save">
+
+  <TextField x:Name="title_box" Text="{Binding Title}" Placeholder="{Res ev_title_ph}" X="24" Y="20" Width="492" Height="40"/>
+
+  <CheckBox x:Name="allday_box" Text="{Res ev_allday}" Checked="{Binding AllDay}" X="24" Y="74" Width="220" Height="24" OnCheckedChanged="allday_changed"/>
+
+  <Label Text="{Res ev_start}" Role="Caption" ForeColor="TextTertiary" X="24" Y="110" Width="200" Height="16"/>
+  <DatePicker x:Name="start_date_box" Date="{Binding StartDate}" X="24" Y="130" Width="210" Height="36"/>
+  <Dropdown x:Name="start_time_box" SelectedValue="{Binding StartTime}" ItemsSource="{Binding TimeItems}" Visible="{Binding Timed}" X="244" Y="130" Width="120" Height="36"/>
+
+  <Label Text="{Res ev_end}" Role="Caption" ForeColor="TextTertiary" X="24" Y="178" Width="200" Height="16"/>
+  <DatePicker x:Name="end_date_box" Date="{Binding EndDate}" X="24" Y="198" Width="210" Height="36"/>
+  <Dropdown x:Name="end_time_box" SelectedValue="{Binding EndTime}" ItemsSource="{Binding TimeItems}" Visible="{Binding Timed}" X="244" Y="198" Width="120" Height="36"/>
+
+  <Label Text="{Res ev_recurrence}" Role="Caption" ForeColor="TextTertiary" X="24" Y="246" Width="200" Height="16"/>
+  <Dropdown x:Name="recur_box" SelectedValue="{Binding Recurrence}" ItemsSource="{Binding RecurItems}" X="24" Y="266" Width="340" Height="36"/>
+
+  <Label Text="{Res ev_scope}" Role="Caption" ForeColor="TextTertiary" Visible="{Binding IsRecurringEdit}" X="24" Y="314" Width="200" Height="16"/>
+  <Dropdown x:Name="scope_box" SelectedValue="{Binding Scope}" ItemsSource="{Binding ScopeItems}" Visible="{Binding IsRecurringEdit}" X="24" Y="334" Width="340" Height="36"/>
+
+  <Label Text="{Res ev_location}" Role="Caption" ForeColor="TextTertiary" X="24" Y="384" Width="200" Height="16"/>
+  <TextField x:Name="location_box" Text="{Binding Location}" Placeholder="{Res ev_location_ph}" X="24" Y="404" Width="492" Height="36"/>
+
+  <Label Text="{Res ev_description}" Role="Caption" ForeColor="TextTertiary" X="24" Y="452" Width="200" Height="16"/>
+  <TextArea x:Name="desc_box" Text="{Binding Description}" MinLines="3" MaxLines="4" X="24" Y="472" Width="492" Height="78"/>
+
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="save" ActionBar.Region="Right" Text="{Res ev_save}" Variant="Primary" Width="140" Height="36" OnClick="save_click"/>
+</Panel>

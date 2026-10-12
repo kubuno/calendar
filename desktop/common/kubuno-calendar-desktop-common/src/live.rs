@@ -70,6 +70,66 @@ pub fn fetch_month(calendar_id: &str, anchor: Date, week_starts_on: u32) -> Resu
     Ok(parsed.events)
 }
 
+/// What the event editor collected, ready for the REST API. `edit_id` present = edit (PATCH), absent = create
+/// (POST); `occurrence`/`scope` target a recurring series on an edit.
+#[derive(Debug, Clone, Default)]
+pub struct EventWrite {
+    pub title: String,
+    pub starts_at: String,
+    pub ends_at: String,
+    pub all_day: bool,
+    pub location: String,
+    pub rrule: Option<String>,
+    pub edit_id: Option<String>,
+    pub occurrence: Option<String>,
+    pub scope: Option<String>,
+}
+
+/// Create or update an event from the editor's data. Create = `POST /calendar/events`; edit = `PATCH
+/// /calendar/events/:id` with the recurring `scope`/`occurrence` as query parameters.
+pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
+    let mut body = serde_json::Map::new();
+    body.insert("title".into(), serde_json::Value::String(w.title.clone()));
+    body.insert("starts_at".into(), serde_json::Value::String(w.starts_at.clone()));
+    body.insert("ends_at".into(), serde_json::Value::String(w.ends_at.clone()));
+    body.insert("all_day".into(), serde_json::Value::Bool(w.all_day));
+    if !w.location.is_empty() {
+        body.insert("location".into(), serde_json::Value::String(w.location.clone()));
+    }
+    match &w.rrule {
+        Some(r) => {
+            body.insert("rrule".into(), serde_json::Value::String(r.clone()));
+        }
+        None if w.edit_id.is_some() => {
+            // Editing to "does not repeat" clears the rule (the web's `clear_rrule`).
+            body.insert("clear_rrule".into(), serde_json::Value::Bool(true));
+        }
+        None => {}
+    }
+    match &w.edit_id {
+        None => {
+            body.insert("calendar_id".into(), serde_json::Value::String(calendar_id.to_string()));
+            let (status, _) = request("POST", &format!("{CAL_PREFIX}/events"), Some(serde_json::to_vec(&body).map_err(|e| e.to_string())?))?;
+            if !(200..300).contains(&status) {
+                return Err(format!("POST event → HTTP {status}"));
+            }
+        }
+        Some(id) => {
+            let mut path = format!("{CAL_PREFIX}/events/{}", urlencode(id));
+            let q = query(w.scope.as_deref(), w.occurrence.as_deref());
+            if !q.is_empty() {
+                path.push('?');
+                path.push_str(&q);
+            }
+            let (status, _) = request("PATCH", &path, Some(serde_json::to_vec(&body).map_err(|e| e.to_string())?))?;
+            if !(200..300).contains(&status) {
+                return Err(format!("PATCH event → HTTP {status}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Create a timed event on `calendar_id` (`POST /calendar/events`). Returns the created event's id.
 pub fn create_event(calendar_id: &str, title: &str, starts_at: &str, ends_at: &str, all_day: bool) -> Result<String, String> {
     let dto = serde_json::json!({

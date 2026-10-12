@@ -4,9 +4,19 @@
 //! and a principal moon marker. Geometry and colours match the web exactly. Read-only in this increment;
 //! navigation is in the window toolbar.
 
+use kubuno_desktop::prelude::MouseEventArgs;
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::{Canvas, Rect, Size};
-use kubuno_desktop::views::component::{Component, Control, ControlCore, PaintEventCx};
+use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, PaintEventCx};
+use kubuno_desktop::views::events::Event;
+
+/// A double-click in the month grid: on an event (`event_id` set) or on an empty day (`event_id` empty); the
+/// window opens the editor to edit that event, or to create one on `date_iso` (`YYYY-MM-DD`).
+#[derive(kubuno_desktop::views::events::EventArgs, Debug, Clone, Default, PartialEq)]
+pub struct ActivateArgs {
+    pub event_id: String,
+    pub date_iso: String,
+}
 
 use kubuno_calendar_core::date::{self, DateFormat};
 use kubuno_calendar_core::layout::{layout_banners, month_grid, timed_events_for_day, MONTH_MAX_CHIPS};
@@ -29,10 +39,19 @@ const CHIP_STEP: f32 = 20.0; // chip + space-y-0.5 (2)
 #[kubuno(extends = Control, overrides(Control))]
 #[category("Calendar")]
 #[toolbox(icon = "calendar")]
+#[default_event("Activated")]
 pub struct MonthGrid {
     base: ControlCore,
+    /// Occurs on a double click on an event or a day.
+    #[event]
+    #[category("Action")]
+    pub activated: Event<ActivateArgs>,
     model: Option<Shared>,
     bounds: Rect,
+    /// Hit rectangles (control-relative) of the drawn event chips/banners → event id.
+    hits: Vec<(Rect, String)>,
+    /// Hit rectangles (control-relative) of the day cells → `YYYY-MM-DD`.
+    cells: Vec<(Rect, String)>,
 }
 
 impl MonthGrid {
@@ -61,6 +80,10 @@ impl Control for MonthGrid {
         let lang = m.view.lang;
         let offset = m.offset_minutes;
         let fmt = |a| StringFormat { alignment: a, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
+        self.hits.clear();
+        self.cells.clear();
+        // Control-relative rectangle, for hit-testing on_mouse_down (whose coordinates are control-relative).
+        let rel = |r: Rect| Rect::new(r.left - b.left, r.top - b.top, r.right - b.left, r.bottom - b.top);
 
         let grid = month_grid(m.view.current, m.view.week_starts_on);
         let weeks = (grid.len() / 7).max(1);
@@ -88,6 +111,7 @@ impl Control for MonthGrid {
             // Day cells.
             for (col, &day) in week_days.iter().enumerate() {
                 let r = Rect::new(b.left + col as f32 * cw, week_top, b.left + (col + 1) as f32 * cw, week_top + week_h);
+                self.cells.push((rel(r), day.iso()));
                 let in_month = day.month == m.view.current.month;
                 if !in_month {
                     g.fill_rectangle(Brush::solid(th.surface2), r);
@@ -121,6 +145,7 @@ impl Control for MonthGrid {
                 let x0 = b.left + seg.start_col as f32 * cw;
                 let x1 = b.left + (seg.end_col + 1) as f32 * cw;
                 let y = week_top + BANNER_TOP + seg.row as f32 * BANNER_ROW_H;
+                self.hits.push((rel(Rect::new(x0, y, x1, y + BANNER_BAR_H)), ev.event_id.clone()));
                 draw_banner(
                     g, x0, x1, y, BANNER_BAR_H,
                     ev.color.as_deref().unwrap_or("#1a73e8"),
@@ -139,6 +164,7 @@ impl Control for MonthGrid {
                 let mut y = chips_top;
                 for ev in chips.iter().take(MONTH_MAX_CHIPS) {
                     let rect = Rect::new(x + 4.0, y, x + cw - 4.0, y + CHIP_H);
+                    self.hits.push((rel(rect), ev.event_id.clone()));
                     draw_event_pill(g, rect, ev.color.as_deref().unwrap_or("#1a73e8"), Some(&hhmm(ev, offset)), &ev.title, &f_time, &f_title, false, false);
                     y += CHIP_STEP;
                 }
@@ -148,6 +174,18 @@ impl Control for MonthGrid {
             }
         }
         e.raise(self, "OnPaint");
+    }
+
+    fn on_mouse_down(&mut self, e: &mut EventCx<'_, MouseEventArgs>) {
+        if e.args().clicks == 2 {
+            let (x, y) = (e.args().x, e.args().y);
+            if let Some((_, id)) = self.hits.iter().find(|(r, _)| r.contains(x, y)).cloned() {
+                self.raise_activated(ActivateArgs { event_id: id, date_iso: String::new() });
+            } else if let Some((_, iso)) = self.cells.iter().find(|(r, _)| r.contains(x, y)).cloned() {
+                self.raise_activated(ActivateArgs { event_id: String::new(), date_iso: iso });
+            }
+        }
+        e.raise(&*self, "OnMouseDown");
     }
 }
 
