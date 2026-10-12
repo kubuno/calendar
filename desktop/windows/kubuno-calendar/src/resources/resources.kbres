@@ -25,6 +25,11 @@
   <String Name="ev_recur_custom">Custom…</String>
   <String Name="ev_calendar">Calendar</String>
   <String Name="ev_color">Color</String>
+  <String Name="ev_reminders">Reminders</String>
+  <String Name="rem_add">Add a reminder</String>
+  <String Name="rem_remove">Remove the reminder</String>
+  <String Name="rem_notification">Notification</String>
+  <String Name="rem_email">Email</String>
   <String Name="rec_title">Custom recurrence</String>
   <String Name="rec_every">Repeat every</String>
   <String Name="rec_on">Repeat on</String>

@@ -29,7 +29,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   daily / weekly / monthly / yearly), the scope when editing a recurring series (this / this and following /
   all), a location and a description — matching the web editor's fields and look in both light and dark. Save
   writes to the calendar REST API over the broker (`POST` to create, `PATCH` to edit, with the recurring
-  scope/occurrence) off the UI thread, and the view re-fetches. Guests and reminders are later sub-increments.
+  scope/occurrence) off the UI thread, and the view re-fetches. Guests are a later sub-increment.
+
+- **Desktop Calendar: event reminders.** The editor now has a « Rappels » section matching the web
+  `RemindersField.tsx`: each reminder is a method dropdown (Notification / E-mail) and an offset dropdown
+  (5 / 10 / 15 / 30 min, 1 / 2 h, 1 day before), with a remove button and an « Ajouter un rappel » link; a new
+  event starts with one notification 10 minutes before. The reminders round-trip to the server
+  (`reminders: [{ type, minutes_before }]`), proven in light and dark.
 
 - **Desktop Calendar: the calendar picker and the event colour picker.** The editor now has an « Agenda »
   dropdown listing the writable calendars (the default one preselected, or the event's own on edit) and a

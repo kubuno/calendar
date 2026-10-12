@@ -57,6 +57,26 @@ pub struct EventEditor {
     cal_items: Rows,
     #[bind]
     cal_value: String,
+    // Reminders — up to two rows (the common case); each is a method + an offset, matching the web.
+    #[bind]
+    rem_type_items: Rows,
+    #[bind]
+    rem_min_items: Rows,
+    #[bind]
+    rem1_type: String,
+    #[bind]
+    rem1_min: String,
+    #[bind]
+    rem1_vis: bool,
+    #[bind]
+    rem2_type: String,
+    #[bind]
+    rem2_min: String,
+    #[bind]
+    rem2_vis: bool,
+    /// Whether another reminder row can still be added (fewer than two shown).
+    #[bind]
+    can_add_rem: bool,
     offset: i32,
     lang: Lang,
     edit_id: Option<String>,
@@ -79,6 +99,12 @@ impl EventEditor {
         let mut d = Self { offset, lang, ..Self::default() };
         d.fill_lists();
         d.fill_calendars(calendars, default_calendar);
+        d.fill_reminder_items();
+        // One default reminder, like the web (a notification 10 minutes before).
+        d.rem1_type = "popup".into();
+        d.rem1_min = "10".into();
+        d.rem1_vis = true;
+        d.can_add_rem = true;
         d.window_title = if lang == Lang::Fr { "Nouvel événement".into() } else { "New event".into() };
         d.timed = true;
         d.start_date = date.iso();
@@ -97,6 +123,8 @@ impl EventEditor {
         let mut d = Self { offset, lang, ..Self::default() };
         d.fill_lists();
         d.fill_calendars(calendars, &ev.calendar_id);
+        d.fill_reminder_items();
+        d.load_reminders(&ev.reminders);
         d.init_color = ev.color.clone();
         d.window_title = if lang == Lang::Fr { "Modifier l'événement".into() } else { "Edit event".into() };
         d.title = ev.title.clone();
@@ -170,6 +198,86 @@ impl EventEditor {
     /// The colour of the currently-picked calendar.
     fn current_cal_color(&self) -> String {
         self.cal_colors.iter().find(|(id, _)| *id == self.cal_value).map(|(_, c)| c.clone()).unwrap_or_default()
+    }
+
+    /// The reminder dropdowns' options: the method (notification / e-mail) and the offset (`REMINDER_OPTIONS`).
+    fn fill_reminder_items(&mut self) {
+        let fr = self.lang == Lang::Fr;
+        self.rem_type_items = Rows::from(vec![
+            Row::new().with("Value", BValue::Str("popup".into())).with("Label", BValue::Str(Resources::rem_notification().to_string())),
+            Row::new().with("Value", BValue::Str("email".into())).with("Label", BValue::Str(Resources::rem_email().to_string())),
+        ]);
+        let opts: [(i64, &str, &str); 7] = [
+            (5, "5 min avant", "5 min before"),
+            (10, "10 min avant", "10 min before"),
+            (15, "15 min avant", "15 min before"),
+            (30, "30 min avant", "30 min before"),
+            (60, "1 h avant", "1 h before"),
+            (120, "2 h avant", "2 h before"),
+            (1440, "1 jour avant", "1 day before"),
+        ];
+        self.rem_min_items = Rows::from(
+            opts.iter()
+                .map(|(v, frl, enl)| Row::new().with("Value", BValue::Str(v.to_string())).with("Label", BValue::Str((if fr { *frl } else { *enl }).to_string())))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    /// Prefill the two reminder rows from an event's reminders (at most two shown).
+    fn load_reminders(&mut self, reminders: &[kubuno_calendar_core::model::EventReminder]) {
+        let norm = |k: &str| if k == "email" { "email".to_string() } else { "popup".to_string() };
+        if let Some(r) = reminders.first() {
+            self.rem1_type = norm(&r.kind);
+            self.rem1_min = r.minutes_before.to_string();
+            self.rem1_vis = true;
+        }
+        if let Some(r) = reminders.get(1) {
+            self.rem2_type = norm(&r.kind);
+            self.rem2_min = r.minutes_before.to_string();
+            self.rem2_vis = true;
+        }
+        self.can_add_rem = !(self.rem1_vis && self.rem2_vis);
+    }
+
+    /// The reminders to send, as `(method, minutes_before)` pairs from the visible rows.
+    fn reminders_list(&self) -> Vec<(String, i64)> {
+        let mut out = Vec::new();
+        for (vis, kind, min) in [(self.rem1_vis, &self.rem1_type, &self.rem1_min), (self.rem2_vis, &self.rem2_type, &self.rem2_min)] {
+            if vis {
+                out.push((kind.clone(), min.parse::<i64>().unwrap_or(10)));
+            }
+        }
+        out
+    }
+
+    fn add_reminder(&mut self) {
+        if !self.rem1_vis {
+            self.rem1_type = "popup".into();
+            self.rem1_min = "10".into();
+            self.rem1_vis = true;
+        } else if !self.rem2_vis {
+            self.rem2_type = "popup".into();
+            self.rem2_min = "10".into();
+            self.rem2_vis = true;
+        }
+        self.can_add_rem = !(self.rem1_vis && self.rem2_vis);
+    }
+
+    fn remove_rem1(&mut self) {
+        if self.rem2_vis {
+            // Shift the second row up into the first.
+            self.rem1_type = std::mem::take(&mut self.rem2_type);
+            self.rem1_min = std::mem::take(&mut self.rem2_min);
+            self.rem2_vis = false;
+        } else {
+            self.rem1_vis = false;
+        }
+        self.can_add_rem = !(self.rem1_vis && self.rem2_vis);
+    }
+
+    fn remove_rem2(&mut self) {
+        self.rem2_vis = false;
+        self.can_add_rem = true;
     }
 
     /// Show it over `owner`; returns the collected form on Save, `None` on cancel/close.
@@ -259,6 +367,7 @@ impl EventEditor {
             description: self.description.clone(),
             rrule,
             color: self.picked_color.clone(),
+            reminders: Some(self.reminders_list()),
             calendar_target: if self.cal_value.is_empty() { None } else { Some(self.cal_value.clone()) },
             edit_id: self.edit_id.clone(),
             occurrence: if self.is_recurring_edit { self.occurrence.clone() } else { None },

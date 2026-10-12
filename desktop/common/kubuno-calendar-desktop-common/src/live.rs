@@ -83,8 +83,9 @@ pub struct EventWrite {
     pub rrule: Option<String>,
     /// The chosen event colour (`#rrggbb`); `None` = "default (calendar colour)".
     pub color: Option<String>,
-    /// The reminders to store: `[{ "type": "...", "minutes_before": N }, …]`. `None` leaves them unchanged.
-    pub reminders: Option<serde_json::Value>,
+    /// The reminders to store, as `(method, minutes_before)` pairs. `None` leaves them unchanged; an empty
+    /// vector clears them.
+    pub reminders: Option<Vec<(String, i64)>>,
     /// Guests to invite (create only; the server's `attendees` input): `[{ "email": "…" }, …]`.
     pub attendees: Option<serde_json::Value>,
     pub guests_can_modify: Option<bool>,
@@ -118,8 +119,12 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
         }
         None => {}
     }
-    if let Some(r) = &w.reminders {
-        body.insert("reminders".into(), r.clone());
+    if let Some(rems) = &w.reminders {
+        let arr: Vec<serde_json::Value> = rems
+            .iter()
+            .map(|(kind, minutes)| serde_json::json!({ "type": kind, "minutes_before": minutes }))
+            .collect();
+        body.insert("reminders".into(), serde_json::Value::Array(arr));
     }
     if let Some(a) = &w.attendees {
         body.insert("attendees".into(), a.clone());
