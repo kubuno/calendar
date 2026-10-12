@@ -105,16 +105,37 @@ impl CalendarWindow {
         self.refresh();
     }
 
-    /// When opened live (`--doc`), (re)load the events of the visible month window from the server.
+    /// When opened live (`--doc`), (re)load the events of the visible month window from the server on a
+    /// background thread so the UI never blocks on the network; the result is posted back to the UI thread.
     fn reload_live(&mut self) {
         let Some(doc) = self.doc.clone() else { return };
         let (anchor, wso) = {
             let m = self.model.borrow();
             (m.view.current, m.view.week_starts_on)
         };
-        match kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso) {
+        match self.dispatcher() {
+            // The usual path: fetch on a background thread, post the result back to the UI thread.
+            Some(disp) => {
+                std::thread::spawn(move || {
+                    let result = kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso);
+                    drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_loaded(result)));
+                });
+            }
+            // No dispatcher yet (the very first load, before the form is fully live): fetch inline so the
+            // window opens already populated. A one-off localhost GET; navigation and CRUD are always async.
+            None => {
+                let result = kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso);
+                self.on_loaded(result);
+            }
+        }
+    }
+
+    /// Back on the UI thread with the loaded events.
+    fn on_loaded(&mut self, result: Result<Vec<kubuno_calendar_core::model::EventInstance>, String>) {
+        match result {
             Ok(events) => {
                 self.model.borrow_mut().events = events;
+                self.refresh();
             }
             Err(e) => kubuno_desktop::tracing::error!("[calendar] live load failed: {e}"),
         }
@@ -154,29 +175,53 @@ impl CalendarWindow {
 
     // ── Live CRUD (demonstration) ─────────────────────────────────────────────
 
-    /// Create a one-hour demo event on the 15th of the visible month (`POST /calendar/events`), then reload.
+    /// Create a one-hour demo event on the 15th of the visible month (`POST /calendar/events`) on a background
+    /// thread, then reload. (The full event editor replaces this stub in a later increment.)
     fn new_click(&mut self) {
         let Some(doc) = self.doc.clone() else { return };
+        let Some(disp) = self.dispatcher() else { return };
         let anchor = self.model.borrow().view.current;
         // 10:00–11:00 local (the dev data is GMT+2, so 08:00–09:00 UTC); a fixed day keeps the demo visible.
         let starts = format!("{:04}-{:02}-15T08:00:00Z", anchor.year, anchor.month);
         let ends = format!("{:04}-{:02}-15T09:00:00Z", anchor.year, anchor.month);
-        match kubuno_calendar_desktop_common::live::create_event(&doc, "Créé au bureau", &starts, &ends, false) {
-            Ok(id) => self.last_created = Some(id),
+        std::thread::spawn(move || {
+            let result = kubuno_calendar_desktop_common::live::create_event(&doc, "Créé au bureau", &starts, &ends, false);
+            drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_created(result)));
+        });
+    }
+
+    fn on_created(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(id) => {
+                self.last_created = Some(id);
+                self.reload_live();
+            }
             Err(e) => kubuno_desktop::tracing::error!("[calendar] create failed: {e}"),
         }
-        self.reload_live();
         self.refresh();
     }
 
-    /// Delete the event this window last created (`DELETE /calendar/events/:id`), then reload.
+    /// Delete the event this window last created (`DELETE /calendar/events/:id`) on a background thread.
     fn del_click(&mut self) {
         let Some(id) = self.last_created.take() else { return };
-        if let Err(e) = kubuno_calendar_desktop_common::live::delete_event(&id, None, None) {
-            kubuno_desktop::tracing::error!("[calendar] delete failed: {e}");
+        let Some(disp) = self.dispatcher() else {
             self.last_created = Some(id);
+            return;
+        };
+        std::thread::spawn(move || {
+            let result = kubuno_calendar_desktop_common::live::delete_event(&id, None, None);
+            drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_deleted(id, result)));
+        });
+    }
+
+    fn on_deleted(&mut self, id: String, result: Result<(), String>) {
+        match result {
+            Ok(()) => self.reload_live(),
+            Err(e) => {
+                kubuno_desktop::tracing::error!("[calendar] delete failed: {e}");
+                self.last_created = Some(id);
+            }
         }
-        self.reload_live();
         self.refresh();
     }
 
