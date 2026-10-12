@@ -1,13 +1,14 @@
 //! Code-behind of Kubuno Calendar's window (`calendar_window.kbview`) — Windows Forms' `Form1.cs`.
 //!
 //! The window owns the shared model (the calendars, the events and the view state, `controls::model`) that the
-//! views paint, and turns the toolbar's navigation (Today, ‹ ›) and the view switcher into moves of that view
-//! state — the web app's `CalendarNav` / `CalendarViewSwitcher` (`CalendarApp.tsx`). This increment renders the
-//! Month grid, the Day/Week time grid and the Schedule (agenda) list from the offline sample; the server-coupled
-//! editing is a later increment.
+//! views paint, and turns the toolbar's navigation (Today, ‹ ›) and the view switcher (a dropdown, like the web
+//! `CalendarViewSwitcher`) into moves of that view state — the web app's `CalendarNav` (`CalendarApp.tsx`).
+//! This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda) list from the
+//! offline sample; the server-coupled editing is a later increment.
 
 use kubuno_desktop::prelude::*;
 use kubuno_desktop::views::component::Control as _;
+use kubuno_desktop::{Row, Rows, Value as BValue};
 
 use kubuno_calendar_desktop_common::app::Options;
 use kubuno_calendar_desktop_common::state::{capitalize, ViewMode};
@@ -38,14 +39,22 @@ pub struct CalendarWindow {
     #[bind]
     is_agenda: bool,
     #[bind]
-    day_variant: String,
+    view_value: String,
     #[bind]
-    week_variant: String,
-    #[bind]
-    month_variant: String,
-    #[bind]
-    agenda_variant: String,
+    view_items: Rows,
     model: Shared,
+}
+
+/// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
+fn view_id(view: ViewMode) -> &'static str {
+    match view {
+        ViewMode::Day => "day",
+        ViewMode::Week => "week",
+        ViewMode::Month => "month",
+        ViewMode::Schedule => "schedule",
+        ViewMode::Custom => "custom",
+        ViewMode::Year => "year",
+    }
 }
 
 impl CalendarWindow {
@@ -61,6 +70,17 @@ impl CalendarWindow {
             model,
             ..Self::default()
         };
+        window.view_items = Rows::from(
+            [
+                ("day", Resources::view_day()),
+                ("week", Resources::view_week()),
+                ("month", Resources::view_month()),
+                ("schedule", Resources::view_agenda()),
+            ]
+            .into_iter()
+            .map(|(v, l)| Row::new().with("Value", BValue::Str(v.to_string())).with("Label", BValue::Str(l.to_string())))
+            .collect::<Vec<_>>(),
+        );
         window.sync_bindings();
         window.initialize_component();
         window
@@ -91,25 +111,14 @@ impl CalendarWindow {
         self.refresh();
     }
 
-    // ── View switcher ─────────────────────────────────────────────────────────
-
-    fn day_click(&mut self) {
-        self.set_view(ViewMode::Day);
-    }
-
-    fn week_click(&mut self) {
-        self.set_view(ViewMode::Week);
-    }
-
-    fn month_click(&mut self) {
-        self.set_view(ViewMode::Month);
-    }
-
-    fn agenda_click(&mut self) {
-        self.set_view(ViewMode::Schedule);
-    }
-
-    fn set_view(&mut self, view: ViewMode) {
+    /// The view switcher changed: map the selected id to a view mode.
+    fn view_changed(&mut self) {
+        let view = match self.view_value.as_str() {
+            "day" => ViewMode::Day,
+            "week" => ViewMode::Week,
+            "schedule" => ViewMode::Schedule,
+            _ => ViewMode::Month,
+        };
         self.model.borrow_mut().view.view = view;
         self.refresh();
     }
@@ -122,11 +131,7 @@ impl CalendarWindow {
         self.is_month = view == ViewMode::Month;
         self.is_time_grid = matches!(view, ViewMode::Day | ViewMode::Week | ViewMode::Custom);
         self.is_agenda = view == ViewMode::Schedule;
-        let pick = |active: bool| if active { "Primary".to_string() } else { "Secondary".to_string() };
-        self.day_variant = pick(view == ViewMode::Day);
-        self.week_variant = pick(view == ViewMode::Week || view == ViewMode::Custom);
-        self.month_variant = pick(view == ViewMode::Month);
-        self.agenda_variant = pick(view == ViewMode::Schedule);
+        self.view_value = view_id(view).to_string();
     }
 
     /// Push the bound fields and repaint the visible view.

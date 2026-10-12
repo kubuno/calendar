@@ -35,6 +35,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Desktop Calendar: closer visual match to the web.** The Month, Week, Day and Agenda views were tuned to
+  the web app's exact styling: events are now solid filled pills with white text and the proper corner radius
+  (the time-grid blocks carry the web's thin white inner ring), the today marker is a filled accent circle,
+  all-day banners get the darker pointed continuation tips, the time grid uses the web's hour/half-hour line
+  weights and a red "now" pill, the moon markers show the real phase shape, the Agenda shows a date badge with
+  filled cards, and the toolbar matches the web (a secondary Today button, circular arrows, and the view
+  switcher as a dropdown).
+
 - **The repository is organised by platform.** The server (its sources, migrations, tests and configuration
   example) moves to `server/` and the web frontend to `web/`, with their history, and `mobile/` is reserved
   for the mobile apps. The `.kbpkg` is unchanged (same files, same contents); the build script, the CI

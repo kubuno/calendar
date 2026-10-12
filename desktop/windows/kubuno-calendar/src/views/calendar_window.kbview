@@ -1,9 +1,9 @@
 <!--
-  Kubuno Calendar's window, laid out like the web (CalendarApp.tsx): a tall title bar, a navigation toolbar
-  matching the web's shell-header nav (Today, ‹ ›, the period title, the view switcher), and the active view in
-  the body. This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda) list from
-  the offline sample; the Year view and the server-coupled editing are later increments. The « Année » button
-  is disabled until its increment lands (vskubuno docs/CALENDAR-DESKTOP.md §4), never a fake one.
+  Kubuno Calendar's window, laid out like the web (CalendarApp.tsx / CalendarToolbar.tsx): a tall title bar, a
+  navigation toolbar matching the web's shell-header nav (a secondary Today button, circular ghost ‹ › arrows,
+  the 22px period title, and the view switcher as a soft dropdown — not a segmented control), and the active
+  view in the body. This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda)
+  list from the offline sample; the Year view and the server-coupled editing are later increments.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
        DesignWidth="1200" DesignHeight="800" Title="{Binding WindowTitle}"
@@ -11,18 +11,14 @@
        OnLoad="calendar_window_load">
 
   <!-- The navigation toolbar. -->
-  <Panel x:Name="toolbar" Dock="Top" Height="48" BackColor="Surface">
+  <Panel x:Name="toolbar" Dock="Top" Height="56" BackColor="Surface">
     <Panel Dock="Bottom" Height="1" BackColor="Border"/>
-    <Button x:Name="btn_today" Text="{Res today}" X="12" Y="8" Width="84" Height="32" OnClick="today_click"/>
-    <Button x:Name="btn_prev" Text="‹" AccessibleName="{Res prev}" X="104" Y="8" Width="32" Height="32" OnClick="prev_click"/>
-    <Button x:Name="btn_next" Text="›" AccessibleName="{Res next}" X="140" Y="8" Width="32" Height="32" OnClick="next_click"/>
-    <Label x:Name="period_label" Text="{Binding PeriodTitle}" Role="Subtitle" ForeColor="TextPrimary" TextAlign="MiddleLeft" X="188" Y="8" Width="320" Height="32"/>
+    <Button x:Name="btn_today" Text="{Res today}" Variant="Secondary" X="16" Y="12" Width="92" Height="32" OnClick="today_click"/>
+    <Button x:Name="btn_prev" Text="‹" Variant="Ghost" AccessibleName="{Res prev}" X="116" Y="12" Width="32" Height="32" OnClick="prev_click"/>
+    <Button x:Name="btn_next" Text="›" Variant="Ghost" AccessibleName="{Res next}" X="150" Y="12" Width="32" Height="32" OnClick="next_click"/>
+    <Label x:Name="period_label" Text="{Binding PeriodTitle}" Role="Title" ForeColor="TextPrimary" TextAlign="MiddleLeft" X="198" Y="12" Width="360" Height="32"/>
 
-    <Button x:Name="btn_day" Text="{Res view_day}" Variant="{Binding DayVariant}" X="708" Y="8" Width="78" Height="32" Anchor="Top, Right" OnClick="day_click"/>
-    <Button x:Name="btn_week" Text="{Res view_week}" Variant="{Binding WeekVariant}" X="790" Y="8" Width="78" Height="32" Anchor="Top, Right" OnClick="week_click"/>
-    <Button x:Name="btn_month" Text="{Res view_month}" Variant="{Binding MonthVariant}" X="872" Y="8" Width="84" Height="32" Anchor="Top, Right" OnClick="month_click"/>
-    <Button x:Name="btn_year" Text="{Res view_year}" Enabled="false" X="960" Y="8" Width="78" Height="32" Anchor="Top, Right"/>
-    <Button x:Name="btn_agenda" Text="{Res view_agenda}" Variant="{Binding AgendaVariant}" X="1042" Y="8" Width="86" Height="32" Anchor="Top, Right" OnClick="agenda_click"/>
+    <Dropdown x:Name="view_box" SelectedValue="{Binding ViewValue}" ItemsSource="{Binding ViewItems}" AccessibleName="{Res view_month}" X="1016" Y="12" Width="128" Height="32" Anchor="Top, Right" OnSelectedValueChanged="view_changed"/>
   </Panel>
 
   <!-- The body: the active view. -->

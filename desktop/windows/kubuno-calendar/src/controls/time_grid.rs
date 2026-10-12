@@ -1,25 +1,27 @@
 //! `TimeGrid` — the Day and Week time grids (`web/src/DayView.tsx`, `WeekView.tsx`): a left hour gutter, a day
 //! header, an all-day banner row and a scrollable 24-hour grid (`PX_PER_HOUR` = 40) where timed events are
 //! positioned by their local minutes and laid side by side when they overlap (the core's `layout_day`). The
-//! « now » line is drawn in red on today's column. Read-only in this increment; the wheel scrolls the grid.
+//! « now » line is drawn in red on today's column. Geometry and colours match the web. Read-only in this
+//! increment; the wheel scrolls the grid.
 
-use kubuno_desktop::prelude::*;
 use kubuno_desktop::ui::graphics::{Brush, Color, Font, FontStyle, Pen, PointF, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::{Canvas, Rect, Size};
 use kubuno_desktop::views::component::{Component, Control, ControlCore, EventCx, PaintEventCx};
+use kubuno_desktop::prelude::MouseEventArgs;
 
-use kubuno_calendar_core::date::{self, DateFormat, Date};
+use kubuno_calendar_core::date::{self, Date, DateFormat};
 use kubuno_calendar_core::layout::{layout_banners, layout_day, timed_events_for_day, week_days, PX_PER_HOUR};
 use kubuno_calendar_core::model::Instant;
 use kubuno_calendar_desktop_common::state::ViewMode;
 
-use crate::controls::model::{color_of, hex, sample_state, Palette, Shared};
+use crate::controls::draw::{draw_banner, draw_event_pill};
+use crate::controls::model::{hex, sample_state, Palette, Shared};
 
-const GUTTER: f32 = 56.0;
-const HEADER_H: f32 = 56.0;
-const BANNER_H: f32 = 18.0;
-const BANNER_STEP: f32 = 20.0;
-const DEFAULT_EVENT_COLOR: u32 = 0x1a73e8;
+const GUTTER: f32 = 60.0; // single-timezone hour gutter (WeekView.tsx:146)
+const HEADER_H: f32 = 62.0; // weekday label + 32px date circle
+const BANNER_H: f32 = 22.0; // EventBanners.tsx:9
+const BANNER_STEP: f32 = 24.0; // 22 + rowGap 2
+const DANGER: u32 = 0xd93025;
 
 #[derive(kubuno_desktop::views::component::Component, Default)]
 #[kubuno(extends = Control, overrides(Control))]
@@ -73,23 +75,22 @@ impl Control for TimeGrid {
         let m = model.borrow();
         let lang = m.view.lang;
         let offset = m.offset_minutes;
+        let day_view = m.view.view == ViewMode::Day;
         let days = self.days(m.view.view, m.view.current, m.view.week_starts_on, m.view.show_weekends);
         if days.is_empty() {
             return;
         }
-        let near = |a| StringFormat { alignment: a, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
+        let fmt = |a| StringFormat { alignment: a, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
 
         let n = days.len();
         let day_w = (b.right - b.left - GUTTER) / n as f32;
 
-        // All-day banner row.
         let banners = layout_banners(&m.events, &days, offset);
-        let allday_h = if banners.rows > 0 { banners.rows as f32 * BANNER_STEP + 6.0 } else { 0.0 };
+        let allday_h = if banners.rows > 0 { banners.rows as f32 * BANNER_STEP + 8.0 } else { 0.0 };
         let grid_top = b.top + HEADER_H + allday_h;
 
-        // First paint of a view: scroll so the morning (06:00) is in view.
         if !self.scrolled_init {
-            self.scroll_y = 6.0 * PX_PER_HOUR;
+            self.scroll_y = 6.0 * PX_PER_HOUR; // open on the morning
             self.scrolled_init = true;
         }
         let content_h = 24.0 * PX_PER_HOUR;
@@ -97,52 +98,63 @@ impl Control for TimeGrid {
         let max_scroll = (content_h - visible_h).max(0.0);
         let scroll = self.scroll_y.clamp(0.0, max_scroll);
 
-        // Header: weekday + day number per column.
-        let f11 = Font::with_dip("Segoe UI", 11.0, FontStyle::BOLD);
-        let f20 = Font::with_dip("Segoe UI", 20.0, FontStyle::REGULAR);
-        let f10 = Font::with_dip("Segoe UI", 10.0, FontStyle::REGULAR);
+        // Fonts.
+        let f_dow = Font::with_dip("Segoe UI", 12.0, FontStyle::REGULAR);
+        let f_num = Font::with_dip("Segoe UI", 14.0, FontStyle::REGULAR);
+        let f_hour = Font::with_dip("Segoe UI", 11.0, FontStyle::REGULAR);
+        let f_title = Font::with_dip("Segoe UI", 12.0, FontStyle::BOLD); // font-semibold
+        let f_time = Font::with_dip("Segoe UI", if day_view { 12.0 } else { 10.0 }, FontStyle::REGULAR);
+
+        // Column headers.
         for (k, &day) in days.iter().enumerate() {
             let x = b.left + GUTTER + k as f32 * day_w;
-            let label = capitalize(&date::format(day, DateFormat::WeekdayShort, lang));
-            g.draw_string(&label, &f11, Brush::solid(th.text_tertiary), Rect::new(x, b.top + 6.0, x + day_w, b.top + 24.0), &near(StringAlignment::Center));
-            let num = Rect::new(x, b.top + 22.0, x + day_w, b.top + 52.0);
+            if day.is_weekend() {
+                g.fill_rectangle(Brush::solid(th.surface1), Rect::new(x, b.top, x + day_w, b.top + HEADER_H));
+            }
+            let wd_color = if day.is_weekend() { th.text_tertiary } else { th.text_secondary };
+            g.draw_string(&date::format(day, DateFormat::WeekdayShort, lang).to_uppercase(), &f_dow, Brush::solid(wd_color), Rect::new(x, b.top + 6.0, x + day_w, b.top + 24.0), &fmt(StringAlignment::Center));
+            let cx = x + day_w / 2.0;
+            let bx = Rect::new(cx - 16.0, b.top + 24.0, cx + 16.0, b.top + 56.0); // 32px circle
             if day == m.view.today {
-                let c = Rect::new(x + day_w / 2.0 - 16.0, num.top, x + day_w / 2.0 + 16.0, num.top + 32.0);
-                g.fill_ellipse(Brush::solid(th.primary), c);
-                g.draw_string(&day.day.to_string(), &f20, Brush::solid(Color::WHITE), c, &near(StringAlignment::Center));
+                g.fill_ellipse(Brush::solid(th.primary), bx);
+                g.draw_string(&day.day.to_string(), &f_num, Brush::solid(Color::WHITE), bx, &fmt(StringAlignment::Center));
             } else {
-                g.draw_string(&day.day.to_string(), &f20, Brush::solid(th.text_primary), num, &near(StringAlignment::Center));
+                let ink = if day.is_weekend() { th.text_tertiary } else { th.text_primary };
+                g.draw_string(&day.day.to_string(), &f_num, Brush::solid(ink), bx, &fmt(StringAlignment::Center));
             }
             if k > 0 {
                 g.draw_line(&Pen::new(th.border, 1.0), PointF::new(x - 0.5, b.top), PointF::new(x - 0.5, b.bottom));
             }
         }
 
-        // All-day banners spanning columns.
+        // All-day banner row (bg + bottom border), bars via the shared helper.
+        if banners.rows > 0 {
+            g.draw_line(&Pen::new(th.border, 1.0), PointF::new(b.left, grid_top - 0.5), PointF::new(b.right, grid_top - 0.5));
+        }
         for seg in &banners.segs {
             let ev = &m.events[seg.event_index];
-            let x0 = b.left + GUTTER + seg.start_col as f32 * day_w + 3.0;
-            let x1 = b.left + GUTTER + (seg.end_col + 1) as f32 * day_w - 3.0;
-            let y = b.top + HEADER_H + seg.row as f32 * BANNER_STEP;
-            let bar = Rect::new(x0, y, x1, y + BANNER_H);
-            let color = color_of(ev.color.as_deref().unwrap_or("#1a73e8"), hex(DEFAULT_EVENT_COLOR));
-            g.fill_rounded_rectangle(Brush::solid(color), bar, 4.0);
-            g.draw_string(&ev.title, &f10, Brush::solid(Color::WHITE), Rect::new(bar.left + 6.0, bar.top, bar.right - 4.0, bar.bottom), &near(StringAlignment::Near));
+            let x0 = b.left + GUTTER + seg.start_col as f32 * day_w;
+            let x1 = b.left + GUTTER + (seg.end_col + 1) as f32 * day_w;
+            let y = b.top + HEADER_H + 4.0 + seg.row as f32 * BANNER_STEP;
+            draw_banner(g, x0, x1, y, BANNER_H, ev.color.as_deref().unwrap_or("#1a73e8"), seg.continues_before, seg.continues_after, !seg.continues_after, &ev.title, &f_title);
         }
-        g.draw_line(&Pen::new(th.border, 1.0), PointF::new(b.left, grid_top - 0.5), PointF::new(b.right, grid_top - 0.5));
 
-        // The scrollable grid: clip to the grid region.
+        // Scrollable grid: clip to the grid region.
         let state = g.save();
         g.intersect_clip(Rect::new(b.left, grid_top, b.right, b.bottom));
-        // Hour lines + gutter labels.
         for h in 0..=24 {
             let y = grid_top + h as f32 * PX_PER_HOUR - scroll;
-            if y < grid_top - 1.0 || y > b.bottom + 1.0 {
-                continue;
+            if y >= grid_top - 1.0 && y <= b.bottom + 1.0 {
+                // Solid hour line (border @60%).
+                g.draw_line(&Pen::new(th.border.with_alpha(0.6), 1.0), PointF::new(b.left + GUTTER, y), PointF::new(b.right, y));
+                if h < 24 && h > 0 {
+                    g.draw_string(&format!("{h:02}:00"), &f_hour, Brush::solid(th.text_tertiary), Rect::new(b.left, y - 8.0, b.left + GUTTER - 8.0, y + 8.0), &fmt(StringAlignment::Far));
+                }
             }
-            g.draw_line(&Pen::new(th.surface2, 1.0), PointF::new(b.left + GUTTER, y), PointF::new(b.right, y));
-            if h < 24 {
-                g.draw_string(&format!("{h:02}:00"), &f10, Brush::solid(th.text_tertiary), Rect::new(b.left + 6.0, y + 2.0, b.left + GUTTER - 6.0, y + 18.0), &near(StringAlignment::Near));
+            // Half-hour guide (border @40%).
+            let yh = y + PX_PER_HOUR / 2.0;
+            if h < 24 && yh >= grid_top - 1.0 && yh <= b.bottom + 1.0 {
+                g.draw_line(&Pen::new(th.border.with_alpha(0.4), 1.0), PointF::new(b.left + GUTTER, yh), PointF::new(b.right, yh));
             }
         }
         // Timed events per column.
@@ -152,17 +164,13 @@ impl Control for TimeGrid {
             for blk in layout_day(&refs, offset) {
                 let ev = refs[blk.index];
                 let top = grid_top + blk.top_min as f32 / 60.0 * PX_PER_HOUR - scroll;
-                let height = ((blk.end_min - blk.top_min) as f32 / 60.0 * PX_PER_HOUR).max(18.0);
-                let x = col_x + day_w * blk.left_pct / 100.0 + 1.0;
-                let w = day_w * blk.width_pct / 100.0 - 2.0;
-                let rect = Rect::new(x, top, x + w, top + height);
-                let color = color_of(ev.color.as_deref().unwrap_or("#1a73e8"), hex(DEFAULT_EVENT_COLOR));
-                g.fill_rounded_rectangle(Brush::solid(color), rect, 4.0);
-                let label = format!("{} {}", hhmm(ev, offset), ev.title);
-                g.draw_string(&label, &f10, Brush::solid(Color::WHITE), Rect::new(rect.left + 5.0, rect.top + 2.0, rect.right - 3.0, rect.bottom), &near(StringAlignment::Near));
+                let height = ((blk.end_min - blk.top_min) as f32 / 60.0 * PX_PER_HOUR).max(20.0);
+                let x = col_x + day_w * blk.left_pct / 100.0 + 2.0;
+                let w = day_w * blk.width_pct / 100.0 - 4.0;
+                draw_event_pill(g, Rect::new(x, top, x + w, top + height), ev.color.as_deref().unwrap_or("#1a73e8"), Some(&hhmm(ev, offset)), &ev.title, &f_time, &f_title, false, true);
             }
         }
-        // The « now » line.
+        // The « now » line + gutter pill.
         let platform = kubuno_calendar_desktop_common::platform::current();
         let today = platform.clock.today();
         if let Some(col) = days.iter().position(|&d| d == today) {
@@ -170,8 +178,14 @@ impl Control for TimeGrid {
             let y = grid_top + now_min / 60.0 * PX_PER_HOUR - scroll;
             if y >= grid_top && y <= b.bottom {
                 let x0 = b.left + GUTTER + col as f32 * day_w;
-                g.fill_ellipse(Brush::solid(hex(0xd93025)), Rect::new(x0 - 4.0, y - 4.0, x0 + 4.0, y + 4.0));
-                g.draw_line(&Pen::new(hex(0xd93025), 2.0), PointF::new(x0, y), PointF::new(x0 + day_w, y));
+                let dot = if day_view { 5.0 } else { 4.0 };
+                g.fill_ellipse(Brush::solid(hex(DANGER)), Rect::new(x0 - dot, y - dot, x0 + dot, y + dot));
+                g.draw_line(&Pen::new(hex(DANGER), 2.0), PointF::new(x0, y), PointF::new(x0 + day_w, y));
+                // Gutter pill with the current time.
+                let pill = Rect::new(b.left + GUTTER - 46.0, y - 9.0, b.left + GUTTER - 4.0, y + 9.0);
+                g.fill_rounded_rectangle(Brush::solid(hex(DANGER)), pill, 8.0);
+                let hm = format!("{:02}:{:02}", (now_min as i32) / 60, (now_min as i32) % 60);
+                g.draw_string(&hm, &Font::with_dip("Segoe UI", 10.0, FontStyle::BOLD), Brush::solid(Color::WHITE), pill, &fmt(StringAlignment::Center));
             }
         }
         g.restore(state);
@@ -192,14 +206,6 @@ fn hhmm(ev: &kubuno_calendar_core::model::EventInstance, offset: i32) -> String 
             let l = i.local(offset);
             format!("{}:{:02}", l.hour, l.minute)
         }
-        None => String::new(),
-    }
-}
-
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
     }
 }
