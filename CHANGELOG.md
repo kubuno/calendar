@@ -17,6 +17,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: import and export `.ics`.** The sidebar's « Gérer » menu gains « Importer .ics… » and
+  « Exporter (.ics) » (web `CalendarImportModal.tsx` / the export download). Import opens a native file picker,
+  reads the chosen iCalendar file and uploads its events to the calendar (`POST /calendar/import`, preserving
+  each event's UID so re-imports update rather than duplicate); the list then refreshes. Export downloads the
+  calendar's iCalendar document (`GET /calendar/calendars/:id/export`) and saves it where the user chooses.
+  Both proven live against the server (a probed event imported, verified in the re-export, then removed).
+
 - **Desktop Calendar: subscribe to an external calendar.** A « Gérer » menu in the sidebar offers « S'abonner à
   un agenda… » (web `CalendarSubscribeModal.tsx`): a name and an .ics feed URL are posted to
   `POST /calendar/calendars/subscribe`, which mirrors the feed as a new read-only subscription calendar that

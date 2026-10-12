@@ -244,6 +244,54 @@ impl CalendarWindow {
         }
     }
 
+    /// The management target: the default writable calendar, else the opened document.
+    fn mgmt_target(&self) -> String {
+        let def = self.default_calendar();
+        if def.is_empty() { self.doc.clone().unwrap_or_default() } else { def }
+    }
+
+    /// « Exporter (.ics) »: download the calendar's iCalendar export, then save it where the user chooses.
+    fn export_click(&mut self) {
+        let cal = self.mgmt_target();
+        if cal.is_empty() {
+            return;
+        }
+        match kubuno_calendar_desktop_common::live::export_calendar(&cal) {
+            Ok(bytes) => {
+                if let Some(path) = crate::file_dialog::save_ics(Resources::mgmt_export(), "calendar.ics") {
+                    if let Err(e) = std::fs::write(&path, &bytes) {
+                        kubuno_desktop::tracing::error!("[calendar] export write failed: {e}");
+                    }
+                }
+            }
+            Err(e) => kubuno_desktop::tracing::error!("[calendar] export failed: {e}"),
+        }
+    }
+
+    /// « Importer (.ics) »: pick an iCalendar file and upload its events into the calendar on the server.
+    fn import_click(&mut self) {
+        let cal = self.mgmt_target();
+        if cal.is_empty() {
+            return;
+        }
+        let Some(path) = crate::file_dialog::open_ics(Resources::mgmt_import()) else { return };
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                kubuno_desktop::tracing::error!("[calendar] import read failed: {e}");
+                return;
+            }
+        };
+        match kubuno_calendar_desktop_common::live::import_ics(&cal, &content) {
+            Ok((total, imported, updated, skipped)) => {
+                kubuno_desktop::tracing::info!("[calendar] import: total={total} imported={imported} updated={updated} skipped={skipped}");
+                self.search_pool.clear();
+                self.reload_calendars();
+            }
+            Err(e) => kubuno_desktop::tracing::error!("[calendar] import failed: {e}"),
+        }
+    }
+
     /// Re-fetch the calendars list (after a management action) and repaint the sidebar.
     fn reload_calendars(&mut self) {
         if self.doc.is_some() {

@@ -10,6 +10,7 @@
 //! - `platform/` — the Windows overrides of the common extension points (the local clock and zone offset).
 
 pub mod controls;
+pub mod file_dialog;
 pub mod platform;
 pub mod views;
 mod windows_ui;
