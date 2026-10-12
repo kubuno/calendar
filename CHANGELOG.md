@@ -9,6 +9,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Added
+
+- **Shared calendar core (`kubuno-calendar-core`, `common/core`).** A platform-neutral, sans-IO Rust crate
+  that ports the web app's pure logic so the desktop and mobile clients compute exactly the same results as
+  the web: the civil-date and local wall-clock math, the month grid, the day/week overlap columns and the
+  all-day banner stacking, the RRULE presets/custom round trip/humanizer, and the moon-phase computation.
+  It is the foundation of the forthcoming native desktop Calendar app. Recurring series stay expanded on the
+  server, as before.
+
 ### Changed
 
 - **The repository is organised by platform.** The server (its sources, migrations, tests and configuration
