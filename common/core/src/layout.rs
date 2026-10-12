@@ -83,61 +83,110 @@ pub struct DayPlacement {
     pub width_pct: f32,
 }
 
-struct DayItem {
-    idx: usize,
-    s: i64,
-    e: i64,
+/// The side-by-side placement of one timed event, with its vertical span (`layoutDayEvents` plus the
+/// Day/Week geometry): `top_min`/`end_min` are the event's local minutes of day, `left_pct`/`width_pct` its
+/// column. The pixel geometry of the web is `top = top_min/60*PX_PER_HOUR`, `height = max((end-top)/60*PX, …)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DayBlock {
+    /// Index into the input slice.
+    pub index: usize,
+    pub left_pct: f32,
+    pub width_pct: f32,
+    /// Local start minute of day (0–1439).
+    pub top_min: i64,
+    /// Local end minute of day (clamped so a very short event still has room).
+    pub end_min: i64,
 }
 
-/// Side-by-side layout of overlapping timed events in a Day/Week column (`calendarUtils.layoutDayEvents`):
-/// group transitive overlaps into clusters, give each event the first free column, split the cluster width.
-/// Returns, for each input event, its placement in input order.
-pub fn layout_day_events(events: &[EventInstance], offset_minutes: i32) -> Vec<DayPlacement> {
-    let mut items: Vec<DayItem> = events
-        .iter()
-        .enumerate()
-        .map(|(idx, ev)| {
-            let s = Instant::parse(&ev.starts_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
-            let e_raw = Instant::parse(&ev.ends_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
-            DayItem { idx, s, e: e_raw.max(s + MIN_SPAN) }
-        })
-        .collect();
-    // Sort by start, then by longer-first (`a.s - b.s || b.e - a.e`). `sort_by` is stable, matching JS.
-    items.sort_by(|a, b| a.s.cmp(&b.s).then(b.e.cmp(&a.e)));
+/// Assign overlap columns to `(start, end)` spans, returning `(col, cluster_cols)` per input index
+/// (`calendarUtils.layoutDayEvents`'s cluster algorithm). Transitive overlaps form a cluster; each item takes
+/// the first free column; the cluster's width is split between its columns.
+fn assign_columns(spans: &[(i64, i64)]) -> Vec<(usize, usize)> {
+    // Sort indices by start, then longer-first (`a.s - b.s || b.e - a.e`); stable, matching JS.
+    let mut order: Vec<usize> = (0..spans.len()).collect();
+    order.sort_by(|&a, &b| spans[a].0.cmp(&spans[b].0).then(spans[b].1.cmp(&spans[a].1)));
 
-    let mut out = vec![DayPlacement { left_pct: 0.0, width_pct: 100.0 }; events.len()];
-    let mut cluster: Vec<(usize, i64, i64, usize)> = Vec::new(); // (idx, s, e, col)
+    let mut out = vec![(0usize, 1usize); spans.len()];
+    let mut cluster: Vec<(usize, i64, usize)> = Vec::new(); // (idx, end, col)
     let mut cluster_end = -1i64;
 
-    let flush = |cluster: &mut Vec<(usize, i64, i64, usize)>, out: &mut [DayPlacement]| {
+    let flush = |cluster: &mut Vec<(usize, i64, usize)>, out: &mut [(usize, usize)]| {
         if cluster.is_empty() {
             return;
         }
-        let cols = cluster.iter().map(|c| c.3).max().unwrap_or(0) + 1;
-        for &(idx, _, _, col) in cluster.iter() {
-            out[idx] = DayPlacement {
-                left_pct: (col as f32 / cols as f32) * 100.0,
-                width_pct: 100.0 / cols as f32,
-            };
+        let cols = cluster.iter().map(|c| c.2).max().unwrap_or(0) + 1;
+        for &(idx, _, col) in cluster.iter() {
+            out[idx] = (col, cols);
         }
         cluster.clear();
     };
 
-    for it in items {
-        if !cluster.is_empty() && it.s >= cluster_end {
+    for &idx in &order {
+        let (s, e) = spans[idx];
+        if !cluster.is_empty() && s >= cluster_end {
             flush(&mut cluster, &mut out);
             cluster_end = -1;
         }
-        let busy: Vec<usize> = cluster.iter().filter(|c| c.2 > it.s).map(|c| c.3).collect();
+        let busy: Vec<usize> = cluster.iter().filter(|c| c.1 > s).map(|c| c.2).collect();
         let mut col = 0;
         while busy.contains(&col) {
             col += 1;
         }
-        cluster.push((it.idx, it.s, it.e, col));
-        cluster_end = cluster_end.max(it.e);
+        cluster.push((idx, e, col));
+        cluster_end = cluster_end.max(e);
     }
     flush(&mut cluster, &mut out);
     out
+}
+
+/// Side-by-side layout of overlapping timed events in a Day/Week column (`calendarUtils.layoutDayEvents`).
+/// Returns, for each input event, its placement in input order.
+pub fn layout_day_events(events: &[EventInstance], offset_minutes: i32) -> Vec<DayPlacement> {
+    let spans: Vec<(i64, i64)> = events
+        .iter()
+        .map(|ev| {
+            let s = Instant::parse(&ev.starts_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
+            let e = Instant::parse(&ev.ends_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
+            (s, e.max(s + MIN_SPAN))
+        })
+        .collect();
+    assign_columns(&spans)
+        .into_iter()
+        .map(|(col, cols)| DayPlacement { left_pct: (col as f32 / cols as f32) * 100.0, width_pct: 100.0 / cols as f32 })
+        .collect()
+}
+
+/// The full placement (column + vertical span) of a day's timed events, for the Day/Week time grids. `events`
+/// is the day's timed events (e.g. from [`timed_events_for_day`]). Output is in input order.
+pub fn layout_day(events: &[&EventInstance], offset_minutes: i32) -> Vec<DayBlock> {
+    let raw: Vec<(i64, i64)> = events
+        .iter()
+        .map(|ev| {
+            let s = Instant::parse(&ev.starts_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
+            let e = Instant::parse(&ev.ends_at).map(|i| minute_of_day(i, offset_minutes)).unwrap_or(0);
+            (s, e)
+        })
+        .collect();
+    // Columns use the MIN_SPAN-padded span (overlap), the block keeps the real start/end for its height.
+    let spans: Vec<(i64, i64)> = raw.iter().map(|&(s, e)| (s, e.max(s + MIN_SPAN))).collect();
+    assign_columns(&spans)
+        .into_iter()
+        .enumerate()
+        .map(|(index, (col, cols))| DayBlock {
+            index,
+            left_pct: (col as f32 / cols as f32) * 100.0,
+            width_pct: 100.0 / cols as f32,
+            top_min: raw[index].0,
+            end_min: raw[index].1.max(raw[index].0 + MIN_SPAN),
+        })
+        .collect()
+}
+
+/// The days of a Day/Week/custom view: `count` consecutive days from the start of `anchor`'s week (or from
+/// `anchor` itself for a single day). `week_starts_on` is 0 for Sunday, 1 for Monday.
+pub fn week_days(anchor: Date, week_starts_on: u32, count: usize) -> Vec<Date> {
+    let start = if count <= 1 { anchor } else { start_of_week(anchor, week_starts_on) };
+    (0..count as i64).map(|k| start.add_days(k)).collect()
 }
 
 fn minute_of_day(i: Instant, offset_minutes: i32) -> i64 {
@@ -310,6 +359,36 @@ mod tests {
         assert!((p[1].left_pct - 50.0).abs() < 0.01);
         // c is alone → full width.
         assert!((p[2].width_pct - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn layout_day_blocks_have_columns_and_span() {
+        let a = ev("a", "2026-10-12T09:00:00Z", "2026-10-12T10:00:00Z", false);
+        let b = ev("b", "2026-10-12T09:30:00Z", "2026-10-12T10:30:00Z", false);
+        let c = ev("c", "2026-10-12T14:00:00Z", "2026-10-12T14:10:00Z", false);
+        let refs = [&a, &b, &c];
+        let blocks = layout_day(&refs, 0);
+        // a and b overlap → two 50% columns; their vertical span is the real minutes.
+        assert_eq!(blocks[0].top_min, 9 * 60);
+        assert_eq!(blocks[0].end_min, 10 * 60);
+        assert!((blocks[0].width_pct - 50.0).abs() < 0.01);
+        assert!((blocks[1].left_pct - 50.0).abs() < 0.01);
+        // c is alone, full width; its 10-minute span is padded to MIN_SPAN for overlap but the block keeps a
+        // height of at least MIN_SPAN.
+        assert!((blocks[2].width_pct - 100.0).abs() < 0.01);
+        assert_eq!(blocks[2].top_min, 14 * 60);
+        assert_eq!(blocks[2].end_min, 14 * 60 + MIN_SPAN);
+    }
+
+    #[test]
+    fn week_days_span() {
+        // 2026-10-14 (Wednesday). Monday-start week → Mon 12th … Sun 18th.
+        let days = week_days(Date::new(2026, 10, 14).expect("d"), 1, 7);
+        assert_eq!(days.len(), 7);
+        assert_eq!(days[0], Date::new(2026, 10, 12).expect("d"));
+        assert_eq!(days[6], Date::new(2026, 10, 18).expect("d"));
+        // A single day returns the anchor itself.
+        assert_eq!(week_days(Date::new(2026, 10, 14).expect("d"), 1, 1), vec![Date::new(2026, 10, 14).expect("d")]);
     }
 
     #[test]

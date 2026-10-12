@@ -14,7 +14,9 @@ pub mod platform;
 pub mod views;
 mod windows_ui;
 
+pub use controls::agenda_list::AgendaList;
 pub use controls::month_grid::MonthGrid;
+pub use controls::time_grid::TimeGrid;
 pub use views::calendar_window::CalendarWindow;
 pub use windows_ui::WindowsUi;
 

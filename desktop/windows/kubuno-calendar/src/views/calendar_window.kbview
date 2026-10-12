@@ -1,9 +1,9 @@
 <!--
   Kubuno Calendar's window, laid out like the web (CalendarApp.tsx): a tall title bar, a navigation toolbar
-  matching the web's shell-header nav (Today, ‹ ›, the period title, the view switcher), and the month grid in
-  the body. Increment A renders the Month view read-only at parity from the offline sample; Week/Day/Year/
-  Schedule are declared disabled until their increment lands (vskubuno docs/CALENDAR-DESKTOP.md §4), never a
-  fake one. The toolbar view buttons for the other views are disabled for the same reason.
+  matching the web's shell-header nav (Today, ‹ ›, the period title, the view switcher), and the active view in
+  the body. This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda) list from
+  the offline sample; the Year view and the server-coupled editing are later increments. The « Année » button
+  is disabled until its increment lands (vskubuno docs/CALENDAR-DESKTOP.md §4), never a fake one.
 -->
 <Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
        DesignWidth="1200" DesignHeight="800" Title="{Binding WindowTitle}"
@@ -18,13 +18,15 @@
     <Button x:Name="btn_next" Text="›" AccessibleName="{Res next}" X="140" Y="8" Width="32" Height="32" OnClick="next_click"/>
     <Label x:Name="period_label" Text="{Binding PeriodTitle}" Role="Subtitle" ForeColor="TextPrimary" TextAlign="MiddleLeft" X="188" Y="8" Width="320" Height="32"/>
 
-    <Button x:Name="btn_day" Text="{Res view_day}" Enabled="false" X="708" Y="8" Width="78" Height="32" Anchor="Top, Right"/>
-    <Button x:Name="btn_week" Text="{Res view_week}" Enabled="false" X="790" Y="8" Width="78" Height="32" Anchor="Top, Right"/>
-    <Button x:Name="btn_month" Text="{Res view_month}" Variant="Primary" X="872" Y="8" Width="84" Height="32" Anchor="Top, Right"/>
+    <Button x:Name="btn_day" Text="{Res view_day}" Variant="{Binding DayVariant}" X="708" Y="8" Width="78" Height="32" Anchor="Top, Right" OnClick="day_click"/>
+    <Button x:Name="btn_week" Text="{Res view_week}" Variant="{Binding WeekVariant}" X="790" Y="8" Width="78" Height="32" Anchor="Top, Right" OnClick="week_click"/>
+    <Button x:Name="btn_month" Text="{Res view_month}" Variant="{Binding MonthVariant}" X="872" Y="8" Width="84" Height="32" Anchor="Top, Right" OnClick="month_click"/>
     <Button x:Name="btn_year" Text="{Res view_year}" Enabled="false" X="960" Y="8" Width="78" Height="32" Anchor="Top, Right"/>
-    <Button x:Name="btn_agenda" Text="{Res view_agenda}" Enabled="false" X="1042" Y="8" Width="86" Height="32" Anchor="Top, Right"/>
+    <Button x:Name="btn_agenda" Text="{Res view_agenda}" Variant="{Binding AgendaVariant}" X="1042" Y="8" Width="86" Height="32" Anchor="Top, Right" OnClick="agenda_click"/>
   </Panel>
 
-  <!-- The body: the month grid. -->
-  <MonthGrid x:Name="month" AccessibleName="{Res view_month}" Dock="Fill"/>
+  <!-- The body: the active view. -->
+  <MonthGrid x:Name="month" AccessibleName="{Res view_month}" Dock="Fill" Visible="{Binding IsMonth}"/>
+  <TimeGrid x:Name="time_grid" AccessibleName="{Res view_week}" Dock="Fill" Visible="{Binding IsTimeGrid}"/>
+  <AgendaList x:Name="agenda" AccessibleName="{Res view_agenda}" Dock="Fill" Visible="{Binding IsAgenda}"/>
 </Panel>

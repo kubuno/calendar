@@ -25,8 +25,13 @@ number at release time, and CI publishes that section as the GitHub Release note
   weekday header, the 4/5/6-week grid, all-day and multi-day banners, up to four timed events a day then
   « +N », the today marker and the moon phases — laid out by the shared core and faithful to the web in both
   light and dark themes. A navigation toolbar (Today, ‹ ›, the period title, the view switcher) matches the
-  web. Rendering only for now (read-only, offline sample); the other views and the server-coupled editing
-  come in later increments.
+  web. Rendering only for now (read-only, offline sample); the server-coupled editing comes in later increments.
+
+- **Desktop Calendar: the Week, Day and Agenda views.** The app now also renders the **Day** and **Week** time
+  grids (an hour gutter, the day header with the today marker, an all-day banner row, a scrollable 24-hour grid
+  where overlapping events are laid out side by side, and the red « now » line) and the **Schedule / Agenda**
+  view (one group per day with its all-day and timed events), switched from the toolbar's view switcher, all
+  faithful to the web in light and dark. Rendering only (offline sample) for now.
 
 ### Changed
 
