@@ -1,0 +1,11 @@
+<Project Sdk="Kubuno.Rust.Sdk/1.1.1">
+
+  <!-- The portable layer of the native desktop Calendar app (launch options, view state, sample data,
+       platform extension points). This file is yours: edit it freely. -->
+  <PropertyGroup>
+    <CargoPackage>kubuno-calendar-desktop-common</CargoPackage>
+    <!-- One `cargo build` of the desktop workspace for every project of it (docs/RSPROJ.md, "Cargo workspaces"). -->
+    <CargoBuildScope>Workspace</CargoBuildScope>
+  </PropertyGroup>
+
+</Project>

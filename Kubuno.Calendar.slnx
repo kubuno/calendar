@@ -13,6 +13,10 @@
       <Build />
     </Project>
   </Folder>
+  <Folder Name="/Desktop/">
+    <Project Path="desktop/common/kubuno-calendar-desktop-common/Kubuno.Calendar.Desktop.Common.rsproj" />
+    <Project Path="desktop/windows/kubuno-calendar/Kubuno.Calendar.Desktop.rsproj" />
+  </Folder>
   <Folder Name="/Mobile/">
     <File Path="mobile/README.md" />
   </Folder>
