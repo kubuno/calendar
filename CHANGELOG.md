@@ -17,6 +17,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: the left sidebar (mini-month + calendars).** A sidebar now sits left of the views,
+  matching the web `CalendarSidebarBody.tsx`: a mini-month navigator (`CalendarMiniPanel`) with ‹ › month
+  arrows, the weekday row and round day cells (today a filled accent circle, other-month days dimmed), and the
+  « Mes agendas » list where each calendar has a colour-tinted checkbox and its name. Clicking a day in the
+  mini-month moves the main view's date; toggling a calendar's checkbox hides or shows its events across the
+  Month, Week and Day views (a `hidden_calendars` filter). Faithful to the web in light and dark.
+
 - **Desktop Calendar: live server connection (`--doc`).** Opening a calendar with `--doc <calendar-id>` now
   loads its real events from the server (`GET /calendar/events`) over the Kubuno desktop shell's token broker —
   the app borrows access tokens from the shell and never holds a password. The visible month's window is

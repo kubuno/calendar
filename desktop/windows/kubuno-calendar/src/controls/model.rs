@@ -18,6 +18,32 @@ pub struct State {
     pub view: CalendarView,
     /// Minutes east of UTC of the viewer's zone (the web reads instants in the browser's zone).
     pub offset_minutes: i32,
+    /// Calendar ids whose events the sidebar has hidden (`hiddenCalendarIds` in the web store).
+    pub hidden_calendars: Vec<String>,
+}
+
+impl State {
+    /// Is this calendar currently hidden in the sidebar?
+    pub fn is_hidden(&self, calendar_id: &str) -> bool {
+        self.hidden_calendars.iter().any(|c| c == calendar_id)
+    }
+
+    /// Toggle a calendar's visibility (the sidebar checkbox).
+    pub fn toggle_calendar(&mut self, calendar_id: &str) {
+        if let Some(pos) = self.hidden_calendars.iter().position(|c| c == calendar_id) {
+            self.hidden_calendars.remove(pos);
+        } else {
+            self.hidden_calendars.push(calendar_id.to_string());
+        }
+    }
+
+    /// The events the visible views should draw (those of calendars that are not hidden).
+    pub fn visible_events(&self) -> Vec<EventInstance> {
+        if self.hidden_calendars.is_empty() {
+            return self.events.clone();
+        }
+        self.events.iter().filter(|e| !self.is_hidden(&e.calendar_id)).cloned().collect()
+    }
 }
 
 impl Default for State {
@@ -29,6 +55,7 @@ impl Default for State {
             events: Vec::new(),
             view: CalendarView::new(today, ViewMode::Month, Lang::Fr),
             offset_minutes: 0,
+            hidden_calendars: Vec::new(),
         }
     }
 }
@@ -49,7 +76,8 @@ pub fn sample_state() -> State {
         events: sample::events(),
         view: CalendarView::new(today, ViewMode::Month, Lang::Fr),
         offset_minutes: 0,
-    }
+            hidden_calendars: Vec::new(),
+        }
 }
 
 /// `#rrggbb` literal → colour.

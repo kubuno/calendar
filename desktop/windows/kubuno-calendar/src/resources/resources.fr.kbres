@@ -51,4 +51,5 @@
   <String Name="rec_unit_week">semaine</String>
   <String Name="rec_unit_month">mois</String>
   <String Name="rec_unit_year">an</String>
+  <String Name="my_calendars">Mes agendas</String>
 </Resources>

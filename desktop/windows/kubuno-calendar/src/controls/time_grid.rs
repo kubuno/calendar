@@ -73,6 +73,7 @@ impl Control for TimeGrid {
         g.fill_rectangle(Brush::solid(th.surface0), b);
         let Some(model) = self.model.clone() else { return };
         let m = model.borrow();
+        let events = m.visible_events();
         let lang = m.view.lang;
         let offset = m.offset_minutes;
         let day_view = m.view.view == ViewMode::Day;
@@ -85,7 +86,7 @@ impl Control for TimeGrid {
         let n = days.len();
         let day_w = (b.right - b.left - GUTTER) / n as f32;
 
-        let banners = layout_banners(&m.events, &days, offset);
+        let banners = layout_banners(&events, &days, offset);
         let allday_h = if banners.rows > 0 { banners.rows as f32 * BANNER_STEP + 8.0 } else { 0.0 };
         let grid_top = b.top + HEADER_H + allday_h;
 
@@ -132,7 +133,7 @@ impl Control for TimeGrid {
             g.draw_line(&Pen::new(th.border, 1.0), PointF::new(b.left, grid_top - 0.5), PointF::new(b.right, grid_top - 0.5));
         }
         for seg in &banners.segs {
-            let ev = &m.events[seg.event_index];
+            let ev = &events[seg.event_index];
             let x0 = b.left + GUTTER + seg.start_col as f32 * day_w;
             let x1 = b.left + GUTTER + (seg.end_col + 1) as f32 * day_w;
             let y = b.top + HEADER_H + 4.0 + seg.row as f32 * BANNER_STEP;
@@ -160,7 +161,7 @@ impl Control for TimeGrid {
         // Timed events per column.
         for (k, &day) in days.iter().enumerate() {
             let col_x = b.left + GUTTER + k as f32 * day_w;
-            let refs = timed_events_for_day(&m.events, day, offset);
+            let refs = timed_events_for_day(&events, day, offset);
             for blk in layout_day(&refs, offset) {
                 let ev = refs[blk.index];
                 let top = grid_top + blk.top_min as f32 / 60.0 * PX_PER_HOUR - scroll;

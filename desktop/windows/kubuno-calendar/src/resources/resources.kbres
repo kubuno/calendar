@@ -51,4 +51,5 @@
   <String Name="rec_unit_week">week</String>
   <String Name="rec_unit_month">month</String>
   <String Name="rec_unit_year">year</String>
+  <String Name="my_calendars">My calendars</String>
 </Resources>

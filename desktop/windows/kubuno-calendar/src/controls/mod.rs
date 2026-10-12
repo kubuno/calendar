@@ -3,8 +3,10 @@
 //! The Year view is a later increment.
 
 pub mod agenda_list;
+pub mod calendar_list;
 pub mod color_swatches;
 pub mod draw;
+pub mod mini_month;
 pub mod model;
 pub mod month_grid;
 pub mod time_grid;

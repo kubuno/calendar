@@ -66,6 +66,7 @@ impl Control for AgendaList {
         g.fill_rectangle(Brush::solid(th.surface0), b);
         let Some(model) = self.model.clone() else { return };
         let m = model.borrow();
+        let events = m.visible_events();
         let lang = m.view.lang;
         let offset = m.offset_minutes;
         let fmt = |a| StringFormat { alignment: a, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
@@ -89,7 +90,7 @@ impl Control for AgendaList {
         let last = m.view.current.end_of_month();
         let mut day = first;
         while day <= last {
-            let evs = events_on_day(&m.events, day, offset);
+            let evs = events_on_day(&events, day, offset);
             if !evs.is_empty() {
                 let row_events_h = evs.len() as f32 * EV_H + (evs.len().saturating_sub(1)) as f32 * EV_GAP;
                 let row_h = row_events_h.max(44.0) + 16.0; // py-2 top/bottom

@@ -24,6 +24,15 @@
     <Dropdown x:Name="view_box" SelectedValue="{Binding ViewValue}" ItemsSource="{Binding ViewItems}" AccessibleName="{Res view_month}" X="1016" Y="12" Width="128" Height="32" Anchor="Top, Right" OnSelectedValueChanged="view_changed"/>
   </Panel>
 
+  <!-- The left sidebar (web CalendarSidebarBody): the mini-month navigator and the « Mes agendas » list. -->
+  <Panel x:Name="sidebar" Dock="Left" Width="256" BackColor="Surface">
+    <Panel Dock="Right" Width="1" BackColor="Border"/>
+    <MiniMonth x:Name="mini" X="4" Y="10" Width="248" Height="232" OnDatePicked="mini_date_picked"/>
+    <Panel X="12" Y="250" Width="232" Height="1" BackColor="Border"/>
+    <Label Text="{Res my_calendars}" Role="Caption" ForeColor="TextSecondary" X="14" Y="262" Width="220" Height="18"/>
+    <CalendarList x:Name="cal_list" X="6" Y="286" Width="244" Height="220" OnVisibilityChanged="cal_visibility_changed"/>
+  </Panel>
+
   <!-- The body: the active view. -->
   <MonthGrid x:Name="month" AccessibleName="{Res view_month}" Dock="Fill" Visible="{Binding IsMonth}" OnActivated="event_activated"/>
   <TimeGrid x:Name="time_grid" AccessibleName="{Res view_week}" Dock="Fill" Visible="{Binding IsTimeGrid}"/>

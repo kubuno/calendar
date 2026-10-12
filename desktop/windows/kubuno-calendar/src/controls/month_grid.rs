@@ -77,6 +77,8 @@ impl Control for MonthGrid {
         g.fill_rectangle(Brush::solid(th.surface0), b);
         let Some(model) = self.model.clone() else { return };
         let m = model.borrow();
+        // Only the calendars the sidebar keeps visible.
+        let events = m.visible_events();
         let lang = m.view.lang;
         let offset = m.offset_minutes;
         let fmt = |a| StringFormat { alignment: a, line_alignment: StringAlignment::Center, trimming: StringTrimming::EllipsisCharacter, flags: StringFormatFlags::NO_WRAP };
@@ -139,9 +141,9 @@ impl Control for MonthGrid {
             }
 
             // Banners spanning columns. Arrow tips only where the run leaves the visible MONTH.
-            let banners = layout_banners(&m.events, week_days, offset);
+            let banners = layout_banners(&events, week_days, offset);
             for seg in &banners.segs {
-                let ev = &m.events[seg.event_index];
+                let ev = &events[seg.event_index];
                 let x0 = b.left + seg.start_col as f32 * cw;
                 let x1 = b.left + (seg.end_col + 1) as f32 * cw;
                 let y = week_top + BANNER_TOP + seg.row as f32 * BANNER_ROW_H;
@@ -160,7 +162,7 @@ impl Control for MonthGrid {
             let chips_top = week_top + BANNER_TOP + banners.rows as f32 * BANNER_ROW_H + 2.0;
             for (col, &day) in week_days.iter().enumerate() {
                 let x = b.left + col as f32 * cw;
-                let chips = timed_events_for_day(&m.events, day, offset);
+                let chips = timed_events_for_day(&events, day, offset);
                 let mut y = chips_top;
                 for ev in chips.iter().take(MONTH_MAX_CHIPS) {
                     let rect = Rect::new(x + 4.0, y, x + cw - 4.0, y + CHIP_H);

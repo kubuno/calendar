@@ -17,6 +17,8 @@ use kubuno_calendar_core::date::Date;
 use kubuno_calendar_desktop_common::live::EventWrite;
 
 use crate::controls::agenda_list::AgendaList;
+use crate::controls::calendar_list::CalendarList;
+use crate::controls::mini_month::{MiniDateArgs, MiniMonth};
 use crate::controls::model::{shared, Shared, State};
 use crate::controls::month_grid::{ActivateArgs, MonthGrid};
 use crate::controls::time_grid::TimeGrid;
@@ -32,6 +34,10 @@ pub struct CalendarWindow {
     time_grid: Custom<TimeGrid>,
     #[control]
     agenda: Custom<AgendaList>,
+    #[control]
+    mini: Custom<MiniMonth>,
+    #[control]
+    cal_list: Custom<CalendarList>,
     #[bind]
     window_title: String,
     #[bind]
@@ -72,7 +78,7 @@ impl CalendarWindow {
         let offset = kubuno_calendar_desktop_common::platform::current().clock.utc_offset_minutes();
         let mut view = options.initial_state();
         view.today = kubuno_calendar_desktop_common::platform::current().clock.today();
-        let state = State { calendars, events, view, offset_minutes: offset };
+        let state = State { calendars, events, view, offset_minutes: offset, hidden_calendars: Vec::new() };
         let model = shared(state);
         let mut window = Self {
             window_title: Resources::app_title().to_string(),
@@ -101,6 +107,8 @@ impl CalendarWindow {
         self.month.with(|v| v.set_model(m.clone()));
         self.time_grid.with(|v| v.set_model(m.clone()));
         self.agenda.with(|v| v.set_model(m.clone()));
+        self.mini.with(|v| v.set_model(m.clone()));
+        self.cal_list.with(|v| v.set_model(m.clone()));
         // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.
         if self.doc.is_some() {
             if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
@@ -260,11 +268,27 @@ impl CalendarWindow {
         self.is_live = self.doc.is_some();
     }
 
-    /// Push the bound fields and repaint the visible view.
+    /// Push the bound fields and repaint the visible view and the sidebar.
     fn refresh(&mut self) {
         self.sync_bindings();
         self.month.with(|v| v.invalidate());
         self.time_grid.with(|v| v.invalidate());
         self.agenda.with(|v| v.invalidate());
+        self.mini.with(|v| v.invalidate());
+        self.cal_list.with(|v| v.invalidate());
+    }
+
+    /// A day was clicked in the sidebar mini-month: move the main view's date there.
+    fn mini_date_picked(&mut self, args: &MiniDateArgs) {
+        if let Some(d) = Date::parse(&args.date_iso) {
+            self.model.borrow_mut().view.current = d;
+            self.reload_live();
+            self.refresh();
+        }
+    }
+
+    /// A calendar's visibility was toggled in the sidebar: re-filter and repaint the views.
+    fn cal_visibility_changed(&mut self) {
+        self.refresh();
     }
 }
