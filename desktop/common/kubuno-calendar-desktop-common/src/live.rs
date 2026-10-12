@@ -46,12 +46,9 @@ fn request(method: &str, path: &str, body: Option<Vec<u8>>) -> Result<(u16, Vec<
     Ok((resp.status, resp.body))
 }
 
-/// The events of `calendar_id` over the window that covers `anchor`'s month grid (the server returns ready,
-/// expanded `EventInstance`s — the same shape the web receives).
-pub fn fetch_month(calendar_id: &str, anchor: Date, week_starts_on: u32) -> Result<Vec<EventInstance>, String> {
-    let grid = month_grid(anchor, week_starts_on);
-    let from = grid.first().ok_or("empty grid")?;
-    let until = grid.last().ok_or("empty grid")?.add_days(1);
+/// The events of `calendar_id` between `from` (inclusive) and `until` (exclusive), as the server's ready,
+/// expanded `EventInstance`s — the same shape the web receives.
+pub fn fetch_events(calendar_id: &str, from: Date, until: Date) -> Result<Vec<EventInstance>, String> {
     let path = format!(
         "{CAL_PREFIX}/events?from={}T00:00:00Z&until={}T00:00:00Z&calendar_ids={}",
         from.iso(),
@@ -68,6 +65,21 @@ pub fn fetch_month(calendar_id: &str, anchor: Date, week_starts_on: u32) -> Resu
     }
     let parsed: Events = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
     Ok(parsed.events)
+}
+
+/// The events over the window that covers `anchor`'s month grid.
+pub fn fetch_month(calendar_id: &str, anchor: Date, week_starts_on: u32) -> Result<Vec<EventInstance>, String> {
+    let grid = month_grid(anchor, week_starts_on);
+    let from = *grid.first().ok_or("empty grid")?;
+    let until = grid.last().ok_or("empty grid")?.add_days(1);
+    fetch_events(calendar_id, from, until)
+}
+
+/// The events of `anchor`'s whole year (for the Year view's density dots).
+pub fn fetch_year(calendar_id: &str, anchor: Date) -> Result<Vec<EventInstance>, String> {
+    let from = Date { year: anchor.year, month: 1, day: 1 };
+    let until = Date { year: anchor.year + 1, month: 1, day: 1 };
+    fetch_events(calendar_id, from, until)
 }
 
 /// What the event editor collected, ready for the REST API. `edit_id` present = edit (PATCH), absent = create

@@ -22,6 +22,7 @@ use crate::controls::mini_month::{MiniDateArgs, MiniMonth};
 use crate::controls::model::{shared, Shared, State};
 use crate::controls::month_grid::{ActivateArgs, MonthGrid};
 use crate::controls::time_grid::TimeGrid;
+use crate::controls::year_grid::{YearGrid, YearNavArgs};
 use crate::views::event_editor::EventEditor;
 use crate::Resources;
 
@@ -38,6 +39,8 @@ pub struct CalendarWindow {
     mini: Custom<MiniMonth>,
     #[control]
     cal_list: Custom<CalendarList>,
+    #[control]
+    year: Custom<YearGrid>,
     #[bind]
     window_title: String,
     #[bind]
@@ -48,6 +51,8 @@ pub struct CalendarWindow {
     is_time_grid: bool,
     #[bind]
     is_agenda: bool,
+    #[bind]
+    is_year: bool,
     #[bind]
     view_value: String,
     #[bind]
@@ -91,6 +96,7 @@ impl CalendarWindow {
                 ("day", Resources::view_day()),
                 ("week", Resources::view_week()),
                 ("month", Resources::view_month()),
+                ("year", Resources::view_year()),
                 ("schedule", Resources::view_agenda()),
             ]
             .into_iter()
@@ -109,6 +115,7 @@ impl CalendarWindow {
         self.agenda.with(|v| v.set_model(m.clone()));
         self.mini.with(|v| v.set_model(m.clone()));
         self.cal_list.with(|v| v.set_model(m.clone()));
+        self.year.with(|v| v.set_model(m.clone()));
         // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.
         if self.doc.is_some() {
             if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
@@ -139,22 +146,30 @@ impl CalendarWindow {
     /// background thread so the UI never blocks on the network; the result is posted back to the UI thread.
     fn reload_live(&mut self) {
         let Some(doc) = self.doc.clone() else { return };
-        let (anchor, wso) = {
+        let (anchor, wso, is_year) = {
             let m = self.model.borrow();
-            (m.view.current, m.view.week_starts_on)
+            (m.view.current, m.view.week_starts_on, m.view.view == ViewMode::Year)
+        };
+        // The Year view needs the whole year's events (for the density dots); the others, the month window.
+        let fetch = move || {
+            if is_year {
+                kubuno_calendar_desktop_common::live::fetch_year(&doc, anchor)
+            } else {
+                kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso)
+            }
         };
         match self.dispatcher() {
             // The usual path: fetch on a background thread, post the result back to the UI thread.
             Some(disp) => {
                 std::thread::spawn(move || {
-                    let result = kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso);
+                    let result = fetch();
                     drop(disp.begin_invoke(move |w: &mut CalendarWindow| w.on_loaded(result)));
                 });
             }
             // No dispatcher yet (the very first load, before the form is fully live): fetch inline so the
             // window opens already populated. A one-off localhost GET; navigation and CRUD are always async.
             None => {
-                let result = kubuno_calendar_desktop_common::live::fetch_month(&doc, anchor, wso);
+                let result = fetch();
                 self.on_loaded(result);
             }
         }
@@ -196,11 +211,26 @@ impl CalendarWindow {
         let view = match self.view_value.as_str() {
             "day" => ViewMode::Day,
             "week" => ViewMode::Week,
+            "year" => ViewMode::Year,
             "schedule" => ViewMode::Schedule,
             _ => ViewMode::Month,
         };
         self.model.borrow_mut().view.view = view;
+        self.reload_live();
         self.refresh();
+    }
+
+    /// Navigation from the Year view: open the clicked day as a Day view, or the clicked month as a Month view.
+    fn year_nav(&mut self, args: &YearNavArgs) {
+        if let Some(d) = Date::parse(&args.date_iso) {
+            {
+                let mut m = self.model.borrow_mut();
+                m.view.current = d;
+                m.view.view = if args.to_day { ViewMode::Day } else { ViewMode::Month };
+            }
+            self.reload_live();
+            self.refresh();
+        }
     }
 
     // ── Event editor (create / edit) ─────────────────────────────────────────
@@ -265,6 +295,7 @@ impl CalendarWindow {
         self.is_month = view == ViewMode::Month;
         self.is_time_grid = matches!(view, ViewMode::Day | ViewMode::Week | ViewMode::Custom);
         self.is_agenda = view == ViewMode::Schedule;
+        self.is_year = view == ViewMode::Year;
         self.view_value = view_id(view).to_string();
         drop(m);
         self.is_live = self.doc.is_some();
@@ -278,6 +309,7 @@ impl CalendarWindow {
         self.agenda.with(|v| v.invalidate());
         self.mini.with(|v| v.invalidate());
         self.cal_list.with(|v| v.invalidate());
+        self.year.with(|v| v.invalidate());
     }
 
     /// A day was clicked in the sidebar mini-month: move the main view's date there.

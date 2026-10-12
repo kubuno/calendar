@@ -37,4 +37,5 @@
   <MonthGrid x:Name="month" AccessibleName="{Res view_month}" Dock="Fill" Visible="{Binding IsMonth}" OnActivated="event_activated"/>
   <TimeGrid x:Name="time_grid" AccessibleName="{Res view_week}" Dock="Fill" Visible="{Binding IsTimeGrid}"/>
   <AgendaList x:Name="agenda" AccessibleName="{Res view_agenda}" Dock="Fill" Visible="{Binding IsAgenda}"/>
+  <YearGrid x:Name="year" AccessibleName="{Res view_year}" Dock="Fill" Visible="{Binding IsYear}" OnYearNav="year_nav"/>
 </Panel>

@@ -11,3 +11,4 @@ pub mod model;
 pub mod month_grid;
 pub mod time_grid;
 pub mod weekday_picker;
+pub mod year_grid;
