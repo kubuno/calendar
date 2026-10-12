@@ -79,7 +79,20 @@ pub struct EventWrite {
     pub ends_at: String,
     pub all_day: bool,
     pub location: String,
+    pub description: String,
     pub rrule: Option<String>,
+    /// The chosen event colour (`#rrggbb`); `None` = "default (calendar colour)".
+    pub color: Option<String>,
+    /// The reminders to store: `[{ "type": "...", "minutes_before": N }, …]`. `None` leaves them unchanged.
+    pub reminders: Option<serde_json::Value>,
+    /// Guests to invite (create only; the server's `attendees` input): `[{ "email": "…" }, …]`.
+    pub attendees: Option<serde_json::Value>,
+    pub guests_can_modify: Option<bool>,
+    pub guests_can_invite: Option<bool>,
+    pub guests_can_see_guests: Option<bool>,
+    /// The calendar the event belongs to, chosen in the calendar picker. On create it selects the target
+    /// calendar; on edit it moves the event. `None` keeps the default/current calendar.
+    pub calendar_target: Option<String>,
     pub edit_id: Option<String>,
     pub occurrence: Option<String>,
     pub scope: Option<String>,
@@ -93,8 +106,32 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
     body.insert("starts_at".into(), serde_json::Value::String(w.starts_at.clone()));
     body.insert("ends_at".into(), serde_json::Value::String(w.ends_at.clone()));
     body.insert("all_day".into(), serde_json::Value::Bool(w.all_day));
-    if !w.location.is_empty() {
-        body.insert("location".into(), serde_json::Value::String(w.location.clone()));
+    body.insert("location".into(), serde_json::Value::String(w.location.clone()));
+    body.insert("description".into(), serde_json::Value::String(w.description.clone()));
+    // Colour: a chosen swatch, or "default" — on edit that means clearing any per-event colour.
+    match &w.color {
+        Some(c) => {
+            body.insert("color".into(), serde_json::Value::String(c.clone()));
+        }
+        None if w.edit_id.is_some() => {
+            body.insert("clear_color".into(), serde_json::Value::Bool(true));
+        }
+        None => {}
+    }
+    if let Some(r) = &w.reminders {
+        body.insert("reminders".into(), r.clone());
+    }
+    if let Some(a) = &w.attendees {
+        body.insert("attendees".into(), a.clone());
+    }
+    if let Some(v) = w.guests_can_modify {
+        body.insert("guests_can_modify".into(), serde_json::Value::Bool(v));
+    }
+    if let Some(v) = w.guests_can_invite {
+        body.insert("guests_can_invite".into(), serde_json::Value::Bool(v));
+    }
+    if let Some(v) = w.guests_can_see_guests {
+        body.insert("guests_can_see_guests".into(), serde_json::Value::Bool(v));
     }
     match &w.rrule {
         Some(r) => {
@@ -108,13 +145,18 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
     }
     match &w.edit_id {
         None => {
-            body.insert("calendar_id".into(), serde_json::Value::String(calendar_id.to_string()));
+            let target = w.calendar_target.as_deref().unwrap_or(calendar_id);
+            body.insert("calendar_id".into(), serde_json::Value::String(target.to_string()));
             let (status, _) = request("POST", &format!("{CAL_PREFIX}/events"), Some(serde_json::to_vec(&body).map_err(|e| e.to_string())?))?;
             if !(200..300).contains(&status) {
                 return Err(format!("POST event → HTTP {status}"));
             }
         }
         Some(id) => {
+            // On edit the picker moves the event to another calendar.
+            if let Some(target) = &w.calendar_target {
+                body.insert("calendar_id".into(), serde_json::Value::String(target.clone()));
+            }
             let mut path = format!("{CAL_PREFIX}/events/{}", urlencode(id));
             let q = query(w.scope.as_deref(), w.occurrence.as_deref());
             if !q.is_empty() {
@@ -128,6 +170,21 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The calendars the signed-in user can see (`GET /calendar/calendars`), for the editor's calendar picker and
+/// the sidebar. The server returns `{ "calendars": [ … ] }`.
+pub fn fetch_calendars() -> Result<Vec<kubuno_calendar_core::model::Calendar>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/calendars"), None)?;
+    if status != 200 {
+        return Err(format!("GET calendars → HTTP {status}"));
+    }
+    #[derive(serde::Deserialize)]
+    struct Calendars {
+        calendars: Vec<kubuno_calendar_core::model::Calendar>,
+    }
+    let parsed: Calendars = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    Ok(parsed.calendars)
 }
 
 /// Create a timed event on `calendar_id` (`POST /calendar/events`). Returns the created event's id.

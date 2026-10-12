@@ -13,6 +13,8 @@ use kubuno_calendar_core::model::{EventInstance, Instant};
 use kubuno_calendar_core::rrule;
 use kubuno_calendar_desktop_common::live::EventWrite;
 
+use crate::Resources;
+
 #[kubuno_desktop::view("event_editor.kbview")]
 pub struct EventEditor {
     #[bind]
@@ -52,6 +54,10 @@ pub struct EventEditor {
     lang: Lang,
     edit_id: Option<String>,
     occurrence: Option<String>,
+    /// The RRULE built by the custom-recurrence dialog, used when `recurrence == "custom"`.
+    custom_rrule: Option<String>,
+    /// The recurrence value before the current dropdown change, to restore if the custom dialog is cancelled.
+    prev_recurrence: String,
 }
 
 impl EventEditor {
@@ -66,6 +72,7 @@ impl EventEditor {
         d.start_time = "09:00".into();
         d.end_time = "10:00".into();
         d.recurrence = "none".into();
+        d.prev_recurrence = "none".into();
         d.scope = "all".into();
         d.initialize_component();
         d
@@ -88,8 +95,10 @@ impl EventEditor {
         d.end_time = et;
         d.recurrence = rrule::preset_from_rrule(ev.rrule.as_deref());
         if d.recurrence == "custom" {
-            d.recurrence = "none".into(); // the custom editor is a later sub-increment; keep the rule untouched on save
+            // A rule beyond the simple presets: keep it and let the custom dialog edit it.
+            d.custom_rrule = ev.rrule.clone();
         }
+        d.prev_recurrence = d.recurrence.clone();
         d.is_recurring_edit = ev.is_recurring;
         d.occurrence = Some(ev.starts_at.clone());
         d.scope = "all".into();
@@ -114,6 +123,7 @@ impl EventEditor {
             ("weekly", if fr { "Toutes les semaines" } else { "Weekly" }),
             ("monthly", if fr { "Tous les mois" } else { "Monthly" }),
             ("yearly", if fr { "Tous les ans" } else { "Yearly" }),
+            ("custom", Resources::ev_recur_custom()),
         ];
         self.recur_items = Rows::from(recur.iter().map(|(v, l)| Row::new().with("Value", BValue::Str(v.to_string())).with("Label", BValue::Str(l.to_string()))).collect::<Vec<_>>());
         let scope = [
@@ -134,6 +144,27 @@ impl EventEditor {
 
     fn allday_changed(&mut self) {
         self.timed = !self.all_day;
+    }
+
+    /// The recurrence dropdown changed. « Personnalisé… » opens the custom-recurrence dialog; cancelling it
+    /// restores the previous selection. The other presets are remembered so a later cancel can restore them.
+    fn recur_changed(&mut self) {
+        if self.recurrence == "custom" {
+            let sd = Date::parse(&self.start_date).unwrap_or(Date { year: 2026, month: 1, day: 1 });
+            let dialog = crate::views::recurrence_dialog::RecurrenceDialog::for_rrule(self.custom_rrule.as_deref(), sd, self.lang);
+            match dialog.run(self) {
+                Some(rule) => {
+                    self.custom_rrule = Some(rule);
+                    self.prev_recurrence = "custom".into();
+                }
+                None => {
+                    // Cancelled: restore the previous selection.
+                    self.recurrence = self.prev_recurrence.clone();
+                }
+            }
+        } else {
+            self.prev_recurrence = self.recurrence.clone();
+        }
     }
 
     fn save_click(&mut self) {
@@ -157,17 +188,23 @@ impl EventEditor {
             let (eh, em) = hm(&self.end_time);
             (Instant::from_local(sd, sh, sm, 0, self.offset).iso_utc(), Instant::from_local(ed, eh, em, 0, self.offset).iso_utc())
         };
-        let rrule = if self.recurrence == "none" { None } else { rrule::build_rrule(&self.recurrence, sd) };
+        let rrule = match self.recurrence.as_str() {
+            "none" => None,
+            "custom" => self.custom_rrule.clone(),
+            preset => rrule::build_rrule(preset, sd),
+        };
         EventWrite {
             title: self.title.clone(),
             starts_at,
             ends_at,
             all_day: self.all_day,
             location: self.location.clone(),
+            description: self.description.clone(),
             rrule,
             edit_id: self.edit_id.clone(),
             occurrence: if self.is_recurring_edit { self.occurrence.clone() } else { None },
             scope: if self.is_recurring_edit { Some(self.scope.clone()) } else { None },
+            ..Default::default()
         }
     }
 }

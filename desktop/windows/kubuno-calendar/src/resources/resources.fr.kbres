@@ -22,4 +22,18 @@
   <String Name="ev_description">Description</String>
   <String Name="ev_save">Enregistrer</String>
   <String Name="ev_cancel">Annuler</String>
+  <String Name="ev_recur_custom">Personnalisé…</String>
+  <String Name="rec_title">Récurrence personnalisée</String>
+  <String Name="rec_every">Répéter tous les</String>
+  <String Name="rec_on">Répéter le</String>
+  <String Name="rec_ends">Se termine</String>
+  <String Name="rec_never">Jamais</String>
+  <String Name="rec_on_date">Le</String>
+  <String Name="rec_after">Après</String>
+  <String Name="rec_occurrences">occurrence(s)</String>
+  <String Name="rec_done">Terminé</String>
+  <String Name="rec_unit_day">jour</String>
+  <String Name="rec_unit_week">semaine</String>
+  <String Name="rec_unit_month">mois</String>
+  <String Name="rec_unit_year">an</String>
 </Resources>

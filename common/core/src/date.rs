@@ -20,6 +20,13 @@ pub struct Date {
     pub day: u32,
 }
 
+impl Default for Date {
+    /// The Unix epoch (`1970-01-01`) — a valid placeholder, since month/day `0` would be illegal.
+    fn default() -> Self {
+        Date { year: 1970, month: 1, day: 1 }
+    }
+}
+
 /// Days from 1970-01-01 to the given civil date (Howard Hinnant's `days_from_civil`).
 fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y as i64 - 1 } else { y as i64 };

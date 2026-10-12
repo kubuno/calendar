@@ -20,7 +20,7 @@
   <Dropdown x:Name="end_time_box" SelectedValue="{Binding EndTime, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Timed}" X="244" Y="198" Width="120" Height="36"/>
 
   <Label Text="{Res ev_recurrence}" Role="Caption" ForeColor="TextTertiary" X="24" Y="246" Width="200" Height="16"/>
-  <Dropdown x:Name="recur_box" SelectedValue="{Binding Recurrence, Mode=TwoWay}" ItemsSource="{Binding RecurItems}" X="24" Y="266" Width="340" Height="36"/>
+  <Dropdown x:Name="recur_box" SelectedValue="{Binding Recurrence, Mode=TwoWay}" ItemsSource="{Binding RecurItems}" X="24" Y="266" Width="340" Height="36" OnSelectedValueChanged="recur_changed"/>
 
   <Label Text="{Res ev_scope}" Role="Caption" ForeColor="TextTertiary" Visible="{Binding IsRecurringEdit}" X="24" Y="314" Width="200" Height="16"/>
   <Dropdown x:Name="scope_box" SelectedValue="{Binding Scope, Mode=TwoWay}" ItemsSource="{Binding ScopeItems}" Visible="{Binding IsRecurringEdit}" X="24" Y="334" Width="340" Height="36"/>

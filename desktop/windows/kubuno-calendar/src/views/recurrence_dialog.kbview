@@ -1,0 +1,37 @@
+<!--
+  The custom-recurrence dialog (web RecurrenceCustomDialog.tsx): « Répéter tous les N [unit] », the weekly
+  weekday toggles (WeekdayPicker), the monthly by-month-day / by-weekday choice, and the « Se termine » end
+  rule (Jamais / Le [date] / Après [N] occurrence(s)), with a live RRULE summary. 400px wide, like the web.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="400" DesignHeight="380"
+       AcceptButton="done" OnLoad="recurrence_load">
+
+  <!-- Répéter tous les N [jour / semaine / mois / an] -->
+  <Label Text="{Res rec_every}" Role="Caption" ForeColor="TextSecondary" X="20" Y="30" Width="128" Height="20"/>
+  <NumericField x:Name="interval_box" Value="{Binding Interval, Mode=TwoWay}" Minimum="1" Maximum="99" X="150" Y="24" Width="56" Height="36" OnValueChanged="interval_changed"/>
+  <Dropdown x:Name="freq_box" SelectedValue="{Binding Freq, Mode=TwoWay}" ItemsSource="{Binding FreqItems}" X="214" Y="24" Width="166" Height="36" OnSelectedValueChanged="freq_changed"/>
+
+  <!-- Weekly: Répéter le [L M M J V S D] -->
+  <Label Text="{Res rec_on}" Role="Caption" ForeColor="TextSecondary" Visible="{Binding IsWeekly}" X="20" Y="74" Width="200" Height="16"/>
+  <WeekdayPicker x:Name="days" Visible="{Binding IsWeekly}" X="20" Y="94" Width="256" Height="32" OnDaysChanged="days_changed"/>
+
+  <!-- Monthly: by day-of-month / by weekday rank -->
+  <RadioButton x:Name="mmode_day" Text="{Binding MonthLabel1}" Group="mmode" Value="bymonthday" SelectedValue="{Binding MonthMode, Mode=TwoWay}" Visible="{Binding IsMonthly}" X="20" Y="72" Width="360" Height="26" OnCheckedChanged="month_mode_changed"/>
+  <RadioButton x:Name="mmode_wday" Text="{Binding MonthLabel2}" Group="mmode" Value="byday" SelectedValue="{Binding MonthMode, Mode=TwoWay}" Visible="{Binding IsMonthly}" X="20" Y="102" Width="360" Height="26" OnCheckedChanged="month_mode_changed"/>
+
+  <!-- Se termine : Jamais / Le [date] / Après [N] occurrence(s) -->
+  <Label Text="{Res rec_ends}" Role="Caption" ForeColor="TextSecondary" X="20" Y="142" Width="200" Height="16"/>
+  <RadioButton x:Name="end_never" Text="{Res rec_never}" Group="end" Value="never" SelectedValue="{Binding EndMode, Mode=TwoWay}" X="20" Y="164" Width="360" Height="26" OnCheckedChanged="end_changed"/>
+  <RadioButton x:Name="end_until" Text="{Res rec_on_date}" Group="end" Value="until" SelectedValue="{Binding EndMode, Mode=TwoWay}" X="20" Y="196" Width="52" Height="26" OnCheckedChanged="end_changed"/>
+  <DatePicker x:Name="until_box" Date="{Binding Until, Mode=TwoWay}" X="76" Y="194" Width="180" Height="30" OnValueChanged="until_changed"/>
+  <RadioButton x:Name="end_count" Text="{Res rec_after}" Group="end" Value="count" SelectedValue="{Binding EndMode, Mode=TwoWay}" X="20" Y="228" Width="78" Height="26" OnCheckedChanged="end_changed"/>
+  <NumericField x:Name="count_box" Value="{Binding Count, Mode=TwoWay}" Minimum="1" Maximum="999" X="102" Y="226" Width="56" Height="30" OnValueChanged="count_changed"/>
+  <Label Text="{Res rec_occurrences}" Role="Caption" ForeColor="TextSecondary" X="164" Y="230" Width="200" Height="20"/>
+
+  <!-- Live summary (describeRrule) -->
+  <Label Text="{Binding Summary}" Role="Caption" ForeColor="TextTertiary" X="20" Y="268" Width="360" Height="44"/>
+
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="done" ActionBar.Region="Right" Text="{Res rec_done}" Variant="Primary" Width="140" Height="36" OnClick="done_click"/>
+</Panel>

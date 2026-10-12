@@ -29,8 +29,15 @@ number at release time, and CI publishes that section as the GitHub Release note
   daily / weekly / monthly / yearly), the scope when editing a recurring series (this / this and following /
   all), a location and a description — matching the web editor's fields and look in both light and dark. Save
   writes to the calendar REST API over the broker (`POST` to create, `PATCH` to edit, with the recurring
-  scope/occurrence) off the UI thread, and the view re-fetches. Guests, reminders, the colour picker, the
-  calendar picker and the full custom-recurrence dialog are later sub-increments.
+  scope/occurrence) off the UI thread, and the view re-fetches. Guests, reminders, the colour picker and the
+  calendar picker are later sub-increments.
+
+- **Desktop Calendar: the custom-recurrence dialog.** Choosing « Personnalisé… » in the recurrence field opens
+  a full RRULE builder matching the web `RecurrenceCustomDialog.tsx`: « Répéter tous les N jour/semaine/mois/an »,
+  the weekly weekday toggles (Monday first), the monthly « by day of the month / by weekday rank » choice, and
+  the « Se termine » rule (Never / on a date / after N occurrences), with a live French summary of the rule.
+  The built RRULE round-trips to the server (e.g. `FREQ=WEEKLY;BYDAY=MO,WE`, expanded on every chosen weekday),
+  and an existing custom rule is parsed back into the editor. Faithful to the web in both light and dark.
 
 - **Shared calendar core (`kubuno-calendar-core`, `common/core`).** A platform-neutral, sans-IO Rust crate
   that ports the web app's pure logic so the desktop and mobile clients compute exactly the same results as
