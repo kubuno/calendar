@@ -266,6 +266,66 @@ fn sync_attendees(event_id: &str, desired: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Subscribe to an external .ics feed (`POST /calendar/calendars/subscribe`): the server mirrors it as a new
+/// read-only calendar. Returns the new calendar's name on success.
+pub fn subscribe_calendar(name: &str, url: &str, color: &str) -> Result<String, String> {
+    let dto = serde_json::json!({ "name": name, "url": url, "color": color });
+    let (status, body) = request("POST", &format!("{CAL_PREFIX}/calendars/subscribe"), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST subscribe → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    Ok(v.get("calendar").and_then(|c| c.get("name")).and_then(|n| n.as_str()).unwrap_or(name).to_string())
+}
+
+/// Import an .ics document into `calendar_id` (`POST /calendar/import`). Returns `(total, imported, updated,
+/// skipped)`.
+pub fn import_ics(calendar_id: &str, ics_content: &str) -> Result<(i64, i64, i64, i64), String> {
+    let dto = serde_json::json!({ "calendar_id": calendar_id, "ics_content": ics_content });
+    let (status, body) = request("POST", &format!("{CAL_PREFIX}/import"), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST import → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let num = |k: &str| v.get(k).and_then(|x| x.as_i64()).unwrap_or(0);
+    Ok((num("total"), num("imported"), num("updated"), num("skipped")))
+}
+
+/// Export a calendar as .ics (`GET /calendar/calendars/:id/export`). Returns the raw iCalendar bytes.
+pub fn export_calendar(calendar_id: &str) -> Result<Vec<u8>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/calendars/{}/export", urlencode(calendar_id)), None)?;
+    if status != 200 {
+        return Err(format!("GET export → HTTP {status}"));
+    }
+    Ok(body)
+}
+
+/// The users a calendar is shared with (`GET /calendar/calendars/:id/shares`): `(shared_with, permission)`.
+pub fn list_shares(calendar_id: &str) -> Result<Vec<(String, String)>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/calendars/{}/shares", urlencode(calendar_id)), None)?;
+    if status != 200 {
+        return Err(format!("GET shares → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("shares").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|s| Some((s.get("shared_with")?.as_str()?.to_string(), s.get("permission").and_then(|p| p.as_str()).unwrap_or("read").to_string())))
+        .collect())
+}
+
+/// Make a calendar public (or private) — `PATCH /calendar/calendars/:id { is_public }` — for the public
+/// `.ics`/subscription feed. Returns the new `is_public`.
+pub fn set_calendar_public(calendar_id: &str, is_public: bool) -> Result<bool, String> {
+    let dto = serde_json::json!({ "is_public": is_public });
+    let (status, body) = request("PATCH", &format!("{CAL_PREFIX}/calendars/{}", urlencode(calendar_id)), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("PATCH calendar → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    Ok(v.get("calendar").and_then(|c| c.get("is_public")).and_then(|b| b.as_bool()).unwrap_or(is_public))
+}
+
 /// The calendars the signed-in user can see (`GET /calendar/calendars`), for the editor's calendar picker and
 /// the sidebar. The server returns `{ "calendars": [ … ] }`.
 pub fn fetch_calendars() -> Result<Vec<kubuno_calendar_core::model::Calendar>, String> {

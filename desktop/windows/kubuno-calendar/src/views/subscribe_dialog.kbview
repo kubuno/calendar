@@ -1,0 +1,10 @@
+<!-- Subscribe to an external .ics calendar feed (web CalendarSubscribeModal.tsx): a name and a URL. -->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Res sub_title}" DesignWidth="460" DesignHeight="230" AcceptButton="ok">
+  <Label Text="{Res sub_name}" Role="Caption" ForeColor="TextTertiary" X="24" Y="20" Width="400" Height="16"/>
+  <TextField x:Name="name_box" Text="{Binding Name, Mode=TwoWay}" X="24" Y="40" Width="412" Height="36"/>
+  <Label Text="{Res sub_url}" Role="Caption" ForeColor="TextTertiary" X="24" Y="86" Width="400" Height="16"/>
+  <TextField x:Name="url_box" Text="{Binding Url, Mode=TwoWay}" Placeholder="https://…/calendar.ics" X="24" Y="106" Width="412" Height="36"/>
+  <Button x:Name="cancel" ActionBar.Region="Right" Text="{Res ev_cancel}" Variant="Secondary" Width="120" Height="36" OnClick="cancel_click"/>
+  <Button x:Name="ok" ActionBar.Region="Right" Text="{Res sub_ok}" Variant="Primary" Width="140" Height="36" OnClick="ok_click"/>
+</Panel>

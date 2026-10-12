@@ -17,6 +17,11 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: subscribe to an external calendar.** A « Gérer » menu in the sidebar offers « S'abonner à
+  un agenda… » (web `CalendarSubscribeModal.tsx`): a name and an .ics feed URL are posted to
+  `POST /calendar/calendars/subscribe`, which mirrors the feed as a new read-only subscription calendar that
+  then appears in the sidebar. Proven live.
+
 - **Desktop Calendar: the Year view.** A new « Année » view in the switcher shows the twelve months of the
   year as a 4×3 grid of mini-months (web `YearView.tsx`): each with its name (in the accent colour for the
   current month) and event count, a weekday row, and the days with today as a filled accent disc and up to

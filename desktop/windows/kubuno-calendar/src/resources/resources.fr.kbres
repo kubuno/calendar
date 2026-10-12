@@ -58,4 +58,14 @@
   <String Name="sb_moon">Lune</String>
   <String Name="sb_booking">Pages de réservation</String>
   <String Name="sb_booking_none">Aucun planning</String>
+  <String Name="mgmt_menu">Gérer</String>
+  <String Name="mgmt_subscribe">S'abonner à un agenda…</String>
+  <String Name="mgmt_import">Importer .ics…</String>
+  <String Name="mgmt_share">Partager…</String>
+  <String Name="mgmt_export">Exporter (.ics)</String>
+  <String Name="mgmt_caldav">CalDAV…</String>
+  <String Name="sub_title">S'abonner à un agenda</String>
+  <String Name="sub_name">Nom</String>
+  <String Name="sub_url">URL de l'agenda (.ics)</String>
+  <String Name="sub_ok">S'abonner</String>
 </Resources>

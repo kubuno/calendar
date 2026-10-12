@@ -32,7 +32,10 @@
     <Panel Dock="Right" Width="1" BackColor="Border"/>
     <MiniMonth x:Name="mini" X="4" Y="10" Width="248" Height="232" OnDatePicked="mini_date_picked"/>
     <Panel X="12" Y="250" Width="232" Height="1" BackColor="Border"/>
-    <Label Text="{Res my_calendars}" Role="Caption" ForeColor="TextSecondary" X="14" Y="262" Width="220" Height="18"/>
+    <Label Text="{Res my_calendars}" Role="Caption" ForeColor="TextSecondary" X="14" Y="262" Width="150" Height="18"/>
+    <DropDownButton x:Name="mgmt_btn" Text="{Res mgmt_menu}" Variant="Ghost" Size="Sm" X="162" Y="256" Width="86" Height="24">
+      <MenuItem Text="{Res mgmt_subscribe}" Icon="Rss" OnClick="subscribe_click"/>
+    </DropDownButton>
     <CalendarList x:Name="cal_list" X="6" Y="286" Width="244" Height="72" OnVisibilityChanged="cal_visibility_changed"/>
 
     <!-- Weather, Moon and Booking sections (web CalendarSidebarBody). -->

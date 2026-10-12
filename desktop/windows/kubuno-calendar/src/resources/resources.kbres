@@ -58,4 +58,14 @@
   <String Name="sb_moon">Moon</String>
   <String Name="sb_booking">Booking pages</String>
   <String Name="sb_booking_none">No schedules</String>
+  <String Name="mgmt_menu">Manage</String>
+  <String Name="mgmt_subscribe">Subscribe to a calendar…</String>
+  <String Name="mgmt_import">Import .ics…</String>
+  <String Name="mgmt_share">Share…</String>
+  <String Name="mgmt_export">Export (.ics)</String>
+  <String Name="mgmt_caldav">CalDAV…</String>
+  <String Name="sub_title">Subscribe to a calendar</String>
+  <String Name="sub_name">Name</String>
+  <String Name="sub_url">Calendar URL (.ics)</String>
+  <String Name="sub_ok">Subscribe</String>
 </Resources>

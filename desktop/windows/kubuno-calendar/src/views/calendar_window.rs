@@ -234,6 +234,27 @@ impl CalendarWindow {
         self.refresh();
     }
 
+    /// « S'abonner à un agenda »: ask for a name and an .ics URL, then create the subscription on the server.
+    fn subscribe_click(&mut self) {
+        if let Some((name, url)) = crate::views::subscribe_dialog::SubscribeDialog::new().run(self) {
+            match kubuno_calendar_desktop_common::live::subscribe_calendar(&name, &url, "#0b8043") {
+                Ok(_) => self.reload_calendars(),
+                Err(e) => kubuno_desktop::tracing::error!("[calendar] subscribe failed: {e}"),
+            }
+        }
+    }
+
+    /// Re-fetch the calendars list (after a management action) and repaint the sidebar.
+    fn reload_calendars(&mut self) {
+        if self.doc.is_some() {
+            if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
+                self.model.borrow_mut().calendars = cals;
+            }
+        }
+        self.reload_live();
+        self.refresh();
+    }
+
     /// The toolbar search field changed: filter the ±1-year event pool by the query (title / description /
     /// location) and show the results list, like the web's `SearchResultsView`.
     fn search_changed(&mut self) {
