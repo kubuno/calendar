@@ -17,6 +17,22 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: the scheduling / booking pages.** The sidebar gains a « Pages de réservation » section
+  that lists the owner's bookable appointment schedules and a « Nouveau planning » entry (web
+  `CalendarSidebarBody` / the `/calendar/scheduling` page), plus a full appointment-schedule editor (web
+  `AppointmentScheduleEditor.tsx`): a two-pane page with a settings pane — a title, the appointment duration,
+  the weekly availability (per weekday, a time range), the time zone, the scheduling window (rolling vs fixed
+  dates, max days ahead, minimum notice), the booked-appointment settings (buffer, max per day, guests may
+  invite) and the target calendar, then a second step for the location/conferencing, description and email
+  reminders — and a live week-availability preview that mirrors the chosen ranges. Create and configure are
+  wired to the appointment REST API (`/calendar/appointment-schedules`, create/update/list/get/delete) and the
+  round-trip is proven live against the server. (First increment: the weekly editor manages one range per
+  weekday — extra ranges and date-specific overrides on an existing schedule are preserved untouched — and the
+  custom booking-form-field builder is not yet ported.)
+
+- **Desktop Calendar: the sidebar is laid out more compactly** so the weather, moon and booking sections fit a
+  short window without being pushed below the fold.
+
 - **Desktop Calendar: CalDAV access.** The sidebar's « Gérer » menu gains « CalDAV… » (web
   `CalendarCalDavSettings.tsx`): a dialog showing the CalDAV connection details to sync the calendars with
   Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. — the main endpoint (server URL + username,

@@ -497,6 +497,186 @@ fn query(scope: Option<&str>, occurrence: Option<&str>) -> String {
     parts.join("&")
 }
 
+// ── Appointment schedules (bookable booking pages) ───────────────────────────────────────────────────────────
+// The desktop counterpart of the web `appointmentApi` (`web/src/api.ts`) and `AppointmentScheduleEditor.tsx`.
+
+/// One availability rule: weekly (weekday 0=Mon…6=Sun) or date-specific. Times are minutes from midnight in the
+/// schedule's timezone (web `AvailabilityRule`).
+#[derive(Debug, Clone, Default)]
+pub struct AvailRule {
+    pub weekday: Option<i32>,
+    pub specific_date: Option<String>,
+    pub start_minute: i32,
+    pub end_minute: i32,
+}
+
+/// The editable shape of an appointment schedule (web `SaveScheduleDto`).
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleWrite {
+    pub calendar_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub duration_minutes: i32,
+    pub buffer_minutes: Option<i32>,
+    pub max_per_day: Option<i32>,
+    pub timezone: String,
+    pub window_type: String,
+    pub window_max_days: Option<i32>,
+    pub window_min_hours: Option<i32>,
+    pub window_start_date: Option<String>,
+    pub window_end_date: Option<String>,
+    pub location_type: String,
+    pub location_details: Option<String>,
+    pub guests_can_invite: bool,
+    pub host_name: Option<String>,
+    pub email_reminders: Vec<i32>,
+    pub availability: Vec<AvailRule>,
+}
+
+/// A schedule as the sidebar list needs it.
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleSummary {
+    pub id: String,
+    pub title: String,
+    pub duration_minutes: i32,
+    pub public_token: String,
+}
+
+/// A schedule's full editable state, for seeding the editor when editing (web `appointmentApi.get`).
+#[derive(Debug, Clone, Default)]
+pub struct ScheduleFull {
+    pub id: String,
+    pub write: ScheduleWrite,
+    pub public_token: String,
+}
+
+fn sched_summary(v: &serde_json::Value) -> Option<ScheduleSummary> {
+    Some(ScheduleSummary {
+        id: v.get("id")?.as_str()?.to_string(),
+        title: v.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        duration_minutes: v.get("duration_minutes").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+        public_token: v.get("public_token").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+    })
+}
+
+/// The owner's bookable schedules (`GET /calendar/appointment-schedules`).
+pub fn list_schedules() -> Result<Vec<ScheduleSummary>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/appointment-schedules"), None)?;
+    if status != 200 {
+        return Err(format!("GET schedules → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    Ok(v.get("schedules").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(sched_summary).collect()).unwrap_or_default())
+}
+
+/// One schedule with its availability (`GET /calendar/appointment-schedules/:id`), for the editor.
+pub fn get_schedule(id: &str) -> Result<ScheduleFull, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/appointment-schedules/{}", urlencode(id)), None)?;
+    if status != 200 {
+        return Err(format!("GET schedule → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let s = v.get("schedule").ok_or("no schedule in response")?;
+    let str_opt = |k: &str| s.get(k).and_then(|x| x.as_str()).map(|x| x.to_string());
+    let i32_opt = |k: &str| s.get(k).and_then(|x| x.as_i64()).map(|x| x as i32);
+    let availability = s
+        .get("availability")
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|r| AvailRule {
+                    weekday: r.get("weekday").and_then(|x| x.as_i64()).map(|x| x as i32),
+                    specific_date: r.get("specific_date").and_then(|x| x.as_str()).map(|x| x.to_string()),
+                    start_minute: r.get("start_minute").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+                    end_minute: r.get("end_minute").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let reminders = s
+        .get("email_reminders")
+        .and_then(|a| a.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_i64().map(|n| n as i32)).collect())
+        .unwrap_or_default();
+    Ok(ScheduleFull {
+        id: s.get("id").and_then(|x| x.as_str()).unwrap_or(id).to_string(),
+        public_token: s.get("public_token").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        write: ScheduleWrite {
+            calendar_id: str_opt("calendar_id").unwrap_or_default(),
+            title: str_opt("title").unwrap_or_default(),
+            description: str_opt("description"),
+            duration_minutes: i32_opt("duration_minutes").unwrap_or(60),
+            buffer_minutes: i32_opt("buffer_minutes"),
+            max_per_day: i32_opt("max_per_day"),
+            timezone: str_opt("timezone").unwrap_or_else(|| "UTC".to_string()),
+            window_type: str_opt("window_type").unwrap_or_else(|| "rolling".to_string()),
+            window_max_days: i32_opt("window_max_days"),
+            window_min_hours: i32_opt("window_min_hours"),
+            window_start_date: str_opt("window_start_date"),
+            window_end_date: str_opt("window_end_date"),
+            location_type: str_opt("location_type").unwrap_or_else(|| "none".to_string()),
+            location_details: str_opt("location_details"),
+            guests_can_invite: s.get("guests_can_invite").and_then(|x| x.as_bool()).unwrap_or(true),
+            host_name: str_opt("host_name"),
+            email_reminders: reminders,
+            availability,
+        },
+    })
+}
+
+/// Create or update an appointment schedule (`POST`/`PATCH /calendar/appointment-schedules`). Returns its id.
+pub fn save_schedule(w: &ScheduleWrite, edit_id: Option<&str>) -> Result<String, String> {
+    let rules: Vec<serde_json::Value> = w
+        .availability
+        .iter()
+        .map(|r| serde_json::json!({ "weekday": r.weekday, "specific_date": r.specific_date, "start_minute": r.start_minute, "end_minute": r.end_minute }))
+        .collect();
+    let dto = serde_json::json!({
+        "calendar_id": w.calendar_id,
+        "title": w.title,
+        "description": w.description,
+        "duration_minutes": w.duration_minutes,
+        "buffer_minutes": w.buffer_minutes,
+        "max_per_day": w.max_per_day,
+        "timezone": w.timezone,
+        "window_type": w.window_type,
+        "window_max_days": w.window_max_days,
+        "window_min_hours": w.window_min_hours,
+        "window_start_date": w.window_start_date,
+        "window_end_date": w.window_end_date,
+        "location_type": w.location_type,
+        "location_details": w.location_details,
+        "guests_can_invite": w.guests_can_invite,
+        "host_name": w.host_name,
+        "email_reminders": w.email_reminders,
+        "availability": rules,
+    });
+    let body = serde_json::to_vec(&dto).map_err(|e| e.to_string())?;
+    let (status, resp) = match edit_id {
+        Some(id) => request("PATCH", &format!("{CAL_PREFIX}/appointment-schedules/{}", urlencode(id)), Some(body))?,
+        None => request("POST", &format!("{CAL_PREFIX}/appointment-schedules"), Some(body))?,
+    };
+    if !(200..300).contains(&status) {
+        return Err(format!("save schedule → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&resp).map_err(|e| e.to_string())?;
+    Ok(v.get("schedule").and_then(|s| s.get("id")).and_then(|x| x.as_str()).unwrap_or("").to_string())
+}
+
+/// Delete an appointment schedule (`DELETE /calendar/appointment-schedules/:id`).
+pub fn delete_schedule(id: &str) -> Result<(), String> {
+    let (status, _) = request("DELETE", &format!("{CAL_PREFIX}/appointment-schedules/{}", urlencode(id)), None)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("DELETE schedule → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// The public booking-page URL to share with invitees (web `appointmentApi.bookingPageUrl`).
+pub fn booking_page_url(token: &str) -> String {
+    format!("{}/api/v1/calendar/public/appointments/{}/page", server_origin(), urlencode(token))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

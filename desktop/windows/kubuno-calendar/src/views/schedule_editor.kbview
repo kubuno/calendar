@@ -1,0 +1,127 @@
+<!--
+  Appointment-schedule editor (web AppointmentScheduleEditor.tsx): a two-pane page — a settings pane on the left
+  (a title, then two steps: duration / weekly availability / scheduling window / booked settings / calendar,
+  then location / description / reminders) and a live week-availability preview on the right.
+-->
+<Panel xmlns="https://kubuno.com/views" xmlns:x="https://kubuno.com/views/x"
+       WindowKind="Dialog" Title="{Binding WindowTitle}" DesignWidth="1060" DesignHeight="700"
+       AcceptButton="primary" OnLoad="editor_load">
+
+  <!-- Bottom action bar. -->
+  <Panel Dock="Bottom" Height="56" BackColor="Surface">
+    <Panel Dock="Top" Height="1" BackColor="Border"/>
+    <Button x:Name="cancel" Text="{Res ev_cancel}" Variant="Ghost" Visible="{Binding IsStep1}" X="16" Y="12" Width="110" Height="34" OnClick="cancel_click"/>
+    <Button x:Name="back" Text="{Res appt_back}" Variant="Secondary" Visible="{Binding IsStep2}" X="16" Y="12" Width="110" Height="34" OnClick="back_click"/>
+    <Button x:Name="primary" Text="{Binding PrimaryLabel}" Variant="Primary" Anchor="Top, Right" X="924" Y="12" Width="120" Height="34" OnClick="primary_click"/>
+  </Panel>
+
+  <!-- Left settings pane. -->
+  <Panel Dock="Left" Width="560" BackColor="Surface">
+    <Panel Dock="Right" Width="1" BackColor="Border"/>
+    <TextField x:Name="title_box" Dock="Top" Text="{Binding Title, Mode=TwoWay}" Placeholder="{Res appt_add_title}" Height="48" Margin="16,12,16,8"/>
+
+    <Panel Dock="Fill" AutoScroll="true">
+
+      <!-- ── Step 1 ── -->
+      <Panel x:Name="step1" Visible="{Binding IsStep1}" X="0" Y="0" Width="540" Height="792">
+        <Label Text="{Res appt_duration}" Role="Caption" ForeColor="TextSecondary" X="16" Y="6" Width="500" Height="16"/>
+        <Dropdown x:Name="dur_box" SelectedValue="{Binding DurationValue, Mode=TwoWay}" ItemsSource="{Binding DurationItems}" X="16" Y="26" Width="220" Height="34"/>
+
+        <Label Text="{Res appt_availability}" Role="Caption" ForeColor="TextSecondary" X="16" Y="74" Width="500" Height="16"/>
+        <!-- 7 weekday rows: label · available · start – end -->
+        <Label Text="{Binding Day0Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="98" Width="92" Height="30"/>
+        <CheckBox x:Name="d0" Checked="{Binding Day0On, Mode=TwoWay}" X="110" Y="100" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day0Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day0On}" X="138" Y="98" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day0On}" X="252" Y="98" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day0End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day0On}" X="268" Y="98" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day1Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="132" Width="92" Height="30"/>
+        <CheckBox x:Name="d1" Checked="{Binding Day1On, Mode=TwoWay}" X="110" Y="134" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day1Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day1On}" X="138" Y="132" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day1On}" X="252" Y="132" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day1End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day1On}" X="268" Y="132" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day2Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="166" Width="92" Height="30"/>
+        <CheckBox x:Name="d2" Checked="{Binding Day2On, Mode=TwoWay}" X="110" Y="168" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day2Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day2On}" X="138" Y="166" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day2On}" X="252" Y="166" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day2End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day2On}" X="268" Y="166" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day3Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="200" Width="92" Height="30"/>
+        <CheckBox x:Name="d3" Checked="{Binding Day3On, Mode=TwoWay}" X="110" Y="202" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day3Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day3On}" X="138" Y="200" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day3On}" X="252" Y="200" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day3End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day3On}" X="268" Y="200" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day4Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="234" Width="92" Height="30"/>
+        <CheckBox x:Name="d4" Checked="{Binding Day4On, Mode=TwoWay}" X="110" Y="236" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day4Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day4On}" X="138" Y="234" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day4On}" X="252" Y="234" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day4End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day4On}" X="268" Y="234" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day5Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="268" Width="92" Height="30"/>
+        <CheckBox x:Name="d5" Checked="{Binding Day5On, Mode=TwoWay}" X="110" Y="270" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day5Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day5On}" X="138" Y="268" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day5On}" X="252" Y="268" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day5End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day5On}" X="268" Y="268" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Binding Day6Label}" Role="Caption" ForeColor="TextPrimary" X="16" Y="302" Width="92" Height="30"/>
+        <CheckBox x:Name="d6" Checked="{Binding Day6On, Mode=TwoWay}" X="110" Y="304" Width="22" Height="26" OnCheckedChanged="avail_changed"/>
+        <Dropdown SelectedValue="{Binding Day6Start, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day6On}" X="138" Y="302" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+        <Label Text="–" ForeColor="TextTertiary" Visible="{Binding Day6On}" X="252" Y="302" Width="12" Height="30"/>
+        <Dropdown SelectedValue="{Binding Day6End, Mode=TwoWay}" ItemsSource="{Binding TimeItems}" Visible="{Binding Day6On}" X="268" Y="302" Width="110" Height="30" OnSelectedValueChanged="avail_changed"/>
+
+        <Label Text="{Res appt_timezone}" Role="Caption" ForeColor="TextSecondary" X="16" Y="344" Width="500" Height="16"/>
+        <Dropdown x:Name="tz_box" SelectedValue="{Binding TzValue, Mode=TwoWay}" ItemsSource="{Binding TzItems}" X="16" Y="364" Width="340" Height="34"/>
+
+        <Label Text="{Res appt_window}" Role="Caption" ForeColor="TextSecondary" X="16" Y="412" Width="500" Height="16"/>
+        <RadioButton x:Name="win_roll" Text="{Res appt_window_rolling}" Group="win" Value="rolling" SelectedValue="{Binding WindowValue, Mode=TwoWay}" X="16" Y="434" Width="500" Height="26" OnCheckedChanged="window_changed"/>
+        <RadioButton x:Name="win_fixed" Text="{Res appt_window_fixed}" Group="win" Value="fixed" SelectedValue="{Binding WindowValue, Mode=TwoWay}" X="16" Y="462" Width="500" Height="26" OnCheckedChanged="window_changed"/>
+        <DatePicker x:Name="start_box" Date="{Binding StartDate, Mode=TwoWay}" Visible="{Binding FixedVisible}" X="40" Y="492" Width="170" Height="30"/>
+        <DatePicker x:Name="end_box" Date="{Binding EndDate, Mode=TwoWay}" Visible="{Binding FixedVisible}" X="220" Y="492" Width="170" Height="30"/>
+
+        <CheckBox x:Name="maxdays_box" Text="{Res appt_max_days}" Checked="{Binding MaxdaysOn, Mode=TwoWay}" X="16" Y="528" Width="180" Height="26"/>
+        <NumericField Value="{Binding Maxdays, Mode=TwoWay}" Minimum="1" Maximum="365" X="200" Y="526" Width="64" Height="30"/>
+        <Label Text="{Res appt_days}" ForeColor="TextSecondary" X="272" Y="528" Width="200" Height="26"/>
+        <CheckBox x:Name="minhours_box" Text="{Res appt_min_hours}" Checked="{Binding MinhoursOn, Mode=TwoWay}" X="16" Y="560" Width="180" Height="26"/>
+        <NumericField Value="{Binding Minhours, Mode=TwoWay}" Minimum="0" Maximum="720" X="200" Y="558" Width="64" Height="30"/>
+        <Label Text="{Res appt_hours}" ForeColor="TextSecondary" X="272" Y="560" Width="200" Height="26"/>
+
+        <Label Text="{Res appt_booked_settings}" Role="Caption" ForeColor="TextSecondary" X="16" Y="596" Width="500" Height="16"/>
+        <CheckBox x:Name="buffer_box" Text="{Res appt_buffer}" Checked="{Binding BufferOn, Mode=TwoWay}" X="16" Y="618" Width="220" Height="26"/>
+        <NumericField Value="{Binding Buffer, Mode=TwoWay}" Minimum="0" Maximum="240" X="240" Y="616" Width="64" Height="30"/>
+        <Label Text="{Res appt_min}" ForeColor="TextSecondary" X="312" Y="618" Width="60" Height="26"/>
+        <CheckBox x:Name="maxperday_box" Text="{Res appt_max_per_day}" Checked="{Binding MaxperdayOn, Mode=TwoWay}" X="16" Y="650" Width="260" Height="26"/>
+        <NumericField Value="{Binding Maxperday, Mode=TwoWay}" Minimum="1" Maximum="99" X="280" Y="648" Width="64" Height="30"/>
+        <CheckBox x:Name="guests_box" Text="{Res appt_guests}" Checked="{Binding Guests, Mode=TwoWay}" X="16" Y="682" Width="500" Height="26"/>
+
+        <Label Text="{Res appt_calendar}" Role="Caption" ForeColor="TextSecondary" X="16" Y="716" Width="500" Height="16"/>
+        <Dropdown x:Name="cal_box" SelectedValue="{Binding CalValue, Mode=TwoWay}" ItemsSource="{Binding CalItems}" X="16" Y="736" Width="500" Height="34"/>
+      </Panel>
+
+      <!-- ── Step 2 ── -->
+      <Panel x:Name="step2" Visible="{Binding IsStep2}" X="0" Y="0" Width="540" Height="460">
+        <Label Text="{Res appt_identity}" Role="Caption" ForeColor="TextSecondary" X="16" Y="6" Width="500" Height="16"/>
+        <Label Text="{Binding HostName}" Role="Subtitle" ForeColor="TextPrimary" X="16" Y="26" Width="500" Height="24"/>
+
+        <Label Text="{Res appt_location}" Role="Caption" ForeColor="TextSecondary" X="16" Y="60" Width="500" Height="16"/>
+        <Dropdown x:Name="loc_box" SelectedValue="{Binding LocValue, Mode=TwoWay}" ItemsSource="{Binding LocItems}" X="16" Y="80" Width="500" Height="34" OnSelectedValueChanged="loc_changed"/>
+        <TextField x:Name="loc_details_box" Text="{Binding LocDetails, Mode=TwoWay}" Visible="{Binding LocDetailsVisible}" X="16" Y="120" Width="500" Height="34"/>
+
+        <Label Text="{Res appt_description}" Role="Caption" ForeColor="TextSecondary" X="16" Y="164" Width="500" Height="16"/>
+        <TextArea x:Name="desc_box" Text="{Binding Description, Mode=TwoWay}" MinLines="3" MaxLines="4" Placeholder="{Res appt_add_description}" X="16" Y="184" Width="500" Height="80"/>
+
+        <Label Text="{Res appt_confirmations}" Role="Caption" ForeColor="TextSecondary" X="16" Y="280" Width="500" Height="16"/>
+        <Label Text="{Res appt_calendar_invite}" ForeColor="TextSecondary" X="16" Y="302" Width="500" Height="24"/>
+        <CheckBox x:Name="rem1_box" Checked="{Binding Rem1On, Mode=TwoWay}" X="16" Y="334" Width="22" Height="26"/>
+        <Dropdown SelectedValue="{Binding Rem1Value, Mode=TwoWay}" ItemsSource="{Binding RemItems}" Visible="{Binding Rem1On}" X="44" Y="332" Width="220" Height="30"/>
+        <CheckBox x:Name="rem2_box" Checked="{Binding Rem2On, Mode=TwoWay}" X="16" Y="368" Width="22" Height="26"/>
+        <Dropdown SelectedValue="{Binding Rem2Value, Mode=TwoWay}" ItemsSource="{Binding RemItems}" Visible="{Binding Rem2On}" X="44" Y="366" Width="220" Height="30"/>
+      </Panel>
+
+    </Panel>
+  </Panel>
+
+  <!-- Right availability preview. -->
+  <AvailabilityPreview x:Name="preview" Dock="Fill"/>
+</Panel>

@@ -47,6 +47,8 @@ pub struct CalendarWindow {
     year: Custom<YearGrid>,
     #[control]
     search_view: Custom<SearchResults>,
+    #[control]
+    sched_list: Custom<crate::controls::schedule_list::ScheduleList>,
     #[bind]
     window_title: String,
     #[bind]
@@ -74,6 +76,8 @@ pub struct CalendarWindow {
     doc: Option<String>,
     /// The ±1-year event pool fetched once when a search begins, filtered client-side on each keystroke.
     search_pool: Vec<kubuno_calendar_core::model::EventInstance>,
+    /// The owner's bookable appointment schedules (sidebar « Pages de réservation »).
+    schedules: Vec<kubuno_calendar_desktop_common::live::ScheduleSummary>,
 }
 
 /// The views offered in the switcher (the Year view is a later increment, so it is not listed yet).
@@ -135,9 +139,71 @@ impl CalendarWindow {
             if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
                 self.model.borrow_mut().calendars = cals;
             }
+            self.load_schedules();
         }
         self.reload_live();
         self.refresh();
+    }
+
+    /// Whether the UI is in French (for the scheduler, which has no shared model of its own).
+    fn lang_fr(&self) -> bool {
+        self.model.borrow().view.lang == kubuno_calendar_core::date::Lang::Fr
+    }
+
+    /// Fetch the appointment schedules and push them into the sidebar list.
+    fn load_schedules(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        self.schedules = kubuno_calendar_desktop_common::live::list_schedules().unwrap_or_default();
+        let rows: Vec<(String, String, i32)> = self.schedules.iter().map(|s| (s.id.clone(), s.title.clone(), s.duration_minutes)).collect();
+        let fr = self.lang_fr();
+        self.sched_list.with(|v| v.set_rows(rows, fr));
+    }
+
+    /// « Nouveau planning »: open the editor to create a bookable appointment schedule.
+    fn schedule_new_click(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        self.open_schedule_editor(None);
+    }
+
+    /// A schedule row was clicked: open the editor to configure it.
+    fn schedule_picked(&mut self, args: &crate::controls::schedule_list::SchedulePickArgs) {
+        self.open_schedule_editor(Some(args.id.clone()));
+    }
+
+    fn open_schedule_editor(&mut self, id: Option<String>) {
+        let cals: Vec<kubuno_calendar_core::model::Calendar> = self.model.borrow().calendars.iter().filter(|c| c.is_writable()).cloned().collect();
+        let host = kubuno_calendar_desktop_common::live::fetch_username().unwrap_or_default();
+        let fr = self.lang_fr();
+        let (full, extra) = match &id {
+            Some(sid) => match kubuno_calendar_desktop_common::live::get_schedule(sid) {
+                Ok(f) => {
+                    // The editor manages the first weekly range per weekday; everything else is preserved.
+                    let mut first_seen = [false; 7];
+                    let mut extra = Vec::new();
+                    for r in &f.write.availability {
+                        match r.weekday {
+                            Some(wd) if (wd as usize) < 7 && !first_seen[wd as usize] => first_seen[wd as usize] = true,
+                            _ => extra.push(r.clone()),
+                        }
+                    }
+                    (Some(f.write), extra)
+                }
+                Err(e) => {
+                    kubuno_desktop::tracing::error!("[calendar] get schedule failed: {e}");
+                    return;
+                }
+            },
+            None => (None, Vec::new()),
+        };
+        let saved = crate::views::schedule_editor::ScheduleEditor::new(id, full, cals, extra, &host, fr).run(self);
+        if saved {
+            self.load_schedules();
+            self.refresh();
+        }
     }
 
     /// The writable calendars the editor offers in its picker.
