@@ -224,7 +224,9 @@ impl CalendarWindow {
             // Edit the event whose first occurrence we have loaded.
             let found = self.model.borrow().events.iter().find(|ev| ev.event_id == args.event_id).cloned();
             if let Some(ev) = found {
-                self.open_editor(EventEditor::for_edit(&ev, offset, lang, &self.writable_calendars()));
+                // Load the event's current guests (a one-off localhost GET) so the editor shows them.
+                let guests = kubuno_calendar_desktop_common::live::fetch_guest_emails(&ev.event_id);
+                self.open_editor(EventEditor::for_edit(&ev, offset, lang, &self.writable_calendars(), &guests));
             }
         } else if let Some(date) = Date::parse(&args.date_iso) {
             self.open_editor(EventEditor::for_create(date, offset, lang, &self.writable_calendars(), &self.default_calendar()));

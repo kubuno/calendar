@@ -173,6 +173,75 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
             if !(200..300).contains(&status) {
                 return Err(format!("PATCH event → HTTP {status}"));
             }
+            // Guests are not part of the event PATCH; reconcile them through the attendee API.
+            if let Some(desired) = &w.attendees {
+                sync_attendees(id, desired)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The guests of an event (`GET /calendar/events/:id/attendees`): `(attendee id, email, is_organizer)`.
+pub fn fetch_attendees(event_id: &str) -> Result<Vec<(String, String, bool)>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/events/{}/attendees", urlencode(event_id)), None)?;
+    if status != 200 {
+        return Err(format!("GET attendees → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("attendees").and_then(|a| a.as_array()).or_else(|| v.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|a| {
+            let aid = a.get("id").and_then(|x| x.as_str())?.to_string();
+            let email = a.get("email").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let organizer = a.get("is_organizer").and_then(|x| x.as_bool()).unwrap_or(false);
+            Some((aid, email, organizer))
+        })
+        .collect())
+}
+
+/// The guest e-mails a user can edit (everyone but the organizer), for prefilling the editor on an edit.
+pub fn fetch_guest_emails(event_id: &str) -> Vec<String> {
+    fetch_attendees(event_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, email, organizer)| !organizer && !email.is_empty())
+        .map(|(_, email, _)| email)
+        .collect()
+}
+
+/// Invite one guest to an existing event (`POST /calendar/events/:id/attendees`).
+fn add_attendee(event_id: &str, email: &str) -> Result<(), String> {
+    let dto = serde_json::json!({ "email": email });
+    let (status, _) = request("POST", &format!("{CAL_PREFIX}/events/{}/attendees", urlencode(event_id)), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST attendee → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// Remove one guest from an event (`DELETE /calendar/events/:id/attendees/:aid`).
+fn remove_attendee(event_id: &str, aid: &str) -> Result<(), String> {
+    let (status, _) = request("DELETE", &format!("{CAL_PREFIX}/events/{}/attendees/{}", urlencode(event_id), urlencode(aid)), None)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("DELETE attendee → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// Reconcile an edited event's guest list with the server (the attendee API, since `PATCH /events` does not
+/// take attendees): invite the e-mails that were added, remove the non-organizer guests that were dropped.
+fn sync_attendees(event_id: &str, desired: &[String]) -> Result<(), String> {
+    let current = fetch_attendees(event_id)?;
+    for email in desired {
+        if !email.is_empty() && !current.iter().any(|(_, e, _)| e.eq_ignore_ascii_case(email)) {
+            add_attendee(event_id, email)?;
+        }
+    }
+    for (aid, email, organizer) in &current {
+        if !organizer && !email.is_empty() && !desired.iter().any(|d| d.eq_ignore_ascii_case(email)) {
+            remove_attendee(event_id, aid)?;
         }
     }
     Ok(())

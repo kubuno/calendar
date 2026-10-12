@@ -42,7 +42,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   (type an e-mail, « Ajouter ») with the invited addresses listed and removable, and the « Autorisations des
   invités » toggles (modify the event / invite others / see the guest list, with the web's defaults). Guests
   and permissions are sent on create (`attendees` + the three flags) and round-trip to the server, proven in
-  light and dark. Editing the guests of an existing event (the attendee API) is a later sub-increment.
+  light and dark. **Editing an existing event's guests** works too: opening the editor loads the current
+  guests, and on save the added/removed e-mails are reconciled through the attendee API
+  (`POST`/`DELETE /calendar/events/:id/attendees`, the organizer always kept), proven live.
 
 - **Desktop Calendar: event reminders.** The editor now has a « Rappels » section matching the web
   `RemindersField.tsx`: each reminder is a method dropdown (Notification / E-mail) and an offset dropdown

@@ -152,13 +152,15 @@ impl EventEditor {
         d
     }
 
-    /// An editor for an existing event, prefilled, with the writable `calendars` offered in the picker.
-    pub fn for_edit(ev: &EventInstance, offset: i32, lang: Lang, calendars: &[Calendar]) -> Self {
+    /// An editor for an existing event, prefilled, with the writable `calendars` offered in the picker and the
+    /// event's current `guests` (non-organizer e-mails) loaded into the guest rows.
+    pub fn for_edit(ev: &EventInstance, offset: i32, lang: Lang, calendars: &[Calendar], guests: &[String]) -> Self {
         let mut d = Self { offset, lang, ..Self::default() };
         d.fill_lists();
         d.fill_calendars(calendars, &ev.calendar_id);
         d.fill_reminder_items();
         d.load_reminders(&ev.reminders);
+        d.set_guests(guests.to_vec());
         d.perm_modify = ev.guests_can_modify.unwrap_or(false);
         d.perm_invite = ev.guests_can_invite.unwrap_or(true);
         d.perm_see = ev.guests_can_see_guests.unwrap_or(true);
@@ -474,13 +476,8 @@ impl EventEditor {
             rrule,
             color: self.picked_color.clone(),
             reminders: Some(self.reminders_list()),
-            // Guests are sent only on create (editing attendees goes through the attendee API).
-            attendees: if self.edit_id.is_none() {
-                let g = self.guests();
-                if g.is_empty() { None } else { Some(g) }
-            } else {
-                None
-            },
+            // The guest e-mails: sent as `attendees` on create, reconciled through the attendee API on edit.
+            attendees: Some(self.guests()),
             guests_can_modify: Some(self.perm_modify),
             guests_can_invite: Some(self.perm_invite),
             guests_can_see_guests: Some(self.perm_see),
