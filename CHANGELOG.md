@@ -18,6 +18,16 @@ number at release time, and CI publishes that section as the GitHub Release note
   It is the foundation of the forthcoming native desktop Calendar app. Recurring series stay expanded on the
   server, as before.
 
+- **Native desktop Calendar app, first increment (`desktop/`).** A new Cargo workspace for the native desktop
+  app: the portable layer `desktop/common/kubuno-calendar-desktop-common` (launch options, calendar view
+  state, offline sample dataset, platform extension points) and the Windows app
+  `desktop/windows/kubuno-calendar` (`kubuno-calendar.exe`), whose window renders the **Month view** — the
+  weekday header, the 4/5/6-week grid, all-day and multi-day banners, up to four timed events a day then
+  « +N », the today marker and the moon phases — laid out by the shared core and faithful to the web in both
+  light and dark themes. A navigation toolbar (Today, ‹ ›, the period title, the view switcher) matches the
+  web. Rendering only for now (read-only, offline sample); the other views and the server-coupled editing
+  come in later increments.
+
 ### Changed
 
 - **The repository is organised by platform.** The server (its sources, migrations, tests and configuration

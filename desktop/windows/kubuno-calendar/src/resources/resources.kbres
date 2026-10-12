@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resources Version="1">
+  <String Name="app_title">Kubuno Calendar</String>
+  <String Name="today">Today</String>
+  <String Name="prev">Previous</String>
+  <String Name="next">Next</String>
+  <String Name="view_day">Day</String>
+  <String Name="view_week">Week</String>
+  <String Name="view_month">Month</String>
+  <String Name="view_year">Year</String>
+  <String Name="view_agenda">Agenda</String>
+</Resources>

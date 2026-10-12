@@ -1,0 +1,36 @@
+[package]
+name        = "kubuno-calendar"
+description = "Kubuno Calendar for Windows (kubuno-calendar.exe): the Win32 window of the calendar, written like a Windows Forms application (.kbview views, a navigation toolbar, the month grid drawn with Direct2D), and the entry point that registers the Windows platform and runs the app of desktop/common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The library holds everything the Visual Studio designer must link to render the views: the main form
+# (`CalendarWindow`) and the custom control (`MonthGrid`). The binary is the short `Program.cs` (`main.rs`): it
+# registers the Windows platform and runs the app of desktop/common.
+[lib]
+name = "kubuno_calendar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kubuno-calendar"
+path = "src/main.rs"
+
+[dependencies]
+# The portable app: launch options, view state, sample data, platform extension points.
+kubuno-calendar-desktop-common.workspace = true
+# The calendar engine (common/core).
+kubuno-calendar-core.workspace = true
+# The Kubuno desktop programming model (Application::run, #[kubuno_desktop::view], custom controls, resources).
+# Written `= { workspace = true }`: the views macros read this manifest to find the facade.
+kubuno-desktop = { workspace = true }
+
+[dependencies.windows]
+version  = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_System_SystemInformation",
+]
+
+[build-dependencies]
+embed-manifest = "1.4"

@@ -1,0 +1,41 @@
+# Kubuno Calendar — the native desktop app. ONE Cargo workspace for every operating system, independent of the
+# module server's (../server/Cargo.toml):
+#
+#   common/   the complete app, portable: the launch options, the view state, the sample data and the platform
+#             extension points (traits with portable defaults). The server REST path (the token broker, the
+#             live session) is added in a later increment; Increment A renders from a seeded/fixture dataset.
+#   windows/  only what Windows does differently: the Win32 window painted with Direct2D (the .kbview views,
+#             the toolbar and the month grid) and the `kubuno-calendar.exe` entry point that registers it.
+#   linux/, macos/  thin entry points (later).
+#
+# The calendar engine is the module's shared core (../common/core, kubuno-calendar-core). The Kubuno desktop
+# framework (kubuno-desktop and the layers it re-exports) comes from the core repository by git tag, never by
+# path, and is linked statically. The Windows-only crate is built on Windows only (CI selects packages per OS).
+[workspace]
+resolver = "2"
+members  = [
+    "common/kubuno-calendar-desktop-common",
+    "windows/kubuno-calendar",
+]
+
+[workspace.package]
+version    = "0.1.0"   # Kubuno Calendar desktop's own version
+edition    = "2021"
+license    = "AGPL-3.0-or-later"
+repository = "https://github.com/kubuno/calendar"
+
+[workspace.dependencies]
+# The calendar engine every Kubuno Calendar client shares.
+kubuno-calendar-core           = { path = "../common/core" }
+# The portable app: launch options, view state, sample data, platform extension points.
+kubuno-calendar-desktop-common = { path = "common/kubuno-calendar-desktop-common" }
+
+# One tag of the core repository pins every framework crate (core desktop/README.md, "Versions and tags").
+# Bump them together. A desktop-v0.1.3-alpha with a ribbon-colour fix is pending publish; build on 0.1.2 for now.
+kubuno-desktop                = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-shell-controls = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+kubuno-desktop-header-data    = { git = "https://github.com/kubuno/core", tag = "desktop-v0.1.2-alpha" }
+
+serde      = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }
+tracing    = "0.1"
