@@ -45,8 +45,9 @@
 
     <!-- Weather, Moon and Booking sections (web CalendarSidebarBody). -->
     <Panel X="12" Y="300" Width="232" Height="1" BackColor="Border"/>
-    <Label Text="{Res sb_weather}" Role="Caption" ForeColor="TextSecondary" X="14" Y="310" Width="220" Height="18"/>
-    <Label Text="{Res sb_weather_add}" Role="Caption" ForeColor="Primary" X="14" Y="332" Width="220" Height="18"/>
+    <Label Text="{Res sb_weather}" Role="Caption" ForeColor="TextSecondary" X="14" Y="310" Width="130" Height="18"/>
+    <Button x:Name="weather_add" Text="{Res sb_weather_add}" Variant="Text" Size="Sm" X="140" Y="306" Width="108" Height="24" OnClick="weather_add_click"/>
+    <WeatherList x:Name="weather_list" X="6" Y="332" Width="244" Height="24"/>
 
     <Panel X="12" Y="360" Width="232" Height="1" BackColor="Border"/>
     <Label Text="{Res sb_moon}" Role="Caption" ForeColor="TextSecondary" X="14" Y="370" Width="220" Height="18"/>

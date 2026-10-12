@@ -7,3 +7,4 @@ pub mod recurrence_dialog;
 pub mod schedule_editor;
 pub mod share_dialog;
 pub mod subscribe_dialog;
+pub mod weather_dialog;

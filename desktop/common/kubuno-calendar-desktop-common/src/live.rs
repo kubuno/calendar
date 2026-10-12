@@ -677,6 +677,125 @@ pub fn booking_page_url(token: &str) -> String {
     format!("{}/api/v1/calendar/public/appointments/{}/page", server_origin(), urlencode(token))
 }
 
+// ── Weather (sidebar forecast) ───────────────────────────────────────────────────────────────────────────────
+// The desktop counterpart of the web `weatherApi` (`web/src/api.ts`) + the sidebar weather section.
+
+/// A geocoding match (web `GeocodingResult`).
+#[derive(Debug, Clone, Default)]
+pub struct GeoResult {
+    pub name: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub timezone: String,
+    pub country: String,
+    pub admin1: Option<String>,
+}
+
+/// A saved weather location (web `WeatherLocation`).
+#[derive(Debug, Clone, Default)]
+pub struct WeatherLoc {
+    pub id: String,
+    pub name: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub timezone: String,
+    pub is_default: bool,
+}
+
+/// Today's headline forecast for a location (the subset the sidebar shows).
+#[derive(Debug, Clone, Default)]
+pub struct ForecastToday {
+    pub weather_code: i32,
+    pub temp_max: f64,
+    pub temp_min: f64,
+    pub precip_prob: i32,
+    pub current_temp: Option<f64>,
+}
+
+/// Search the geocoder for a place (`GET /calendar/weather/geocode?q=…`).
+pub fn weather_geocode(query: &str, lang: &str) -> Result<Vec<GeoResult>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/weather/geocode?lang={}&q={}", urlencode(lang), urlencode(query)), None)?;
+    if status != 200 {
+        return Err(format!("GET geocode → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("results").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|r| {
+            Some(GeoResult {
+                name: r.get("name")?.as_str()?.to_string(),
+                latitude: r.get("latitude")?.as_f64()?,
+                longitude: r.get("longitude")?.as_f64()?,
+                timezone: r.get("timezone").and_then(|x| x.as_str()).unwrap_or("UTC").to_string(),
+                country: r.get("country").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                admin1: r.get("admin1").and_then(|x| x.as_str()).map(|s| s.to_string()),
+            })
+        })
+        .collect())
+}
+
+/// Save a weather location (`POST /calendar/weather/locations`). Returns its id.
+pub fn weather_add_location(name: &str, latitude: f64, longitude: f64, timezone: &str) -> Result<String, String> {
+    let dto = serde_json::json!({ "name": name, "latitude": latitude, "longitude": longitude, "timezone": timezone });
+    let (status, body) = request("POST", &format!("{CAL_PREFIX}/weather/locations"), Some(serde_json::to_vec(&dto).map_err(|e| e.to_string())?))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST location → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    Ok(v.get("location").and_then(|l| l.get("id")).and_then(|x| x.as_str()).unwrap_or("").to_string())
+}
+
+/// The user's saved weather locations (`GET /calendar/weather/locations`).
+pub fn weather_locations() -> Result<Vec<WeatherLoc>, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/weather/locations"), None)?;
+    if status != 200 {
+        return Err(format!("GET locations → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let arr = v.get("locations").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+    Ok(arr
+        .iter()
+        .filter_map(|l| {
+            Some(WeatherLoc {
+                id: l.get("id")?.as_str()?.to_string(),
+                name: l.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                latitude: l.get("latitude").and_then(|x| x.as_f64()).unwrap_or(0.0),
+                longitude: l.get("longitude").and_then(|x| x.as_f64()).unwrap_or(0.0),
+                timezone: l.get("timezone").and_then(|x| x.as_str()).unwrap_or("UTC").to_string(),
+                is_default: l.get("is_default").and_then(|x| x.as_bool()).unwrap_or(false),
+            })
+        })
+        .collect())
+}
+
+/// Delete a weather location (`DELETE /calendar/weather/locations/:id`).
+pub fn weather_delete_location(id: &str) -> Result<(), String> {
+    let (status, _) = request("DELETE", &format!("{CAL_PREFIX}/weather/locations/{}", urlencode(id)), None)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("DELETE location → HTTP {status}"));
+    }
+    Ok(())
+}
+
+/// Today's forecast for a location (`GET /calendar/weather/forecast?lat&lon&tz`).
+pub fn weather_forecast_today(latitude: f64, longitude: f64, timezone: &str) -> Result<ForecastToday, String> {
+    let (status, body) = request("GET", &format!("{CAL_PREFIX}/weather/forecast?lat={latitude}&lon={longitude}&tz={}", urlencode(timezone)), None)?;
+    if status != 200 {
+        return Err(format!("GET forecast → HTTP {status}"));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let f = v.get("forecast").ok_or("no forecast")?;
+    let day = f.get("days").and_then(|d| d.as_array()).and_then(|d| d.first()).ok_or("no days")?;
+    Ok(ForecastToday {
+        weather_code: day.get("weather_code").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+        temp_max: day.get("temp_max").and_then(|x| x.as_f64()).unwrap_or(0.0),
+        temp_min: day.get("temp_min").and_then(|x| x.as_f64()).unwrap_or(0.0),
+        precip_prob: day.get("precip_prob_max").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+        current_temp: f.get("current").and_then(|c| c.get("temp")).and_then(|x| x.as_f64()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

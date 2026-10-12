@@ -125,4 +125,8 @@
   <String Name="appt_delete">Supprimer</String>
   <String Name="appt_min">min</String>
   <String Name="appt_booking_link">Lien public de réservation</String>
+  <String Name="weather_add_title">Ajouter un lieu</String>
+  <String Name="weather_search_ph">Ville…</String>
+  <String Name="weather_search">Rechercher</String>
+  <String Name="weather_pick">Choisissez un résultat</String>
 </Resources>

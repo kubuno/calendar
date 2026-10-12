@@ -49,6 +49,8 @@ pub struct CalendarWindow {
     search_view: Custom<SearchResults>,
     #[control]
     sched_list: Custom<crate::controls::schedule_list::ScheduleList>,
+    #[control]
+    weather_list: Custom<crate::controls::weather_list::WeatherList>,
     #[bind]
     window_title: String,
     #[bind]
@@ -140,6 +142,7 @@ impl CalendarWindow {
                 self.model.borrow_mut().calendars = cals;
             }
             self.load_schedules();
+            self.load_weather();
         }
         self.reload_live();
         self.refresh();
@@ -148,6 +151,40 @@ impl CalendarWindow {
     /// Whether the UI is in French (for the scheduler, which has no shared model of its own).
     fn lang_fr(&self) -> bool {
         self.model.borrow().view.lang == kubuno_calendar_core::date::Lang::Fr
+    }
+
+    /// Fetch the saved weather locations and today's forecast for the default one, for the sidebar.
+    fn load_weather(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        let locs = kubuno_calendar_desktop_common::live::weather_locations().unwrap_or_default();
+        // The sidebar shows the default location (else the first); others are managed from « Ajouter un lieu ».
+        let primary = locs.iter().find(|l| l.is_default).or_else(|| locs.first());
+        let fr = self.lang_fr();
+        let rows: Vec<(String, i32, f64, f64, i32)> = match primary {
+            Some(l) => match kubuno_calendar_desktop_common::live::weather_forecast_today(l.latitude, l.longitude, &l.timezone) {
+                Ok(f) => vec![(l.name.clone(), f.weather_code, f.temp_max, f.temp_min, f.precip_prob)],
+                Err(e) => {
+                    kubuno_desktop::tracing::error!("[calendar] forecast failed: {e}");
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+        self.weather_list.with(|v| v.set_rows(rows, fr));
+    }
+
+    /// « Ajouter un lieu »: search a city and save it as a weather location, then refresh the sidebar.
+    fn weather_add_click(&mut self) {
+        if self.doc.is_none() {
+            return;
+        }
+        let fr = self.lang_fr();
+        if crate::views::weather_dialog::WeatherDialog::new(fr).run(self) {
+            self.load_weather();
+            self.refresh();
+        }
     }
 
     /// Fetch the appointment schedules and push them into the sidebar list.

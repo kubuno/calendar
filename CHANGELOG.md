@@ -17,6 +17,13 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Added
 
+- **Desktop Calendar: the sidebar weather forecast.** The sidebar's « Météo » section now shows today's
+  forecast for the saved default location (the place name, the condition and the high/low temperatures, plus the
+  precipitation probability when notable) and « Ajouter un lieu » opens a dialog to search the geocoder for a
+  city and save it as a weather location (web `CalendarWeatherWidget` / `WeatherSettings`). Wired to the weather
+  REST API (`/calendar/weather/geocode`, `/locations`, `/forecast`); the add-location + forecast round-trip is
+  proven live against the server.
+
 - **Desktop Calendar: the scheduling / booking pages.** The sidebar gains a « Pages de réservation » section
   that lists the owner's bookable appointment schedules and a « Nouveau planning » entry (web
   `CalendarSidebarBody` / the `/calendar/scheduling` page), plus a full appointment-schedule editor (web
