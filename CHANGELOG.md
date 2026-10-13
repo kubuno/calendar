@@ -9,6 +9,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop framework updated to `desktop-v0.1.3-alpha`.** The Visual Studio view designer now tags each control
+  on its design surface with its type and `x:Name`, and draws the hover outline with the same geometry as the
+  selection outline (differing only by colour), so controls in a `.kbview` can be told apart.
+
 ### Fixed
 
 - **The Visual Studio solution lists the desktop projects.** `Kubuno.Calendar.slnx` now sets the Rust project type
