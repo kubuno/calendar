@@ -11,6 +11,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 ### Changed
 
+- **Desktop framework updated to `desktop-v0.1.5-alpha`: the Calendar desktop app uses less memory.** The framework
+  now bounds the Direct2D image and icon caches and shares one HTTP client across all accounts instead of building a
+  new TLS stack per sign-in, so the app keeps less in RAM.
 - **Desktop framework updated to `desktop-v0.1.4-alpha`.** The Visual Studio view designer now tags each control
   on its design surface with its type and `x:Name`, and draws the hover outline with the same geometry as the
   selection outline (differing only by colour), so controls in a `.kbview` can be told apart.
