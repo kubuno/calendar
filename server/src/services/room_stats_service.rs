@@ -37,8 +37,8 @@ use crate::services::recurrence_service::RecurrenceService;
 ///
 /// A rate needs a denominator, and "every hour of every day" is not one: nobody
 /// books a meeting room at four in the morning, and a rate computed over 24×7
-/// makes every room look permanently free. Weekends are out for the same reason
-/// - which is also how the figure is read elsewhere.
+/// makes every room look permanently free. Weekends are out for the same reason -
+/// which is also how the figure is read elsewhere.
 const WORKDAY_HOURS: f64 = 8.0;
 
 #[derive(Debug, Serialize)]
@@ -56,8 +56,8 @@ pub struct RoomStats {
     /// Rooms in the directory, and the hours they could have been booked for.
     pub rooms:           i64,
     pub available_hours: f64,
-    /// `booked_hours / available_hours`, or `null` when there is no room at all
-    /// - a rate over nothing is not zero, it is meaningless.
+    /// `booked_hours / available_hours`, or `null` when there is no room at all -
+    /// a rate over nothing is not zero, it is meaningless.
     pub booking_rate: Option<f64>,
     pub per_day:  Vec<DayUsage>,
     pub per_hour: Vec<HourUsage>,

@@ -47,8 +47,8 @@ pub fn is_iana_timezone(tz: &str) -> bool {
 /// An unusable `requested` falls back rather than refusing. The only writer of
 /// that field is a browser stating where its user is, and a zone name this
 /// build's tz database has not heard of yet (the database gains entries every
-/// year) would otherwise cost that user the ability to create a calendar at all
-/// - a hard failure for a field they never typed. It is logged, so an operator
+/// year) would otherwise cost that user the ability to create a calendar at all -
+/// a hard failure for a field they never typed. It is logged, so an operator
 /// sees a stale database instead of nothing, and the value never reaches storage
 /// unchecked, which was the risk worth guarding against: this string is later
 /// read back as a `TZID` and used for date arithmetic.
