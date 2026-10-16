@@ -1,4 +1,4 @@
-// "Importer et exporter" — inline counterpart of the .ics import modal, plus a
+// "Importer et exporter" - inline counterpart of the .ics import modal, plus a
 // per-calendar export (and a one-click archive of every writable calendar).
 import { useState, useRef, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'

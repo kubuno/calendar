@@ -120,7 +120,7 @@ impl ICalendarService {
 
         // ATTENDEE, one per guest. An optional guest travels as
         // `ROLE=OPT-PARTICIPANT`, which is what the standard has for "welcome,
-        // not required" — so the distinction reaches the person in their own
+        // not required" - so the distinction reaches the person in their own
         // calendar, and not only the organiser's screen.
         for (email, name, optional) in attendees {
             let cn = match name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
@@ -183,8 +183,8 @@ impl ICalendarService {
     /// Same calendar, stripped down to when the owner is busy.
     ///
     /// Used by the public feed when the administration limited what a published
-    /// calendar discloses: the times still leave the instance — that is the whole
-    /// point of a free/busy feed — but the title, the description, the location
+    /// calendar discloses: the times still leave the instance - that is the whole
+    /// point of a free/busy feed - but the title, the description, the location
     /// and the URL never do. Entries the owner marked as free (`busy = false`)
     /// are left out entirely: they say nothing about availability and would only
     /// disclose that *something* happens then.

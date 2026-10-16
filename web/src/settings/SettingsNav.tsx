@@ -1,10 +1,10 @@
-// Navigation of the settings page — rendered by the SHELL in its left panel
+// Navigation of the settings page - rendered by the SHELL in its left panel
 // (registered in entry.ts for the `/calendar/user-settings` prefix, which wins
 // over the module's own prefix: most-specific route prefix wins).
 //
 // While the settings are open, this replaces the calendar's usual sidebar (mini
 // calendar, calendar list, weather…) instead of stacking a second column next to
-// it — same approach as the mail module.
+// it - same approach as the mail module.
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -47,7 +47,7 @@ function SectionLinks({ ids, labels }: { ids: readonly string[]; labels: Record<
   )
 }
 
-// Group heading between sets of nav entries. Kept quiet on purpose — the shell's
+// Group heading between sets of nav entries. Kept quiet on purpose - the shell's
 // sidebar has no shouty uppercase labels, so a small tertiary heading with a hair
 // line above blends in instead of breaking the rhythm of the nav pills.
 function GroupLabel({ children }: { children: React.ReactNode }) {

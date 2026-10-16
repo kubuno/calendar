@@ -1,4 +1,4 @@
-//! `MonthGrid` — the month view (`web/src/MonthView.tsx`): the weekday header, the 4/5/6-week grid from the
+//! `MonthGrid` - the month view (`web/src/MonthView.tsx`): the weekday header, the 4/5/6-week grid from the
 //! core's `month_grid`, the all-day/multi-day banners stacked per week (`layout_banners`) and, under them, up
 //! to four timed chips a day (`timed_events_for_day`) then « +N ». The today cell carries the accent circle
 //! and a principal moon marker. Geometry and colours match the web exactly. Read-only in this increment;

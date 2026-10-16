@@ -1,5 +1,5 @@
 /**
- * Cross-module data sharing over the clipboard (JSON envelopes) — producer side.
+ * Cross-module data sharing over the clipboard (JSON envelopes) - producer side.
  *
  * VENDORED from core `@kubuno/sdk` (`DataTransferRegistry`): replace the local
  * copy with `import { …, toISODate, toDate } from '@kubuno/sdk'` once `@kubuno/sdk >= 0.1.3` is
@@ -143,7 +143,7 @@ function eventSummary(event: EventInstance): string {
   const when  = cap(event.all_day
     ? formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     : `${formatDate(start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${formatDate(start, 'time')}–${formatDate(toDate(event.ends_at), 'time')}`)
-  // A meeting URL is machine-readable noise in a human summary — skip it.
+  // A meeting URL is machine-readable noise in a human summary - skip it.
   const where = event.location && !MEETING_LINK_RE.test(event.location) ? event.location : null
   return [event.title, when, where].filter(Boolean).join('\n')
 }

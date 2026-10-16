@@ -1,4 +1,4 @@
-//! `MoonWidget` — the sidebar's Moon row (`web/src/CalendarSidebarBody.tsx` MoonSection): today's moon as a
+//! `MoonWidget` - the sidebar's Moon row (`web/src/CalendarSidebarBody.tsx` MoonSection): today's moon as a
 //! small disc, its phase name and its illuminated percentage, from the shared core's moon maths.
 
 use kubuno_desktop::ui::graphics::{Brush, Font, FontStyle, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};

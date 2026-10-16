@@ -1,4 +1,4 @@
-//! `ScheduleList` — the sidebar's « Pages de réservation » list (`web/src/CalendarSidebarBody.tsx`): one row per
+//! `ScheduleList` - the sidebar's « Pages de réservation » list (`web/src/CalendarSidebarBody.tsx`): one row per
 //! bookable appointment schedule with its title and duration. Clicking a row raises `OnPicked` with the
 //! schedule id; the window opens the editor for it.
 

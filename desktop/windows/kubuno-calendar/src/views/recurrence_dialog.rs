@@ -1,4 +1,4 @@
-//! The custom-recurrence dialog (`recurrence_dialog.kbview`) — the desktop port of the web
+//! The custom-recurrence dialog (`recurrence_dialog.kbview`) - the desktop port of the web
 //! `RecurrenceCustomDialog.tsx`: « Répéter tous les N [jour/semaine/mois/an] », the weekly weekday toggles,
 //! the monthly by-month-day / by-weekday choice, and the « Se termine » end rule (Never / On date / After N).
 //! It edits a [`CustomRecurrence`] with the shared core and returns the built RRULE string on « Terminé ».

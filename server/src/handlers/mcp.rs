@@ -1,4 +1,4 @@
-//! MCP tool endpoints — thin wrappers the core MCP gateway calls on the user's
+//! MCP tool endpoints - thin wrappers the core MCP gateway calls on the user's
 //! behalf (identity via the injected `X-Kubuno-User-Id` header, like every other
 //! authenticated route) so the assistant module can act on the agenda.
 //!
@@ -52,7 +52,7 @@ use crate::{
 };
 
 /// Resolve the user's default calendar (first / `is_default`), creating a
-/// personal one if none exists — so `create_event` works without the LLM ever
+/// personal one if none exists - so `create_event` works without the LLM ever
 /// knowing a calendar UUID.
 async fn default_calendar(user_id: Uuid, db: &DbPool) -> Result<Uuid> {
     if let Some(id) = db
@@ -65,8 +65,8 @@ async fn default_calendar(user_id: Uuid, db: &DbPool) -> Result<Uuid> {
     {
         return Ok(id);
     }
-    // First calendar: a versioned insert (id/token/ctag supplied — no cross-engine
-    // DEFAULT — and its change_seq taken from the journal).
+    // First calendar: a versioned insert (id/token/ctag supplied - no cross-engine
+    // DEFAULT - and its change_seq taken from the journal).
     let id = kubuno_db::new_id();
     let mut tx = db.begin().await?;
     let seq = sync::next_calendar_seq(&mut tx).await?;
@@ -87,7 +87,7 @@ pub struct ListEventsArgs {
     pub until: Option<DateTime<Utc>>,
 }
 
-/// GET /mcp/list-events — events in a date range (defaults: now → +30 days).
+/// GET /mcp/list-events - events in a date range (defaults: now → +30 days).
 pub async fn list_events(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
@@ -113,7 +113,7 @@ pub struct CreateEventArgs {
     pub location:    Option<String>,
 }
 
-/// POST /mcp/create-event — create an event in the user's default calendar.
+/// POST /mcp/create-event - create an event in the user's default calendar.
 pub async fn create_event(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
@@ -154,7 +154,7 @@ pub struct DeleteEventArgs {
     pub event_id: Uuid,
 }
 
-/// POST /mcp/delete-event — delete an event (whole series). Marked `confirm` in
+/// POST /mcp/delete-event - delete an event (whole series). Marked `confirm` in
 /// the tool annotations so the assistant asks the user before calling it.
 pub async fn delete_event(
     State(state): State<AppState>,

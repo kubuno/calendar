@@ -3,7 +3,7 @@
 //! ## Why this lives here and not in the console
 //!
 //! The bookings are rows of the `calendar` schema, and the core does not read
-//! another component's schema — that is the rule that keeps a module replaceable.
+//! another component's schema - that is the rule that keeps a module replaceable.
 //! So the module counts its own bookings and answers with figures; the console
 //! asks through the internal relay and draws them.
 //!
@@ -12,12 +12,12 @@
 //! A weekly meeting holding a room occupies it every week. Counting rows would
 //! report it once, and the busiest room in the building would look idle. Every
 //! recurring booking is therefore expanded across the window, exactly as the
-//! clash detection expands it — the same lesson, in the other direction.
+//! clash detection expands it - the same lesson, in the other direction.
 //!
 //! ## Days and hours belong to a place
 //!
 //! Instants are stored in UTC, which is right, but "Monday" and "nine o'clock"
-//! are not properties of an instant — they are what a clock in a given zone says
+//! are not properties of an instant - they are what a clock in a given zone says
 //! about it. Cut in UTC, a nine o'clock meeting in Paris falls in the eight
 //! o'clock column, and an eight o'clock one in Tokyo falls on the day before.
 //! The caller therefore names the zone, and every bucket is cut in it.
@@ -38,7 +38,7 @@ use crate::services::recurrence_service::RecurrenceService;
 /// A rate needs a denominator, and "every hour of every day" is not one: nobody
 /// books a meeting room at four in the morning, and a rate computed over 24×7
 /// makes every room look permanently free. Weekends are out for the same reason
-/// — which is also how the figure is read elsewhere.
+/// - which is also how the figure is read elsewhere.
 const WORKDAY_HOURS: f64 = 8.0;
 
 #[derive(Debug, Serialize)]
@@ -48,7 +48,7 @@ pub struct RoomStats {
     /// Occurrences a room actually held.
     pub bookings:      i64,
     pub booked_hours:  f64,
-    /// Occurrences a room refused — a clash, or a meeting that emptied out.
+    /// Occurrences a room refused - a clash, or a meeting that emptied out.
     pub declined:      i64,
     /// Hours handed back automatically. Countable only because a released room
     /// carries a stamp that a room refusing a clash does not.
@@ -57,7 +57,7 @@ pub struct RoomStats {
     pub rooms:           i64,
     pub available_hours: f64,
     /// `booked_hours / available_hours`, or `null` when there is no room at all
-    /// — a rate over nothing is not zero, it is meaningless.
+    /// - a rate over nothing is not zero, it is meaningless.
     pub booking_rate: Option<f64>,
     pub per_day:  Vec<DayUsage>,
     pub per_hour: Vec<HourUsage>,
@@ -201,7 +201,7 @@ impl RoomStatsService {
             }
         }
 
-        // Working hours in the window: weekdays only, one working day each —
+        // Working hours in the window: weekdays only, one working day each -
         // counted on the same calendar the buckets are cut on, or the rate and
         // its denominator would disagree about which days the window covers.
         let mut workdays = 0i64;
@@ -224,7 +224,7 @@ impl RoomStatsService {
                     resource_id: id,
                     // A room the directory no longer holds still had bookings, and
                     // dropping it would silently shrink the totals below.
-                    name:     room.map(|r| r.generated_name.clone()).unwrap_or_else(|| "—".into()),
+                    name:     room.map(|r| r.generated_name.clone()).unwrap_or_else(|| "-".into()),
                     capacity: room.map(|r| r.capacity).unwrap_or(0),
                     hours,
                     bookings,

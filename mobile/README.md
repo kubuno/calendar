@@ -1,4 +1,4 @@
-# Kubuno Calendar — mobile apps
+# Kubuno Calendar - mobile apps
 
 Reserved for the mobile clients of the Calendar module, organised like the other platforms of this repository:
 

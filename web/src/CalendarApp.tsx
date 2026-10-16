@@ -47,7 +47,7 @@ const GHOST_ID = '__draft__'
  *
  * A whole day is a DATE, not an instant: pinned through `toISOString()` a local
  * midnight in Paris becomes 22:00 the day before, and the block is drawn on the
- * wrong day — a banner that starts on Friday for a Saturday chosen by the
+ * wrong day - a banner that starts on Friday for a Saturday chosen by the
  * reader. All-day values are therefore pinned to UTC midnight of the local date,
  * exactly as the editor stores them.
  */
@@ -143,7 +143,7 @@ export default function CalendarApp() {
   const [quickSaving, setQuickSaving] = useState(false)
 
   // Where the card hangs. The views report WHEN a slot was chosen, not where on
-  // screen — and threading a position through three of them would change three
+  // screen - and threading a position through three of them would change three
   // signatures for one piece of chrome. The last pointer position IS the place
   // that was clicked, so it is read from the window instead.
   const pointer = useRef<QuickAnchor>({ x: 0, y: 0 })
@@ -158,7 +158,7 @@ export default function CalendarApp() {
    *
    * NOT a whole day. A whole-day event is drawn as a BANNER: it is laid out
    * above the day lists, in a band that reserves its height in every cell of the
-   * week — so a provisional one pushed the other days' events down and never
+   * week - so a provisional one pushed the other days' events down and never
    * appeared among the events of the day it belonged to. Both symptoms, one
    * cause. A click on a day means "an event that day", at the same default hour
    * and duration the editor would have used, so the provisional block is an
@@ -294,7 +294,7 @@ export default function CalendarApp() {
   // C = create · Delete = delete the event the detail popover is showing.
   // Disabled entirely by the "keyboard shortcuts" preference.
   // `calData` stands in for `calendars` in the deps: the array is rebuilt on
-  // every render, the query result is not — the latter alone re-subscribes.
+  // every render, the query result is not - the latter alone re-subscribes.
   useEffect(() => {
     if (!settings.keyboardShortcuts) return
     const onKey = (e: KeyboardEvent) => {
@@ -319,7 +319,7 @@ export default function CalendarApp() {
         setCurrentDate(viewMode === 'month' ? startOfMonth(d) : d)
       }
       // Delete runs the very handler behind the context menu's "Supprimer", on
-      // the selected event — the one whose detail popover is open. Skipped while
+      // the selected event - the one whose detail popover is open. Skipped while
       // a menu or a scope dialog is up (they own the keyboard), and on a
       // read-only calendar, where the popover offers no deletion either.
       if (e.key === 'Delete') {
@@ -331,7 +331,7 @@ export default function CalendarApp() {
       else if (k === 't') { e.preventDefault(); setCurrentDate(new Date()) }
       else if (e.key === 'ArrowLeft')  { e.preventDefault(); step(-1) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
-      // Two ways to create, and they are not the same gesture — the reference
+      // Two ways to create, and they are not the same gesture - the reference
       // keeps them apart for a reason: `c` is for the event you already know is
       // complicated (straight to the editor), `Maj+C` for the one that is a
       // title and an hour (the quick card, anchored where the pointer last was).
@@ -389,7 +389,7 @@ export default function CalendarApp() {
     enabled:  !loadingCals,
   })
   const scheduleList = apptData?.schedules ?? []
-  // Full detail (with availability rules) per schedule — the list omits rules.
+  // Full detail (with availability rules) per schedule - the list omits rules.
   const scheduleDetails = useQueries({
     queries: scheduleList.map(s => ({
       queryKey: ['appointment-schedule', s.id],
@@ -405,7 +405,7 @@ export default function CalendarApp() {
   }, [scheduleSig, rangeStart.getTime(), rangeEnd.getTime(), hiddenCalendarIds])
   // ── Public holidays (core referential) ──
   // Read-only, and read from the core: the calendar owns no holiday data and
-  // names no country — it asks what applies to this person and draws it.
+  // names no country - it asks what applies to this person and draws it.
   const holidayEvents = useHolidayEvents(rangeStart, rangeEnd, {
     enabled:  settings.showHolidays && !loadingCals,
     override: settings.holidayCalendars,
@@ -416,7 +416,7 @@ export default function CalendarApp() {
   )
 
   /** The provisional block, shaped like any other event so the views need to
-   *  know nothing about it — it appears where the click landed and follows the
+   *  know nothing about it - it appears where the click landed and follows the
    *  card until the card is closed. */
   const ghost = useMemo<EventInstance[]>(() => {
     if (!quickDraft) return []
@@ -439,7 +439,7 @@ export default function CalendarApp() {
   // Four sources, one day. Each list is ordered within itself, but appending
   // them one after another is not an order: every booking slot landed after
   // every event, so a 09:00 slot sat below a 16:00 meeting in the same cell.
-  // Sorted here, once, so no view has to remember to do it — and so the views
+  // Sorted here, once, so no view has to remember to do it - and so the views
   // that lay events out side by side are handed them in the order they assume.
   // All-day first, then by the instant: an all-day event frames the day rather
   // than taking a place in it.
@@ -481,7 +481,7 @@ export default function CalendarApp() {
   })
   const overlayByDate = useMemo(() => {
     // Each overlay provider filters its own items (e.g. tasks hides completed
-    // tasks through its own view-menu toggle) — the calendar just groups by day.
+    // tasks through its own view-menu toggle) - the calendar just groups by day.
     const map = new Map<string, CalendarOverlayItem[]>()
     for (const it of overlayItems) {
       const arr = map.get(it.date) ?? []
@@ -717,7 +717,7 @@ export default function CalendarApp() {
           calendars={calendars}
           onClose={() => { setCreateDay(null); setCreateEnd(null); setCreateDraft(null) }} />
       )}
-      {/* An event that exists gets the SAME card as one being created — filled,
+      {/* An event that exists gets the SAME card as one being created - filled,
           and carrying what only an existing event can offer. */}
       {selectedEvent && !editingEvent && (
         <EventCard

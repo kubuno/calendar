@@ -6,7 +6,7 @@
 //! The change feed comes from `kubuno_db::journal::changes_since` (the portable
 //! `live UNION ALL tombstones` the module used to build by hand); the live rows
 //! are then fetched by id with `DbQueryBuilder::push_in`, which renders the
-//! `IN (...)` list — and `IN (NULL)` for an empty page — on every engine. The
+//! `IN (...)` list - and `IN (NULL)` for an empty page - on every engine. The
 //! per-row JSON that PostgreSQL built with `to_jsonb(...)` is now the serialised
 //! model struct, identical across the three engines.
 

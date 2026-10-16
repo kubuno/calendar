@@ -1,4 +1,4 @@
-// "Paramètres généraux" — every per-user preference of the Calendar module.
+// "Paramètres généraux" - every per-user preference of the Calendar module.
 //
 // The scalar rows come from the declarative manifest through
 // <ModuleSettingsForm categories={…} />; the shaped preferences (world clock,
@@ -10,7 +10,7 @@ import WorldClockField from './WorldClockField'
 import WorkingHoursField from './WorkingHoursField'
 import { Section, Field } from './parts'
 
-/** Anchors of this page, in render order — the left nav mirrors them. */
+/** Anchors of this page, in render order - the left nav mirrors them. */
 export const GENERAL_SECTIONS = [
   'region', 'timezone', 'world-clock', 'events',
   'notifications', 'display', 'working-hours', 'shortcuts',

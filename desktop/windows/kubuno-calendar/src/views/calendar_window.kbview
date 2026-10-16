@@ -1,7 +1,7 @@
 <!--
   Kubuno Calendar's window, laid out like the web (CalendarApp.tsx / CalendarToolbar.tsx): a tall title bar, a
   navigation toolbar matching the web's shell-header nav (a secondary Today button, circular ghost ‹ › arrows,
-  the 22px period title, and the view switcher as a soft dropdown — not a segmented control), and the active
+  the 22px period title, and the view switcher as a soft dropdown - not a segmented control), and the active
   view in the body. This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda)
   list from the offline sample; the Year view and the server-coupled editing are later increments.
 -->

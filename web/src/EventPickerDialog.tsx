@@ -5,7 +5,7 @@
  * `calendar.event` envelope (or `null` when cancelled).
  *
  * Same pattern as drive's `FilesFolderPickerDialog`: the resolver lives in a
- * zustand store, so opening the dialog is a plain async call from anywhere —
+ * zustand store, so opening the dialog is a plain async call from anywhere -
  * no cross-module import, no shared React tree needed.
  */
 import { useMemo, useState } from 'react'
@@ -25,9 +25,9 @@ const HORIZON_DAYS = 60
 interface EventPickerState {
   open:    boolean
   resolve: ((envelope: KubunoDataEnvelope | null) => void) | null
-  /** Public API — called by consumer modules through `ModuleServiceRegistry`. */
+  /** Public API - called by consumer modules through `ModuleServiceRegistry`. */
   pickEvent: () => Promise<KubunoDataEnvelope | null>
-  /** Internal API — called by the dialog only. */
+  /** Internal API - called by the dialog only. */
   _resolve: (envelope: KubunoDataEnvelope | null) => void
 }
 

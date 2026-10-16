@@ -2,7 +2,7 @@
 //!
 //! The module's own settings route (`/modules/calendar/config`, served by the
 //! core) hides instance-scoped settings from anyone without the settings
-//! privilege — rightly so, it is the administration console's data. But the
+//! privilege - rightly so, it is the administration console's data. But the
 //! composer still has to know that publishing a calendar is closed, or that a
 //! guest is a stranger, and it must know it for ORDINARY accounts. So the module
 //! publishes the handful of decisions its own screens act on, and nothing else:

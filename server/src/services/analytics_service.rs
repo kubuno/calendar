@@ -25,7 +25,7 @@ pub struct DistributionRow {
 
 /// One raw event row, aggregated in Rust. `DATE_TRUNC` and `EXTRACT(EPOCH …)`
 /// are PostgreSQL-only, so the grouping the old materialized view did in SQL is
-/// done here — portable across the three engines.
+/// done here - portable across the three engines.
 #[derive(sqlx::FromRow)]
 struct RawEvent {
     starts_at: DateTime<Utc>,
@@ -39,7 +39,7 @@ fn day_start(ts: DateTime<Utc>) -> DateTime<Utc> {
     ts.date_naive().and_hms_opt(0, 0, 0).unwrap_or_default().and_utc()
 }
 
-/// The UTC start (Monday 00:00) of the ISO week a timestamp falls in — the same
+/// The UTC start (Monday 00:00) of the ISO week a timestamp falls in - the same
 /// bucket `DATE_TRUNC('week', …)` produced.
 fn week_start(ts: DateTime<Utc>) -> DateTime<Utc> {
     let date = ts.date_naive();
@@ -150,7 +150,7 @@ impl AnalyticsService {
         Ok(by_week.into_iter().collect())
     }
 
-    /// Rafraîchit la vue matérialisée. PostgreSQL only — the other engines have
+    /// Rafraîchit la vue matérialisée. PostgreSQL only - the other engines have
     /// no materialized view (the reads above aggregate directly), so it is a
     /// no-op there.
     pub async fn refresh_cache(db: &DbPool) -> Result<()> {

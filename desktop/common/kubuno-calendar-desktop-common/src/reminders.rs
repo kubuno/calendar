@@ -9,7 +9,7 @@ use kubuno_calendar_core::model::{EventInstance, Instant};
 pub struct DueReminder {
     /// A stable key (`<event_id>-<minutes_before>`) for de-duplication across polls.
     pub key: String,
-    /// The event title — the notification headline.
+    /// The event title - the notification headline.
     pub title: String,
     /// Minutes before the event this reminder fires.
     pub minutes_before: i64,
@@ -21,7 +21,7 @@ pub struct DueReminder {
 /// The reminders due within `window_secs` of `now_epoch` (seconds), like the web worker's ±1-minute window.
 ///
 /// `notify_only_if_accepted` skips events the user was invited to but has not accepted (own events, which carry
-/// no RSVP, always notify — their `my_status` is `None`).
+/// no RSVP, always notify - their `my_status` is `None`).
 pub fn due_reminders(events: &[EventInstance], now_epoch: i64, window_secs: i64, notify_only_if_accepted: bool) -> Vec<DueReminder> {
     let mut out = Vec::new();
     for ev in events {

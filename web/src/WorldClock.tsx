@@ -1,4 +1,4 @@
-// World clock block of the calendar sidebar — one live row per time zone picked
+// World clock block of the calendar sidebar - one live row per time zone picked
 // in the settings ("Horloge mondiale"). Renders nothing when the list is empty.
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

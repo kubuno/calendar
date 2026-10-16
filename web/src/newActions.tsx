@@ -2,7 +2,7 @@
  * Items of the shell's "New" button for the calendar module.
  *
  * Contributed as DATA (`MenuItem[]` from @ui) to the `shell.new-actions`
- * extension point — the shell renders them with the project's MenuDropdown.
+ * extension point - the shell renders them with the project's MenuDropdown.
  * `newActionItems` is evaluated when the menu OPENS, outside any React
  * component: no hooks here (stores via `getState()`, i18n via `i18n.t`).
  */
@@ -22,7 +22,7 @@ export function newActionItems(): MenuItem[] {
       label: i18n.t('calendar:event'),
       icon: <CalendarPlus size={16} />,
       // Opens the event-creation modal on today's date (we are already on a
-      // /calendar route — items() returns [] elsewhere).
+      // /calendar route - items() returns [] elsewhere).
       onClick: () => useCalendarStore.getState().setPendingCreate(new Date()),
     },
     {

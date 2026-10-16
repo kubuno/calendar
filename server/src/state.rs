@@ -19,7 +19,7 @@ pub struct AppState {
 impl AppState {
     /// Snapshot of the current instance settings. Takes the read lock briefly,
     /// so callers never hold it across `.await`. Falls back to the compiled
-    /// defaults if the lock was poisoned by a panicking writer — a lost value
+    /// defaults if the lock was poisoned by a panicking writer - a lost value
     /// must never take a guard down in an unpredictable direction.
     pub fn instance(&self) -> InstanceConfig {
         match self.instance.read() {

@@ -104,7 +104,7 @@ impl SchedulingService {
         db: &DbPool,
     ) -> Result<Vec<PollResponse>> {
         // The poll must exist, be open and not expired, and every answered slot must
-        // be one of its own — all checked on the pool before opening the write
+        // be one of its own - all checked on the pool before opening the write
         // transaction.
         let poll = db
             .fetch_optional_as::<MeetingPoll>(
@@ -182,7 +182,7 @@ impl SchedulingService {
         db: &DbPool,
     ) -> Result<MeetingPoll> {
         // Guarded update (`organizer_id`): check ownership first, then update by
-        // id and reselect — a guarded `UPDATE ... RETURNING` has no portable form.
+        // id and reselect - a guarded `UPDATE ... RETURNING` has no portable form.
         let owned: Option<Uuid> = db
             .fetch_optional_scalar(
                 "SELECT id FROM calendar.meeting_polls WHERE id = $1 AND organizer_id = $2",

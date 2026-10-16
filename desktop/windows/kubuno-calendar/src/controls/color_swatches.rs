@@ -1,4 +1,4 @@
-//! `ColorSwatches` — the event colour picker of the editor (`web/src/EventEditor.tsx` ColorField): the
+//! `ColorSwatches` - the event colour picker of the editor (`web/src/EventEditor.tsx` ColorField): the
 //! calendar's own colour first (the « default »), then the fixed `EVENT_SWATCHES`, each a round swatch with a
 //! 2px primary ring when selected. Selecting the calendar swatch means « no per-event colour » (`None`), which
 //! the save path turns into the calendar default / `clear_color`, exactly like the web.

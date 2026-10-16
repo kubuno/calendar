@@ -1,4 +1,4 @@
-//! Native desktop notifications for the reminder worker — a balloon from a notification-area icon
+//! Native desktop notifications for the reminder worker - a balloon from a notification-area icon
 //! (`Shell_NotifyIcon`, the same mechanism the Kubuno desktop shell uses). A single hidden message-only window
 //! owns one tray icon; each reminder updates it with `NIF_INFO` to pop a balloon.
 
@@ -80,7 +80,7 @@ fn notifier() -> Option<&'static Notifier> {
 
 /// Start the reminder worker (web `CalendarNotificationWorker`): a background thread that, every minute, fetches
 /// the upcoming events of `doc`, checks which reminders fall due, and pops a native notification for each new
-/// one — honouring the user's notifications mode (`off` / `in_app` / `desktop`). Detached; it ends with the
+/// one - honouring the user's notifications mode (`off` / `in_app` / `desktop`). Detached; it ends with the
 /// process. `offset_minutes` is the local-zone offset (for the notification time), `fr` the UI language.
 pub fn start_worker(doc: String, offset_minutes: i32, fr: bool) {
     std::thread::spawn(move || {

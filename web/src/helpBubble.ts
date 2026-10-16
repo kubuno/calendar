@@ -2,7 +2,7 @@
  * `HelpBubble` from the shared library, ahead of its publication.
  *
  * The component itself is a core primitive and lives in `@ui`. At RUNTIME that
- * specifier resolves to the host's own instance, which already has it — so
+ * specifier resolves to the host's own instance, which already has it - so
  * nothing here re-implements anything. What is missing is only the TYPE: a
  * module typechecks against the published `@kubuno/ui`, and that package has
  * not been republished since the primitive was added.

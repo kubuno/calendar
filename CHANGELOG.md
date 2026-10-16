@@ -57,14 +57,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Desktop Calendar: the scheduling / booking pages.** The sidebar gains a « Pages de réservation » section
   that lists the owner's bookable appointment schedules and a « Nouveau planning » entry (web
   `CalendarSidebarBody` / the `/calendar/scheduling` page), plus a full appointment-schedule editor (web
-  `AppointmentScheduleEditor.tsx`): a two-pane page with a settings pane — a title, the appointment duration,
+  `AppointmentScheduleEditor.tsx`): a two-pane page with a settings pane - a title, the appointment duration,
   the weekly availability (per weekday, a time range), the time zone, the scheduling window (rolling vs fixed
   dates, max days ahead, minimum notice), the booked-appointment settings (buffer, max per day, guests may
   invite) and the target calendar, then a second step for the location/conferencing, description and email
-  reminders — and a live week-availability preview that mirrors the chosen ranges. Create and configure are
+  reminders - and a live week-availability preview that mirrors the chosen ranges. Create and configure are
   wired to the appointment REST API (`/calendar/appointment-schedules`, create/update/list/get/delete) and the
   round-trip is proven live against the server. (First increment: the weekly editor manages one range per
-  weekday — extra ranges and date-specific overrides on an existing schedule are preserved untouched — and the
+  weekday - extra ranges and date-specific overrides on an existing schedule are preserved untouched - and the
   custom booking-form-field builder is not yet ported.)
 
 - **Desktop Calendar: the sidebar is laid out more compactly** so the weather, moon and booking sections fit a
@@ -72,7 +72,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Desktop Calendar: CalDAV access.** The sidebar's « Gérer » menu gains « CalDAV… » (web
   `CalendarCalDavSettings.tsx`): a dialog showing the CalDAV connection details to sync the calendars with
-  Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. — the main endpoint (server URL + username,
+  Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. - the main endpoint (server URL + username,
   read from `GET /api/v1/me`), and, per calendar, its CalDAV URL built from the calendar's token. Display
   only; verified the built URLs are live (the CalDAV endpoint answers PROPFIND/OPTIONS for the token shown).
 
@@ -102,14 +102,14 @@ number at release time, and CI publishes that section as the GitHub Release note
   that Month. The whole year's events are fetched for the density dots. Faithful to the web in light and dark.
 
 - **Desktop Calendar: event search.** A search field in the toolbar filters the events (title, description or
-  location) over a ±1-year window and shows the matches in a results list (web `SearchResultsView.tsx`) — a
-  count, then each result with a colour dot, its title and the day + time — replacing the current view while a
+  location) over a ±1-year window and shows the matches in a results list (web `SearchResultsView.tsx`) - a
+  count, then each result with a colour dot, its title and the day + time - replacing the current view while a
   query is typed. Clicking a result opens that event's Day. Hidden calendars are excluded. Light and dark.
 
 - **Desktop Calendar: the sidebar's Moon, Weather and Booking sections.** Below the calendars, the sidebar now
   shows a « Lune » row with today's moon drawn to its phase and its name + illuminated percentage (from the
   shared core's moon maths), a « Météo » section with an « Ajouter un lieu » link, and a « Pages de réservation »
-  section — matching the web `CalendarSidebarBody`. (The full weather forecast widget and the booking/scheduling
+  section - matching the web `CalendarSidebarBody`. (The full weather forecast widget and the booking/scheduling
   page are later increments.)
 
 - **Desktop Calendar: the left sidebar (mini-month + calendars).** A sidebar now sits left of the views,
@@ -120,16 +120,16 @@ number at release time, and CI publishes that section as the GitHub Release note
   Month, Week and Day views (a `hidden_calendars` filter). Faithful to the web in light and dark.
 
 - **Desktop Calendar: live server connection (`--doc`).** Opening a calendar with `--doc <calendar-id>` now
-  loads its real events from the server (`GET /calendar/events`) over the Kubuno desktop shell's token broker —
+  loads its real events from the server (`GET /calendar/events`) over the Kubuno desktop shell's token broker -
   the app borrows access tokens from the shell and never holds a password. The visible month's window is
   (re)fetched on open and on every navigation, so the desktop shows exactly what the web shows for the same
   calendar (recurring series expanded by the server, multi-day and all-day events, locations). Without `--doc`
   the app still renders the offline sample.
 
 - **Desktop Calendar: the event editor (create and edit).** A « New event » button and double-clicking a day
-  or an event open an editor dialog — title, all-day, start/end date and time, a recurrence preset (none /
+  or an event open an editor dialog - title, all-day, start/end date and time, a recurrence preset (none /
   daily / weekly / monthly / yearly), the scope when editing a recurring series (this / this and following /
-  all), a location and a description — matching the web editor's fields and look in both light and dark. Save
+  all), a location and a description - matching the web editor's fields and look in both light and dark. Save
   writes to the calendar REST API over the broker (`POST` to create, `PATCH` to edit, with the recurring
   scope/occurrence) off the UI thread, and the view re-fetches.
 
@@ -149,8 +149,8 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Desktop Calendar: the calendar picker and the event colour picker.** The editor now has an « Agenda »
   dropdown listing the writable calendars (the default one preselected, or the event's own on edit) and a
-  « Couleur » row of swatches — the calendar's own colour (the default) followed by the fixed event palette,
-  with a ring on the selected one — matching the web. Choosing a calendar moves the event there; choosing a
+  « Couleur » row of swatches - the calendar's own colour (the default) followed by the fixed event palette,
+  with a ring on the selected one - matching the web. Choosing a calendar moves the event there; choosing a
   swatch sets the event colour (and the first « default » swatch clears it). Both round-trip to the server
   (`calendar_id` and `color`/`clear_color`), proven in light and dark.
 
@@ -171,9 +171,9 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Native desktop Calendar app, first increment (`desktop/`).** A new Cargo workspace for the native desktop
   app: the portable layer `desktop/common/kubuno-calendar-desktop-common` (launch options, calendar view
   state, offline sample dataset, platform extension points) and the Windows app
-  `desktop/windows/kubuno-calendar` (`kubuno-calendar.exe`), whose window renders the **Month view** — the
+  `desktop/windows/kubuno-calendar` (`kubuno-calendar.exe`), whose window renders the **Month view** - the
   weekday header, the 4/5/6-week grid, all-day and multi-day banners, up to four timed events a day then
-  « +N », the today marker and the moon phases — laid out by the shared core and faithful to the web in both
+  « +N », the today marker and the moon phases - laid out by the shared core and faithful to the web in both
   light and dark themes. A navigation toolbar (Today, ‹ ›, the period title, the view switcher) matches the
   web. Rendering only for now (read-only, offline sample); the server-coupled editing comes in later increments.
 
@@ -186,7 +186,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 
 - **Desktop Calendar: the event editor is a two-column modal, like the web.** The editor now matches the web
-  `EventEditor.tsx` layout — a full-width header (title, the date/time row, the all-day toggle and the
+  `EventEditor.tsx` layout - a full-width header (title, the date/time row, the all-day toggle and the
   recurrence field) above two columns: the left « details » column (location, calendar + colour, description)
   and a right column reserved for guests. The single stacked column had grown taller than the screen on a
   high-DPI display, pushing « Enregistrer » off-screen; the two columns keep it in view.
@@ -222,7 +222,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Runs on PostgreSQL, MySQL/MariaDB or SQLite.** The module now talks to the
   database through the shared `kubuno-db` foundation, so an administrator can
   pick the engine in configuration (`database.engine`) and the same build
-  connects to whichever is named — no per-engine binary. The delta-sync layer
+  connects to whichever is named - no per-engine binary. The delta-sync layer
   (the local-first pull for calendars, events and time blocks) moved off
   PostgreSQL sequences and triggers onto a portable, application-driven change
   journal; array columns (event exception dates and cross-module links, time
@@ -246,7 +246,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Input validation library updated.** The version in use carried
   RUSTSEC-2024-0421 through its domain-name parser, which accepted Punycode
-  labels that decode to plain ASCII — a mismatch an attacker can use to make two
+  labels that decode to plain ASCII - a mismatch an attacker can use to make two
   different names look like one.
 
 ### Fixed
@@ -275,8 +275,8 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 
 - **An event can carry labels, and can be given them while it is being
-  created.** They are the instance's own labels — the ones that also go on a
-  file, a note or a task — and they now have a line in the form beside the date
+  created.** They are the instance's own labels - the ones that also go on a
+  file, a note or a task - and they now have a line in the form beside the date
   and the location, in the quick card and in the full editor alike. Attaching
   them used to mean finding "Kubuno labels…" under other actions on an event
   that already existed; a new event had nowhere to put them. Chosen before the
@@ -295,7 +295,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **A description written with formatting or a mention is readable again on the
   event card.** The card edited it in a plain box while the full form used the
   rich editor, so a description that had been through the full form came back to
-  the card as its own source — `<span class="…">` and all — and saving from
+  the card as its own source - `<span class="…">` and all - and saving from
   there stored that. The card now uses the same editor, so the two forms show
   the same thing and a mention stays a mention. Copying an event or sending it
   by e-mail puts the words in the body, not the markup, and searching a
@@ -304,7 +304,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Changed
 
 - **Typing `@` in the guest field reaches for a person.** One letter after it is
-  now enough to be offered a list — the `@` has already said you are naming
+  now enough to be offered a list - the `@` has already said you are naming
   somebody rather than typing an address, so the usual two-letter wait no longer
   applies. What follows the `@` is what gets searched, and `@m` is no longer
   mistaken for an address: it stops raising the "this address is outside your
@@ -320,7 +320,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **An event and its video call share one title.** A meeting attached to an
   event used to take the event's name once, at creation, and then drift: rename
   the event and the meetings list still showed the old name. The two names are
-  now the same name — change it in either place and the other follows, whether
+  now the same name - change it in either place and the other follows, whether
   the change comes from this calendar, from the meetings list, or from another
   device. A small link mark sits beside the title to say so before you type, and
   taking the call off the event releases it: the meeting keeps the name its link
@@ -330,7 +330,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **The quick card invites people the same way the full editor does.** It had
   its own plain address box and its own chips: no suggestions, no faces, no
-  "optional", no clash warning — the same job done twice, an inch apart, and one
+  "optional", no clash warning - the same job done twice, an inch apart, and one
   of the two always behind. Both now use the same field and the same line, so
   what is true of one is true of the other.
 
@@ -344,17 +344,17 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **A `Name <address>` string is understood as a name and an address.** It is the
   form every mail client copies, and the form a colleague pastes into a message.
   Stored whole it became an address nobody could write to and a name nobody
-  could read. It is now split where the address lands — on the server — so an
+  could read. It is now split where the address lands - on the server - so an
   import, a script or another client gets the same treatment as the guest field,
   and a malformed one is refused rather than mangled.
 
 - **Typing `@` in an event's description suggests people.** From whatever this
   instance can offer: its own accounts, and your contacts when that module is
-  installed. Only in the description — in the guest field `@` is part of an
+  installed. Only in the description - in the guest field `@` is part of an
   address, and a title is a title.
 
-- **Guests have faces.** A guest with an account shows their photo — on the
-  suggestion, on the line and on the card — derived from the account rather than
+- **Guests have faces.** A guest with an account shows their photo - on the
+  suggestion, on the line and on the card - derived from the account rather than
   fetched, so a list of twenty names costs no extra request. A photo held by
   your contacts wins over it, being the one chosen for that person; an initial
   stands in when there is nothing, and also when a photo fails to load.
@@ -364,16 +364,16 @@ number at release time, and CI publishes that section as the GitHub Release note
   link keeps doing exactly what a link does.
 
 - **A guest's card shows what the instance actually knows about them.** It was
-  a name and an address. It now carries the directory's own profile — how the
+  a name and an address. It now carries the directory's own profile - how the
   name is said, the pronouns asked for, where the person works from, the line
-  they wrote about themselves, their unit — plus whatever other modules
+  they wrote about themselves, their unit - plus whatever other modules
   contribute: their job title, organisation and telephone from your contacts, a
   named link to their site. Nothing is invented and no empty row is drawn.
   (Gender and date of birth are deliberately not part of it, and never will be.)
 
 - **The card's buttons come from the modules that can perform them.** Writing
   an e-mail is always there; chatting and starting a call appear when a module
-  hosts them, and only for someone with an account — there is nobody to talk to
+  hosts them, and only for someone with an account - there is nobody to talk to
   behind an outside address. Opening the full contact sheet appears when
   contacts is installed. An instance without those modules simply shows fewer
   buttons rather than buttons that fail.
@@ -386,7 +386,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Guest permissions, and they are enforced.** An organiser decides three
   things: whether guests may modify the event, invite other people, and see who
-  else is invited. The defaults are the familiar ones — guests may invite and
+  else is invited. The defaults are the familiar ones - guests may invite and
   may see each other, and may not rewrite the event. Each is applied by the
   server: a guest allowed to modify can now actually edit the event (but not
   move it to someone else's calendar), one allowed to invite can add a name, and
@@ -395,21 +395,21 @@ number at release time, and CI publishes that section as the GitHub Release note
   nothing.
 
 - **A guest whose availability cannot be shown says so.** A name on the list
-  carries an asterisk when this instance cannot read that person's calendar —
+  carries an asterisk when this instance cannot read that person's calendar -
   they have no account here, their agenda is not shared with you, or it does not
   publish its free time. The asterisk is explained once under the list, behind a
   question mark, rather than repeated on every line. Without it, the "Find a
   time" grid stays blank for that guest and blank reads as "free".
 
 - **Clicking a guest opens their card**: photo, name, address, and what can
-  actually be done from here — write to them, or look at when they are free.
+  actually be done from here - write to them, or look at when they are free.
   Nothing more: an action that opens a module this instance has not installed
   would be worse than an absent one.
 
 - **A guest can be welcome without being required.** Mark a guest optional from
   the list and they are shown as such; the invitation itself carries it, so the
   distinction reaches their own calendar rather than stopping at yours. Only the
-  organiser may set it — it is a statement about a guest, not an answer from
+  organiser may set it - it is a statement about a guest, not an answer from
   them. Taking a name off the list stays with the organiser too: "invite others"
   adds people, it was never a licence to uninvite them.
 
@@ -417,15 +417,15 @@ number at release time, and CI publishes that section as the GitHub Release note
   directory, with their photo and name, and your own contacts when a module
   provides them; an address typed in full still invites anyone. A colleague
   found in both places appears once. When the directory is set to keep addresses
-  private — the common case — the suggestion invites the ACCOUNT and the server
+  private - the common case - the suggestion invites the ACCOUNT and the server
   resolves the address, so picking a colleague works without their mailbox ever
   reaching the browser.
 
 ### Fixed
 
 - **A day's entries are listed in the order of the day.** The grid draws four
-  things — your events, booking-page availability, public holidays and the block
-  you are dragging — and they were simply appended one list after another. Each
+  things - your events, booking-page availability, public holidays and the block
+  you are dragging - and they were simply appended one list after another. Each
   was in order within itself, but the result was not: a 09:00 booking slot sat
   below a 16:00 meeting in the same cell. They are now merged chronologically,
   all-day entries first, in every view at once.
@@ -447,17 +447,17 @@ number at release time, and CI publishes that section as the GitHub Release note
   behind a call has to be created while the event is still being written, and it
   used to stay behind when the event did not: abandoning the form, or removing
   the call from it, left the room in place for ever. The form now says which way
-  it went — saved, or thrown away — and whoever hosts the call acts on it.
+  it went - saved, or thrown away - and whoever hosts the call acts on it.
 
 ### Changed
 
 - **One card for an event, whether it exists yet or not.** Clicking an event
   opened a detail window; creating one opened a small card. They showed the same
-  event an inch apart and agreed on almost nothing — different surface,
+  event an inch apart and agreed on almost nothing - different surface,
   different rows, and the video call dressed by the meeting module in one and a
   bare button in the other. There is one card now: empty for a new event, filled
-  for an existing one. Consulting and changing are the same gesture — the rows
-  open already filled — and what only an existing event can offer came with it:
+  for an existing one. Consulting and changing are the same gesture - the rows
+  open already filled - and what only an existing event can offer came with it:
   invite with a link, send by e-mail, delete, duplicate, copy, labels, print,
   its reminders and its visibility, all editable rather than merely displayed.
   Changing or deleting one occurrence of a series asks which occurrences, in the
@@ -465,14 +465,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **The quick card offers the same video call as the full editor.** It created
   the room through a private path of its own, so the module that hosts meetings
-  dressed the editor's row and not this one — and the link it wrote landed in
+  dressed the editor's row and not this one - and the link it wrote landed in
   the *location* field rather than in the event's link. Both forms now go
   through the same extension point, and a room created from the card is the same
   draft as one created from the editor: it survives “More options”, and it is
   taken back if the card is dismissed.
 
 - **The quick-create card is the event form, not a look-alike.** It sat on white
-  with outlined boxes while the full editor sat on a tint with filled fields —
+  with outlined boxes while the full editor sat on a tint with filled fields -
   the same five fields, dressed two different ways, one click apart. The card
   now wears the same surface and the same fields as the editor it opens into.
 
@@ -481,7 +481,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   of every other field in the column.
 
 - **The event form has one vertical rhythm.** Its rows were 20 px apart, the
-  date lines 4 px, and a reminder sat 6 px above the link that adds another —
+  date lines 4 px, and a reminder sat 6 px above the link that adds another -
   spacing that reads as though some fields belong together and others do not.
   Every gap is the same now, and the first field of each region starts on the
   same line.
@@ -489,7 +489,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **An event's video call is a link of its own, typed or pasted like any
   other.** The video row used to be a single button that only worked when a
   module of this instance hosted meetings, and it stored the link in the
-  event's place — so a call held anywhere else could not be attached, and a
+  event's place - so a call held anywhere else could not be attached, and a
   call and a place could not coexist. The row is now a link field, kept apart
   from the place; the event's detail offers to join it, opening a link into
   this instance in the app and any other in its own tab. Events saved before
@@ -510,8 +510,8 @@ number at release time, and CI publishes that section as the GitHub Release note
   free. That answers a different question from the one an organiser is holding:
   they are looking at a week, they already know which morning would work, and
   they want to see what stands in the way of it. The tab now shows the
-  calendars themselves — a day or a week, navigable, with the hours in your own
-  zone and in the second zone when you keep one — with your events drawn on
+  calendars themselves - a day or a week, navigable, with the hours in your own
+  zone and in the second zone when you keep one - with your events drawn on
   them, your guests' busy time as a band across the column, and the meeting as
   a block you click or drag onto the hour you want. Its duration is carried
   over unchanged; the hour is what this tab is for.
@@ -521,19 +521,19 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **The guest and room lists no longer live inside the event's details tab.**
   They are a region of their own, beside it: they stay in view while you look
-  for an hour — which is exactly when you want to see who you are trying to
-  gather — and the details tabs no longer rule a column they do not command.
+  for an hour - which is exactly when you want to see who you are trying to
+  gather - and the details tabs no longer rule a column they do not command.
   The two regions start on the same line, each strip drawn over its own content,
   and the tabbed region is raised onto a white card.
 
-- **The event form stands on a tint instead of on white**, and its fields —
-  text, description, dates, guests, the calendar and status lists — are filled
+- **The event form stands on a tint instead of on white**, and its fields -
+  text, description, dates, guests, the calendar and status lists - are filled
   boxes with no outline at rest. A field is then something the eye picks out by
   its shape, and the blue stroke it grows on focus is the only line in the form
   that means anything.
 
 - **The event editor is a window now.** It was a card that imitated one, with
-  its own drag, its own top bar and its own close button — the one window in the
+  its own drag, its own top bar and its own close button - the one window in the
   product that behaved differently. It is the shared window: it can be moved and
   RESIZED, Escape closes it, and on a phone it fills the screen. The event is
   named at the top of the form it names, and **Save** sits at the bottom right
@@ -556,37 +556,37 @@ number at release time, and CI publishes that section as the GitHub Release note
 ### Added
 
 - **Creating an event no longer opens a form.** Clicking a slot now draws a
-  provisional block right where you clicked — named "(No title)" until you name
-  it, and following the title and the hour as you change them — and opens a small
+  provisional block right where you clicked - named "(No title)" until you name
+  it, and following the title and the hour as you change them - and opens a small
   card beside it carrying what an event needs to exist: a title, the day, guests,
   a video meeting, a place, a description and the calendar it goes to. Most
   events are a title and an hour; asking for a full sheet to get there put the
   save button at the far end of a form nobody wanted to cross. Everything else
   is one click away, behind **More options**, which hands the editor what has
   already been typed rather than starting again.
-  Clicking a day in the month grid starts an event AT an hour — the same default
-  the editor would have used — rather than a whole day: a whole-day block is
+  Clicking a day in the month grid starts an event AT an hour - the same default
+  the editor would have used - rather than a whole day: a whole-day block is
   drawn as a banner, and a banner reserves its height in every cell of the week,
   which pushed the other days' events down while never appearing among the
   events of the day it belonged to.
   **Escape** gives up on the event being composed: the card closes and the
   provisional block leaves the grid with it. **Shift+C** opens this card from
-  anywhere, while **C** still goes straight to the full editor — two gestures,
+  anywhere, while **C** still goes straight to the full editor - two gestures,
   because an event you already know is complicated should not have to pass
   through a small card first.
 
 ### Changed
 
 - **The calendar now wears the platform's blue.** It carried its own accent, the
-  purple of its logo; every surface that took that colour — the day marker, the
-  buttons, the default colour of a new event — is now the same blue as the rest
+  purple of its logo; every surface that took that colour - the day marker, the
+  buttons, the default colour of a new event - is now the same blue as the rest
   of the product. Purple remains available as an event colour, it is simply no
   longer the one chosen for you.
 
 - **Book a room while you are still writing the invitation.** The room list used
   to appear only once the meeting had been saved, so anyone creating an event
   simply never saw it. It is now beside the guest list from the first keystroke,
-  and each room says whether it is free **at the hour currently in the form** —
+  and each room says whether it is free **at the hour currently in the form** -
   naming the meeting that holds it when it is not, because "unavailable" leaves
   the reader with nothing to do and "held by the weekly review" lets them go and
   ask. Several rooms can be picked, and a taken one can still be chosen: the
@@ -594,9 +594,9 @@ number at release time, and CI publishes that section as the GitHub Release note
   read beside everyone else's.
   Guests and rooms are two lists of the same rank, so they sit in two tabs
   rather than one stacked under the other, and the rooms tab is simply absent
-  on an instance that has declared no room. Each room is read as columns — its
+  on an instance that has declared no room. Each room is read as columns - its
   own name, then the building and floor, then how many it seats and what it is
-  equipped with — instead of the single composed string that packs all four into
+  equipped with - instead of the single composed string that packs all four into
   a line nobody scans.
   The location field is left to the geographic address, deliberately: a room is
   a participant of the meeting, not the place it is written down as.
@@ -605,7 +605,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Moving a meeting now asks its rooms again.** A room that had agreed to
   Tuesday at ten stayed marked as accepting after the meeting was moved to
-  Wednesday at three — so two meetings could quietly own the same room. Every
+  Wednesday at three - so two meetings could quietly own the same room. Every
   room held by a meeting is re-decided when its times change, and declines when
   it is no longer free.
 - **Room usage figures are now cut into days and hours where you live.** The
@@ -624,12 +624,12 @@ number at release time, and CI publishes that section as the GitHub Release note
   in the building as idle.
 
 - **Everyone on the meeting is told when its room goes back.** The organiser and
-  the guests get the same notice they get for any other change to the event —
+  the guests get the same notice they get for any other change to the event -
   because that is what happened. The meeting itself is untouched.
 
 - **A room that nobody is coming to is given back.** When every invitee but one
   has declined, the room declines too and returns to the pool, so the next person
-  looking for a space can have it — and your meeting is left alone, because two
+  looking for a space can have it - and your meeting is left alone, because two
   people who cannot come do not cancel it. The organiser sees the room marked as
   released rather than merely refused, which is a different thing from a room
   that turned the meeting down because it was already booked.
@@ -642,7 +642,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **A meeting room can now be invited to an event, and it answers.** Pick a room
   from the organisation's directory and it joins the guest list like anyone
-  else: it accepts when it is free, and it declines when it is already taken —
+  else: it accepts when it is free, and it declines when it is already taken -
   naming the meeting that holds it, so "held by the weekly review, 14:00" is
   what you read instead of "unavailable". A taken room never cancels your
   meeting; it simply says no, where you read everyone else's answer.
@@ -654,15 +654,15 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **New administrator setting "Public URL of the instance"** (Calendar → Sharing). It is the address invitation answer links are built on; left empty, invitations simply carry no buttons and guests answer from their own calendar.
 
 - **Meeting invitations are now e-mailed to your guests.** When you create an
-  event with guests — and you can now add them right from the creation dialog,
-  no longer only after saving — Kubuno asks the Mail module to send each guest a
+  event with guests - and you can now add them right from the creation dialog,
+  no longer only after saving - Kubuno asks the Mail module to send each guest a
   proper invitation carrying an iCalendar (`.ics`) attachment. Updating the
   meeting re-sends it, and cancelling (deleting) the meeting sends a
   cancellation. When a guest accepts, declines or answers "maybe" from their
   mail client, their response is reflected back on the event automatically.
 
 - **You now see the meetings you were invited to in your own calendar**, even
-  when the organizer never shared their calendar with you — an invitation is its
+  when the organizer never shared their calendar with you - an invitation is its
   own reason to show the event.
 
 - **New administrator setting "Send invitations by e-mail" (on by default).**
@@ -674,7 +674,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **This module now installs as a Kubuno package (`.kbpkg`) only.** Its system
   packages (Debian/RPM and the Windows and macOS installers) are no longer
   built: the module is distributed as one `.kbpkg` per platform (Linux, Windows,
-  macOS) that the Kubuno server installs itself — from the admin console, or
+  macOS) that the Kubuno server installs itself - from the admin console, or
   offline with `kubuno modules:install <file>.kbpkg`.
 - **Dates and times are now written by the platform in the reader's language.**
   Calendar's date and time formatting moved to the in-house Intl API in
@@ -684,7 +684,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - Internal: the translations file was split into one file per language under
   `frontend/src/i18n/` (was a single 4,600-line module), for maintainability. No
-  user-facing change — the exact same strings are registered.
+  user-facing change - the exact same strings are registered.
 
 - **A guest is now linked to their Kubuno account** when their address matches
   one, and the organizer appears in the guest list as the meeting's host. The
@@ -704,12 +704,12 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **The README now opens with the module's logo.** The public README on
   GitHub now shows the module's designer logo (the same PNG shown as the
-  browser tab icon and in the applications menu) at the top of the page — the
+  browser tab icon and in the applications menu) at the top of the page - the
   repository landing now matches the icon a signed-in user sees inside the
   platform. The image ships in-repo, under `.github/logo.png`, so it renders
   even when the repo is browsed offline.
 
-- **New Calendar logo** — a violet hexagon with a white calendar grid, used
+- **New Calendar logo** - a violet hexagon with a white calendar grid, used
   as the browser-tab icon and in the applications menu. It is now raster (PNG)
   designer artwork.
 
@@ -717,7 +717,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   Opening the panel pre-fills the "Subject" field with the bar's current text,
   and editing that field rewrites the bar's text live (running the search as
   you type, exactly like typing in the bar). The calendar's search is plain
-  free text matched against event titles and descriptions — the other panel
+  free text matched against event titles and descriptions - the other panel
   fields (location, excluded words, dates, scope) are state filters with no
   text representation, so they intentionally stay panel-only. "Reset" now also
   clears the search bar's text.
@@ -734,7 +734,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   release; the lockfile now takes the version that replaced it.
 - **The package could not be built where `zip` is absent.** The Windows job of
   the continuous integration has no `zip`, so the Windows package was simply lost
-  the first time it was attempted — a script failure, not a build failure. The
+  the first time it was attempted - a script failure, not a build failure. The
   builder now falls back to 7-Zip, then to PowerShell.
 ### Added
 
@@ -746,7 +746,7 @@ number at release time, and CI publishes that section as the GitHub Release note
   user's calendars: the service resolves a writable default calendar and creates
   the event there.
 
-- **This module now ships a `.kbpkg`** — the single package format a Kubuno
+- **This module now ships a `.kbpkg`** - the single package format a Kubuno
   server installs by itself, the same file on Linux, Windows and macOS. It
   carries the same binary, interface and manifest as the system packages,
   arranged the way the server expects to find a module on disk, plus a
@@ -760,7 +760,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **A built package could be thrown away instead of published.** The job that
   attaches a package to the release waited ten minutes for another workflow to
-  create that release, then gave up with "release never appeared — build.yml
+  create that release, then gave up with "release never appeared - build.yml
   likely failed". The diagnosis was wrong: on a repository whose `.deb` takes
   longer than ten minutes to build, the release simply did not exist yet, and a
   package that had built perfectly was discarded. Four modules reached v0.1.6
@@ -778,7 +778,7 @@ number at release time, and CI publishes that section as the GitHub Release note
 - **Calendar now authenticates proxied requests from a signed token instead of
   trusting plain headers.** Requests must carry a valid `X-Kubuno-Auth` token
   minted by the core with this module's internal secret (see `kubuno-modauth`),
-  rather than reading `X-Kubuno-User-*` headers at face value — which any process
+  rather than reading `X-Kubuno-User-*` headers at face value - which any process
   reaching Calendar's loopback port could otherwise forge to act as any user.
 
 ## [0.1.6] - 2026-08-19
@@ -787,14 +787,14 @@ number at release time, and CI publishes that section as the GitHub Release note
 
 - **Pill-shaped buttons are gone from the interface.** Filter chips, view
   segments, tab selectors and action buttons that were drawn as pills now use the
-  same 4 px corner radius as every other button — the shape set them apart for no
+  same 4 px corner radius as every other button - the shape set them apart for no
   reason other than habit. Round buttons that hold a lone icon, avatars, status
   dots and non-clickable badges keep their shape: a circle around a single glyph
   is not a pill.
 
 - Theme tokens: two colours for navigation labels (`--color-text-nav`,
   `--color-text-nav-active`). Every module carries the same token sheet, so the
-  values must match across them — whichever bundle loads last would otherwise
+  values must match across them - whichever bundle loads last would otherwise
   win. No visible change inside this module.
 
 ### Changed

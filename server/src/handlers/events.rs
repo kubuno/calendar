@@ -43,7 +43,7 @@ pub async fn list(
     Ok(Json(serde_json::json!({ "events": instances, "count": instances.len() })))
 }
 
-/// Tell whoever hosts meetings what this event's call is called — or that it no
+/// Tell whoever hosts meetings what this event's call is called - or that it no
 /// longer has one.
 ///
 /// Fired for every save, not only when the title moved: the module on the other
@@ -160,7 +160,7 @@ pub async fn update(
 
     // A meeting that moved must ask its rooms again: a room that agreed to
     // Tuesday 10:00 never agreed to Wednesday 15:00, and leaving it marked
-    // "accepted" is how two meetings end up owning the same room. Best effort —
+    // "accepted" is how two meetings end up owning the same room. Best effort -
     // the edit is already saved and must not be undone by a room.
     match crate::services::room_service::RoomService::rebook(&state.db, &event).await {
         Ok(declined) if !declined.is_empty() => {
@@ -214,7 +214,7 @@ pub async fn delete(
 ) -> Result<StatusCode> {
     // Snapshot the event and its guest list BEFORE the delete: the CASCADE wipes
     // the attendees, and a cancellation needs them. Only a full removal of the
-    // event warrants a cancellation e-mail — trimming a recurrence ("this and
+    // event warrants a cancellation e-mail - trimming a recurrence ("this and
     // following") is not a cancellation of the meeting.
     let send_invitations = state.instance().send_email_invitations;
     let snapshot = if send_invitations {
@@ -236,8 +236,8 @@ pub async fn delete(
         None
     };
 
-    // The meeting outlives the event that made it — a link that has been shared
-    // must keep working — but it stops answering to a title nobody owns.
+    // The meeting outlives the event that made it - a link that has been shared
+    // must keep working - but it stops answering to a title nobody owns.
     let released = current_url(&state, id).await;
     EventService::delete(id, user.id, q.scope, q.occurrence, &state.db).await?;
     announce_meeting(&state, released.as_deref(), "", None);

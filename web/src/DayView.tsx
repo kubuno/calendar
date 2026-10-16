@@ -146,7 +146,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
     catch { return '' }
   }
 
-  // "Now" line (today only) — evolves in real time via the tick.
+  // "Now" line (today only) - evolves in real time via the tick.
   const now     = useNowTick()
   const showNow = isToday(date)
   const nowTop  = (now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600) * 40
@@ -155,7 +155,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
   const MONO = "'DM Sans', ui-sans-serif, system-ui, sans-serif"
 
   // On mount / day change: snap the scroll to the current hour (today) or to
-  // the early morning — instead of opening on midnight.
+  // the early morning - instead of opening on midnight.
   const scrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const sc = scrollRef.current
@@ -313,7 +313,7 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
                   className="absolute rounded-md px-2 py-0.5 cursor-pointer overflow-hidden group
                              shadow-sm ring-1 ring-surface-0/60 transition-[box-shadow,filter] duration-100
                              hover:shadow-md hover:brightness-[1.04] hover:z-10 active:cursor-grabbing">
-                  {/* Resize handle — top (start time) */}
+                  {/* Resize handle - top (start time) */}
                   {!locked && <div onPointerDown={startResize(ev, 'top')} onClick={e => e.stopPropagation()} draggable={false}
                     className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize z-10" />}
                   <div className="text-xs font-semibold truncate leading-snug">
@@ -326,13 +326,13 @@ export function DayView({ date, events, calendars, onEventClick, onEventContextM
                     </div>
                   )}
                   {!compact && ev.location && <div className="text-xs truncate opacity-80">{ev.location}</div>}
-                  {/* Resize handle — bottom (end time) */}
+                  {/* Resize handle - bottom (end time) */}
                   {!locked && <div onPointerDown={startResize(ev, 'bottom')} onClick={e => e.stopPropagation()} draggable={false}
                     className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize z-10" />}
                 </div>
               )
             })}
-            {/* Availability bands (appointment schedules) — read-only */}
+            {/* Availability bands (appointment schedules) - read-only */}
             {apptEvs.map(ev => {
               const start = toDate(ev.starts_at), end = toDate(ev.ends_at)
               const sMin = start.getHours() * 60 + start.getMinutes()

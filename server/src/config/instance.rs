@@ -2,7 +2,7 @@
 //! in the console.
 //!
 //! Declared by `module.toml`'s `[[settings]]`, stored in `core.settings`, and read
-//! back here through `/internal/modules/calendar/settings` — a module owns its own
+//! back here through `/internal/modules/calendar/settings` - a module owns its own
 //! schema and cannot read the core's tables, and a background worker has no user
 //! token for the public config route. The module is named in the URL so the read
 //! works whether the instance shares one master secret or a derived one per
@@ -71,7 +71,7 @@ pub struct InstanceConfig {
     /// Whether users may set a daily working location on their calendar.
     pub allow_working_location: bool,
     /// The instance's own domain names, lowercase, as declared in the console.
-    /// Empty when none is declared yet — the guest policy then falls back to the
+    /// Empty when none is declared yet - the guest policy then falls back to the
     /// directory, never to "everyone is external".
     pub internal_domains: Vec<String>,
 }
@@ -154,7 +154,7 @@ impl InstanceConfig {
     }
 
     /// The domain part of an address, lowercased. `None` when the address has no
-    /// single `@` — such a string is never treated as one of ours.
+    /// single `@` - such a string is never treated as one of ours.
     fn domain_of(email: &str) -> Option<String> {
         let mut parts = email.rsplitn(2, '@');
         let domain = parts.next()?.trim().to_ascii_lowercase();
@@ -253,7 +253,7 @@ async fn fetch_domains(http: &reqwest::Client, core_url: &str, secret: &str) -> 
 /// Used only when the domain test already said "not ours": a guest on an
 /// undeclared domain may still be a colleague on an instance that has not
 /// finished declaring its names. `None` means the question could not be
-/// answered — the caller decides what to do with an unknown, and the invitation
+/// answered - the caller decides what to do with an unknown, and the invitation
 /// guard refuses rather than guessing.
 pub async fn directory_knows_email(
     http: &reqwest::Client,
@@ -306,7 +306,7 @@ pub async fn directory_knows_email(
 /// matching user's `id` so an attendee row can be linked to the account (which is
 /// what lets an invited user see the event in their own calendar). `None` when
 /// the address belongs to no account, the lookup failed, or the answer was
-/// unreadable — the caller then leaves `user_id` NULL (an external guest).
+/// unreadable - the caller then leaves `user_id` NULL (an external guest).
 pub async fn directory_user_id(
     http: &reqwest::Client,
     core_url: &str,

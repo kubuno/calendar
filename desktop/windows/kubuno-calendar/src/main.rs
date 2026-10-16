@@ -1,4 +1,4 @@
-//! Kubuno Calendar for Windows (`kubuno-calendar.exe`) — `Program.cs`: the app of desktop/common with the
+//! Kubuno Calendar for Windows (`kubuno-calendar.exe`) - `Program.cs`: the app of desktop/common with the
 //! Windows platform registered and the Win32 window as its user interface.
 //!
 //! `kubuno-calendar [--dark] [--culture fr|en] [--view month|week|day|year|schedule] [--date yyyy-mm-dd]

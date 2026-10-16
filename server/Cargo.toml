@@ -2,7 +2,7 @@
 name        = "kubuno-calendar"
 version     = "0.1.9"
 edition     = "2021"
-description = "Kubuno Calendar — module calendriers et événements"
+description = "Kubuno Calendar - module calendriers et événements"
 license     = "AGPL-3.0"
 repository  = "https://github.com/kubuno/calendar"
 

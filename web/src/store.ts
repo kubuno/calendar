@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-// 'schedule' = vertical per-day event list ("Planning" view) — the default
+// 'schedule' = vertical per-day event list ("Planning" view) - the default
 // mobile view, also reachable at /calendar/schedule on desktop.
 // 'custom'   = N-day strip, N coming from the `custom_view_days` preference.
 export type ViewMode = 'day' | 'week' | 'month' | 'year' | 'schedule' | 'custom'
@@ -11,7 +11,7 @@ const MOON_KEY = 'kubuno:calendar:moon'
 //
 // Persisted, unlike the other unchecked calendars: a real calendar's visibility
 // is a per-session glance ("hide this while I look at that"), whereas somebody
-// who turns the holidays off means it — and having them come back at every
+// who turns the holidays off means it - and having them come back at every
 // reload would read as the switch not working.
 const HIDDEN_HOLIDAYS_KEY = 'kubuno:calendar:hidden-holidays'
 export const HOLIDAY_CALENDAR_PREFIX = 'holidays:'

@@ -60,7 +60,7 @@ export const APPT_PREFIX = 'appt::'
 // the visible range, so the owner sees when their booking pages are open
 // (recurring "09:00 <title>" markers). These are non-editable events
 // tagged via `event_id = appt::<scheduleId>`; clicking one opens the editor.
-// Times are built in local time — correct when the browser shares the schedule's
+// Times are built in local time - correct when the browser shares the schedule's
 // timezone (the default), which is the common case.
 export function buildAvailabilityEvents(schedules: AppointmentSchedule[], from: Date, to: Date): EventInstance[] {
   const out: EventInstance[] = []
@@ -141,7 +141,7 @@ export function calendarGrid(month: Date, weekStartsOn: WeekStart): Date[] {
   return eachDayOfInterval(start, end)
 }
 
-/** Events the user explicitly declined — hidden unless the display option asks
+/** Events the user explicitly declined - hidden unless the display option asks
  *  for them (the RSVP status is resolved server-side, see `my_status`). */
 export function keepPerSettings(events: EventInstance[], settings: CalendarSettings): EventInstance[] {
   if (settings.showDeclinedEvents) return events
@@ -184,7 +184,7 @@ export const APPT_GUTTER = 18
 // continuous horizontal bar in a dedicated row (Day/Week) or across the day cells
 // (Month), with a pointed end when the event continues outside the visible range.
 
-/** Darken a #rgb / #rrggbb colour by `factor` (0–1) — used for the continuation
+/** Darken a #rgb / #rrggbb colour by `factor` (0–1) - used for the continuation
  *  arrow tip of a banner, which Google draws in a darker shade of the event. */
 export function shade(hex: string, factor: number): string {
   let h = hex.replace('#', '')
@@ -208,7 +208,7 @@ export function isBannerEvent(ev: EventInstance): boolean {
  *  T23:59:59Z`) but stand for whole calendar dates. Reading them in local time
  *  shifts the day (e.g. 23:59Z becomes the next day at GMT+2, or 00:00Z the
  *  previous day at GMT-5), so we take the date in UTC and rebuild it at local
- *  midnight — timezone-safe on either side of UTC. */
+ *  midnight - timezone-safe on either side of UTC. */
 function allDayLocal(iso: string): Date {
   const d = toDate(iso)
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())

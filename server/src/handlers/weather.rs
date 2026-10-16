@@ -136,7 +136,7 @@ pub async fn update_location(
             .await?;
     }
 
-    // Guarded update (id + user_id) with COALESCE, then re-select the row — the
+    // Guarded update (id + user_id) with COALESCE, then re-select the row - the
     // portable stand-in for `UPDATE … RETURNING`. An absent row re-selects to
     // None, which is the NotFound the guard used to express.
     let name = dto.name.as_deref().map(str::trim).map(str::to_owned);

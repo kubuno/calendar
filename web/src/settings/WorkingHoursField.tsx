@@ -1,4 +1,4 @@
-// "Heures et lieu de travail" — the per-day working schedule, laid out like
+// "Heures et lieu de travail" - the per-day working schedule, laid out like
 // Google Calendar: a row of weekday pills to pick working days, then, for each
 // working day, its time range(s) and a work location.
 //
@@ -46,7 +46,7 @@ export default function WorkingHoursField() {
   // paint. See the module responsive-layer gotcha.
   const isMobile = useIsMobile()
   const { workingHoursEnabled, workSchedule, weekStartsOn, workingLocationAllowed } = useCalendarSettings()
-  // Minimal defaults: they only fill missing keys — the current bag always wins,
+  // Minimal defaults: they only fill missing keys - the current bag always wins,
   // so no existing preference is clobbered.
   const { update } = useModulePrefs<{ work_enabled: boolean; work_schedule: WorkSchedule }>(
     'calendar', { work_enabled: false, work_schedule: {} },
@@ -140,7 +140,7 @@ export default function WorkingHoursField() {
         })}
       />
 
-      {/* Weekday pills — pick which days are working days. */}
+      {/* Weekday pills - pick which days are working days. */}
       <div className="flex items-center gap-2 mt-4">
         {week.map(c => {
           const on = !!workDayFor(workSchedule, c.weekday)
@@ -201,7 +201,7 @@ export default function WorkingHoursField() {
                 <div key={c.weekday} className="flex flex-wrap items-start gap-3">
                   <span className="w-20 shrink-0 pt-2 text-text-primary capitalize">{c.full}</span>
 
-                  {/* Time ranges — only when the hours toggle is on. */}
+                  {/* Time ranges - only when the hours toggle is on. */}
                   {workingHoursEnabled && (
                     <div className="flex flex-col gap-2">
                       {day.ranges.map((r, idx) => (
@@ -232,7 +232,7 @@ export default function WorkingHoursField() {
                     </div>
                   )}
 
-                  {/* Work location — only when the admin allows it. Choosing
+                  {/* Work location - only when the admin allows it. Choosing
                       "Other office" / "Elsewhere" reveals a free-text field. */}
                   {workingLocationAllowed && (
                     <div className="flex flex-col gap-2">

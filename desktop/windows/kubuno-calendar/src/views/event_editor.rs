@@ -1,6 +1,6 @@
-//! The event editor dialog (`event_editor.kbview`) — the desktop counterpart of the web `EventEditor.tsx` /
+//! The event editor dialog (`event_editor.kbview`) - the desktop counterpart of the web `EventEditor.tsx` /
 //! `RecurrenceCustomDialog.tsx`: title, start/end (date + time), all-day, location, a recurrence preset, a
-//! description, and — when editing a recurring series — the scope (this occurrence / this and following / all).
+//! description, and - when editing a recurring series - the scope (this occurrence / this and following / all).
 //! It collects the fields locally and hands the window a [`EventForm`] (UTC timestamps, an RRULE) to POST/PATCH.
 //! Guests, reminders, the colour picker, the calendar picker and the full custom-recurrence dialog are later
 //! sub-increments.
@@ -26,7 +26,7 @@ pub struct EventEditor {
     title: String,
     #[bind]
     all_day: bool,
-    /// `!all_day` — drives the time dropdowns' visibility.
+    /// `!all_day` - drives the time dropdowns' visibility.
     #[bind]
     timed: bool,
     #[bind]
@@ -57,7 +57,7 @@ pub struct EventEditor {
     cal_items: Rows,
     #[bind]
     cal_value: String,
-    // Reminders — up to two rows (the common case); each is a method + an offset, matching the web.
+    // Reminders - up to two rows (the common case); each is a method + an offset, matching the web.
     #[bind]
     rem_type_items: Rows,
     #[bind]
@@ -77,7 +77,7 @@ pub struct EventEditor {
     /// Whether another reminder row can still be added (fewer than two shown).
     #[bind]
     can_add_rem: bool,
-    // Guests — an e-mail field plus up to four invited rows, and the three permission toggles (web
+    // Guests - an e-mail field plus up to four invited rows, and the three permission toggles (web
     // GuestField / GuestRow / GuestPermissions). Guests are sent on create; editing guests of an existing
     // event goes through the attendee API and is a later sub-increment.
     #[bind]

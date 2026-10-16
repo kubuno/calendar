@@ -8,7 +8,7 @@ pub struct TimeBlock {
     pub owner_id:   Uuid,
     pub label:      String,
     pub color:      String,
-    /// A JSON array of weekday integers on every engine — see kubuno-db §2.8.
+    /// A JSON array of weekday integers on every engine - see kubuno-db §2.8.
     #[sqlx(json)]
     pub days:       Vec<i32>,
     pub start_time: NaiveTime,
@@ -21,7 +21,7 @@ pub struct TimeBlock {
 
 #[derive(Debug, Deserialize, validator::Validate)]
 pub struct CreateTimeBlockDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     #[validate(length(min = 1, max = 255))]

@@ -281,7 +281,7 @@ async fn event_resource(
             // CalDAV PUT: créer ou mettre à jour un événement depuis un .ics
             // On obtient le body depuis le request body
             // Note: dans ce handler simplifié, le body n'est pas disponible directement
-            // sans l'extractor axum::body::Bytes — voir note ci-dessous.
+            // sans l'extractor axum::body::Bytes - voir note ci-dessous.
             // Pour l'instant, retourner 201 Created comme stub.
             tracing::warn!("CalDAV PUT non implémenté pour uid={}", uid);
             StatusCode::CREATED.into_response()

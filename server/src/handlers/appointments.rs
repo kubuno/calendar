@@ -211,7 +211,7 @@ pub async fn public_page(
 }
 
 /// The booking page's behaviour, served as an external same-origin script so it
-/// passes the core CSP (`script-src 'self'`). Static — the token comes from the
+/// passes the core CSP (`script-src 'self'`). Static - the token comes from the
 /// page's `<body data-token>`.
 pub async fn public_page_js() -> impl axum::response::IntoResponse {
     const JS: &str = r#"

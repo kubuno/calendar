@@ -12,7 +12,7 @@ import { api, useAuthStore } from '@kubuno/sdk'
 // Each `update` is a read-modify-write over the WHOLE module bag (PATCH /me merges
 // at the root, so we must resend every key). Two updates fired before the first
 // PATCH returns would both read the same base and the later one would clobber the
-// earlier change — a real "my setting reverted after reload" bug when several
+// earlier change - a real "my setting reverted after reload" bug when several
 // fields are edited quickly. Serialising the writes on a shared promise chain
 // makes each update read the store AFTER the previous one has applied its result,
 // so no partial edit is ever lost. Module-scoped: all callers share the queue.

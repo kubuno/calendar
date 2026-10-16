@@ -38,7 +38,7 @@ const ACTION_FOCUS = 'cursor-pointer outline-none focus-visible:ring-2 focus-vis
  * background classes do win, so only the `hover:` variants need this fallback.
  *
  * Resetting to an empty string on leave hands control back to the static
- * active-state class — that is intentional.
+ * active-state class - that is intentional.
  */
 const hoverBg = (color: string) => ({
   onMouseEnter: (e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.backgroundColor = color },
@@ -47,7 +47,7 @@ const hoverBg = (color: string) => ({
 
 /**
  * Row hover tint. Same value as the core's SidebarNavItem so this module's rows
- * highlight exactly like mail's — the left panel must feel like ONE sidebar.
+ * highlight exactly like mail's - the left panel must feel like ONE sidebar.
  */
 const ROW_HOVER = 'var(--kb-sidebar-hover, #e8eaed)'  // host-owned token: one hover colour product-wide
 
@@ -361,7 +361,7 @@ function CalendarList() {
   )
 }
 
-// ── Public holidays — one read-only calendar per applicable territory ────────
+// ── Public holidays - one read-only calendar per applicable territory ────────
 //
 // The territories come from the core (`/holidays/applicable`), which answers
 // "where is this person" from the setting an administrator posted or, failing
@@ -680,7 +680,7 @@ export default function CalendarSidebarBody({ collapsed = false }: { collapsed?:
   )
 }
 
-// ── Moon — today's phase + toggle for the markers on views ───────────────────
+// ── Moon - today's phase + toggle for the markers on views ───────────────────
 function MoonSection() {
   const { t } = useTranslation('calendar')
   const { moonEnabled, setMoonEnabled } = useCalendarStore()

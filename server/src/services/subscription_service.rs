@@ -112,7 +112,7 @@ impl SubscriptionService {
         .await?;
         tx.commit().await?;
 
-        // First sync: a failure here must not lose the created calendar — the
+        // First sync: a failure here must not lose the created calendar - the
         // user can retry with the refresh action.
         if let Err(e) = Self::sync(cal.id, user_id, &url, db).await {
             tracing::warn!(calendar = %cal.id, error = %e, "Première synchro d'abonnement échouée");
@@ -235,7 +235,7 @@ impl SubscriptionService {
         }
 
         // Sync-metadata refresh (last_synced_at + ctag), deliberately without a
-        // change_seq bump — an hourly mirror pass is not a user-facing calendar
+        // change_seq bump - an hourly mirror pass is not a user-facing calendar
         // change, and events ride their own delta feed.
         db.execute(
             "UPDATE calendar.calendars SET last_synced_at = $1, ctag = $2 WHERE id = $3",
@@ -272,7 +272,7 @@ impl SubscriptionService {
     }
 }
 
-/// Tiny stable content hash (FNV-1a) — only used to derive UIDs for feed events
+/// Tiny stable content hash (FNV-1a) - only used to derive UIDs for feed events
 /// that carry none; no cryptographic strength needed.
 fn md5_like(s: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;

@@ -64,7 +64,7 @@ pub fn banner_end_day(ev: &EventInstance, offset_minutes: i32) -> Date {
     }
 }
 
-/// Timed, single-day events whose local start day is `day` — the chips a month cell shows
+/// Timed, single-day events whose local start day is `day` - the chips a month cell shows
 /// (`MonthView.eventsForDay`: banner events excluded, `isSameDay(starts_at, day)`). Order is preserved.
 pub fn timed_events_for_day(events: &[EventInstance], day: Date, offset_minutes: i32) -> Vec<&EventInstance> {
     events
@@ -277,7 +277,7 @@ pub fn layout_banners(events: &[EventInstance], days: &[Date], offset_minutes: i
     BannerLayout { rows: rows_end.len(), segs }
 }
 
-/// Darken a `#rgb` / `#rrggbb` colour by `factor` in [0, 1] (`calendarUtils.shade`) — the darker continuation
+/// Darken a `#rgb` / `#rrggbb` colour by `factor` in [0, 1] (`calendarUtils.shade`) - the darker continuation
 /// tip of a banner that runs off the visible range.
 pub fn shade(hex: &str, factor: f32) -> String {
     let h = hex.trim_start_matches('#');

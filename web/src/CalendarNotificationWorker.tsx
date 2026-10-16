@@ -11,7 +11,7 @@ const REMINDER_LABEL_KEYS: Record<number, string> = {
   1440: 'notif_reminder_1day',
 }
 
-/** Short chime for a firing reminder — synthesised, so no asset to ship. */
+/** Short chime for a firing reminder - synthesised, so no asset to ship. */
 function playChime() {
   try {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -36,7 +36,7 @@ export default function CalendarNotificationWorker() {
   const isLoggedIn = useAuthStore(s => !!s.user)
   const { notificationsMode, notificationSound, notifyOnlyIfAccepted } = useCalendarSettings()
 
-  // Desktop notifications need the browser's permission — asked for once, when
+  // Desktop notifications need the browser's permission - asked for once, when
   // the preference selects that mode.
   useEffect(() => {
     if (notificationsMode !== 'desktop') return

@@ -102,7 +102,7 @@ export default function ModuleSettingsForm({ moduleId, mode, categories }: {
       } else {
         // `preferences` is merged at the ROOT level only (`preferences || $1`),
         // so the module's whole bag must be resent or the keys left out would be
-        // dropped — including those written by other parts of the module.
+        // dropped - including those written by other parts of the module.
         const current = (useAuthStore.getState().user?.preferences?.[moduleId] ?? {}) as Record<string, unknown>
         const { data: res } = await api.patch<{ user: { preferences: Record<string, unknown> } }>(
           '/me', { preferences: { [moduleId]: { ...current, ...changes } } },

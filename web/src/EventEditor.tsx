@@ -46,7 +46,7 @@ import { GuestPermissions, DEFAULT_GUEST_PERMS, type GuestPerms } from './GuestP
 
 // ── Reminders section (shared between create and edit) ────────────────────────
 
-// ── Recurrence (rrule) — shared helpers in ./rrule.ts ────────────────────────
+// ── Recurrence (rrule) - shared helpers in ./rrule.ts ────────────────────────
 function RecurrenceField({ preset, customRrule, onChange, onCustomRrule, start }: {
   preset: string
   /** RRULE when preset === 'custom' (edited through the dedicated dialog). */
@@ -127,7 +127,7 @@ export interface QuickHandover {
   guests:      Array<{ email: string; user_id?: string; display_name?: string; avatar_url?: string; optional?: boolean }>
   location:    string
   /** The video call's link, which may point at a room the quick card created
-   *  and that nothing has confirmed yet — the editor takes it over as its own. */
+   *  and that nothing has confirmed yet - the editor takes it over as its own. */
   url:         string
   description: string
   calendarId:  string
@@ -170,7 +170,7 @@ function EditEventActionsMenu({ event, onClose }: { event: EventInstance; calend
           onto a second line and crowded the ✕. The name lives in the tooltip,
           where it costs no width.
           A menu bar, not an ellipsis: three dots are almost no ink, and on a
-          coloured band seen from a normal distance they read as a smudge — the
+          coloured band seen from a normal distance they read as a smudge - the
           reader has to go looking for the button. This says "a menu" with the
           same certainty and ten times the mass. Not a gear either: the menu
           holds Print, Duplicate and Delete, which are acts, and a gear promises
@@ -196,7 +196,7 @@ function EditEventActionsMenu({ event, onClose }: { event: EventInstance; calend
 
 // ── Onglet ────────────────────────────────────────────────────────────────────
 // ── Compact color picker ──────────────────────────────────────────────────────
-// "Custom" colors added by the user — persisted locally and SHARED with the
+// "Custom" colors added by the user - persisted locally and SHARED with the
 // rest of the app (same key as @ui's ColorSwatchPicker, so colors created in
 // Documents reappear here, and vice versa).
 const CUSTOM_COLORS_KEY = 'kubuno:picker:custom-swatches'
@@ -304,12 +304,12 @@ function ColorField({ color, calColor, setColor }: { color: string | null; calCo
  * The hour is picked first and the room second, so the list has to answer the
  * question the reader has: is it free *then*? Showing names alone asks them to
  * choose blind and be refused. But a taken room stays SELECTABLE: the meeting is
- * not the room's to cancel — the room answers, and its refusal is a status the
+ * not the room's to cancel - the room answers, and its refusal is a status the
  * organiser reads beside everyone else's, with the meeting that holds it named
  * so they can go and ask.
  *
  * The search matches the composed name, which carries the building, the floor
- * and the equipment — so typing a building narrows to a building.
+ * and the equipment - so typing a building narrows to a building.
  */
 function RoomPicker({
   from, to, rrule, timezone, eventId, selected, onToggle,
@@ -369,7 +369,7 @@ function RoomPicker({
               >
                 <Building2 size={15} className="mt-0.5 shrink-0 text-text-tertiary" />
                 <span className="min-w-0 flex-1">
-                  {/* Name, then WHERE, then what it holds — read as columns
+                  {/* Name, then WHERE, then what it holds - read as columns
                       rather than as the one composed string, which packs the
                       building, the floor, the capacity and the equipment into a
                       line nobody scans. The composed name stays the label
@@ -427,7 +427,7 @@ function CreateGuestsPanel({
   onChange: (g: { email: string; user_id?: string; display_name?: string; optional?: boolean; avatar_url?: string }[]) => void
   perms: GuestPerms
   onPerms: (p: GuestPerms) => void
-  /** The hour being proposed — what a clash is measured against. */
+  /** The hour being proposed - what a clash is measured against. */
   from: Date
   to:   Date
 }) {
@@ -464,7 +464,7 @@ function CreateGuestsPanel({
     <div className="space-y-4">
       {/* No "Invite" button beside the field: a suggestion is taken by
           choosing it and a typed address by pressing Enter, so the button was a
-          third way to do what two already did — and it took a quarter of the
+          third way to do what two already did - and it took a quarter of the
           column's width to say so. */}
       <GuestField value={email} onChange={setEmail} onPick={add}
         exclude={guests.map(g => g.email)} />
@@ -507,7 +507,7 @@ function CreateGuestsPanel({
 // ── Rooms panel (editing) ─────────────────────────────────────────────────────
 // A room is a guest that answers. Picking one puts it on the list and the server
 // replies at once: it accepted, or it declined because another meeting already
-// holds it — and it says WHICH, because "held by Point hebdo, 14:00" is
+// holds it - and it says WHICH, because "held by Point hebdo, 14:00" is
 // actionable where "unavailable" is not. A busy room never fails the request nor
 // cancels the meeting; the refusal is read where every other answer is read.
 function RoomsPanel({ eventId }: { eventId: string }) {
@@ -574,7 +574,7 @@ function RoomsPanel({ eventId }: { eventId: string }) {
             <span className="flex-1 min-w-0">
               <span className="block truncate text-text-primary">{b.display_name}</span>
               {/* Refused and released are both `declined`; only the stamp tells
-                  them apart, and the organiser needs to know which happened —
+                  them apart, and the organiser needs to know which happened -
                   one means "pick another room", the other "your meeting emptied
                   out and the room went back". */}
               <span className={declined ? 'text-danger' : 'text-success'}>
@@ -597,7 +597,7 @@ function RoomsPanel({ eventId }: { eventId: string }) {
         )
       })}
 
-      {/* Why it said no — named, not merely refused. */}
+      {/* Why it said no - named, not merely refused. */}
       {invite.data?.status === 'declined' && invite.data.clashes.length > 0 && (
         <p className="text-xs text-danger">
           {t('room_clash', {
@@ -633,7 +633,7 @@ function GuestsPanel({ eventId, perms, onPerms, onShowAvailability, from, to }: 
     queryFn:  () => calendarApi.listAttendees(eventId).then(r => r.attendees),
   })
   // People only. Rooms are attendees too since they answer like one, but they
-  // belong to their own section — listing them here would count a room against
+  // belong to their own section - listing them here would count a room against
   // the guest ceiling and show it with an empty address.
   const attendees = (data ?? []).filter(a => !a.resource_id)
   const invite = useMutation({
@@ -661,7 +661,7 @@ function GuestsPanel({ eventId, perms, onPerms, onShowAvailability, from, to }: 
   const typed  = email.trim()
   // An address outside the instance's declared domains. With no domain declared
   // the question has no local answer, and calling every colleague an outsider
-  // would be worse than saying nothing — the server still asks the directory
+  // would be worse than saying nothing - the server still asks the directory
   // and refuses on its own terms. So this only drives what the composer SAYS:
   // a warning, or the reason the button is closed.
   const isOutside = looksLikeAddress(typed)
@@ -672,7 +672,7 @@ function GuestsPanel({ eventId, perms, onPerms, onShowAvailability, from, to }: 
     policy.maxEventGuests > 0 && attendees.length >= policy.maxEventGuests
   return (
     <div className="space-y-4">
-      {/* Same here — and the field goes quiet while the invitation is on its
+      {/* Same here - and the field goes quiet while the invitation is on its
           way, which is the feedback the button's spinner used to carry. */}
       <GuestField value={email} onChange={setEmail}
         disabled={invite.isPending}
@@ -758,20 +758,20 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
 }) {
   const { t } = useTranslation('calendar')
   const isMobile = useIsMobile()
-  // The window's own side margin. Everything laid out directly on the canvas —
-  // the date row, the alert, the two regions — starts here, so there is one
+  // The window's own side margin. Everything laid out directly on the canvas -
+  // the date row, the alert, the two regions - starts here, so there is one
   // number to change rather than a margin per row.
   const PX = isMobile ? 'px-4' : 'px-6'
   const qc = useQueryClient()
   const ev = event
 
-  // The window itself — dragging, resizing, the band, the ✕, Escape, the phone's
-  // full screen — is the shared `FloatingWindow`. This screen used to carry a
+  // The window itself - dragging, resizing, the band, the ✕, Escape, the phone's
+  // full screen - is the shared `FloatingWindow`. This screen used to carry a
   // hand-made copy of all of it; a card that imitates a window ends up being the
   // one window in the product that behaves differently.
 
   // The `<input type="time">` value is always HH:mm regardless of the 12 h/24 h
-  // display preference — the browser renders it in the user's locale.
+  // display preference - the browser renders it in the user's locale.
   const parseTime = (iso: string) => formatDate(toDate(iso), 'time')
   const parseDate = (iso: string) => toISODate(toDate(iso))
 
@@ -795,7 +795,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
   const [startTime,  setStartTime]  = useState(ev ? parseTime(ev.starts_at) : initialHasTime ? formatDate(initialDate!, 'time') : '09:00')
   const [endTime,    setEndTime]    = useState(() => {
     if (ev) return parseTime(ev.ends_at)
-    // A dragged range wins over the default duration — the user drew it.
+    // A dragged range wins over the default duration - the user drew it.
     if (initialEnd) return formatDate(initialEnd, 'time')
     if (initialHasTime) return formatDate(defaultEndOf(initialDate!), 'time')
     const nine = new Date(); nine.setHours(9, 0, 0, 0)
@@ -837,7 +837,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
     () => (initialDraft?.guests ?? []),
   )
   // Rooms chosen before the meeting exists. They are invited right after it is
-  // created — a room answers against the meeting's own times, so there is
+  // created - a room answers against the meeting's own times, so there is
   // nothing to ask until those times are saved.
   const [pendingRooms, setPendingRooms] = useState<string[]>([])
 
@@ -871,8 +871,8 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
   // it must be readable at the exact moment the window closes.
   const meetingDraft = useRef<VideoMeetingDraft | null>(null)
   const onMeetingDraft = useCallback((d: VideoMeetingDraft | null) => { meetingDraft.current = d }, [])
-  // Leaving without saving. Anything created for this draft — a room made so
-  // that its link could be typed into the event — goes with the draft: it was
+  // Leaving without saving. Anything created for this draft - a room made so
+  // that its link could be typed into the event - goes with the draft: it was
   // only ever there for an event that now does not exist. Every way out of the
   // window comes through here; the one that does not is a successful save.
   const closeAbandoningDraft = useCallback(() => {
@@ -893,7 +893,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
   const [busy,       setBusy]       = useState(ev?.busy ?? true)
   const [visibility, setVisibility] = useState(ev?.visibility || 'default')
   // The instance's labels: read from the core for an event that exists, held
-  // here for one that does not — and taken over from the quick card when the
+  // here for one that does not - and taken over from the quick card when the
   // form was opened through "Other options".
   const labelOptions = useLabelOptions()
   const eventLabels  = useEventLabels(ev)
@@ -913,7 +913,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
   const [askScope,   setAskScope]   = useState(false)
 
   // Possible targets = calendars writable by the user (never a read-only shared
-  // calendar nor a subscription — the API would answer "Access denied").
+  // calendar nor a subscription - the API would answer "Access denied").
   // When editing, the event's current calendar stays listed even when locked,
   // so the field is never empty.
   const targetCals = useMemo(() => {
@@ -964,7 +964,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
       } else {
         startsAt = new Date(`${date}T${startTime}:00`).toISOString()
         // An end time before the start time on the SAME day means the evening
-        // ran past midnight — 22:00–01:00 is a three-hour event, not a negative
+        // ran past midnight - 22:00–01:00 is a three-hour event, not a negative
         // one. A later end DATE was chosen deliberately and is left alone.
         const ed = (endDate || date) === date && endTime < startTime
           ? toISODate(addDays(new Date(`${date}T00:00:00`), 1))
@@ -976,7 +976,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
       const start    = new Date(`${date}T${allDay ? '00:00' : startTime}:00`)
       // Effective RRULE per the choice: preset, custom, or none.
       const effectiveRrule = recur === 'custom' ? (customRrule ?? undefined) : buildRrule(recur, start) ?? undefined
-      // The call's room was created before this event existed — a link has to
+      // The call's room was created before this event existed - a link has to
       // point somewhere to be saved. Saving is what makes it real, so it is
       // confirmed HERE, before the write: the one order that cannot leave a
       // saved event pointing at a room still counting down to its own removal.
@@ -1007,7 +1007,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
           try { await calendarApi.inviteRoom(created.event.event_id, id) } catch { /* la salle répondra */ }
         }
         // Labels last, for the same reason as the room: a link needs something
-        // to point at, and until now there was nothing. Never fatally — the
+        // to point at, and until now there was nothing. Never fatally - the
         // event is created either way.
         if (labelIds.length) {
           try { await saveEventLabels(created.event, labelIds) } catch { /* l'évènement est créé */ }
@@ -1096,7 +1096,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
         {/* ⚠️ L'alerte devrait être HORS du défilement, sous le bandeau : c'est
             la prop `banner` de `FloatingWindow`, ajoutée au core mais pas encore
             dans les types publiés de `@kubuno/ui`. En attendant, elle est au
-            MOINS en tête du contenu — au premier endroit que l'œil lit — et non
+            MOINS en tête du contenu - au premier endroit que l'œil lit - et non
             plus tout en bas où il fallait défiler pour la trouver. À basculer
             sur `banner` à la prochaine publication de la bibliothèque. */}
         {(error || targetCals.length === 0) && (
@@ -1158,7 +1158,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
             oubli : une ligne de titre n'est pas un champ de formulaire et ne
             doit pas en porter le cadre. La variante existe désormais dans la
             primitive (`<Input bare>`), mais ce module compile contre les TYPES
-            PUBLIÉS de `@kubuno/ui` — elle devient utilisable ici à la prochaine
+            PUBLIÉS de `@kubuno/ui` - elle devient utilisable ici à la prochaine
             publication de la bibliothèque. À remplacer alors. */}
         <div className={`${PX} pt-5 pb-2 flex items-center gap-2`}>
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)}
@@ -1201,7 +1201,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
         </div>
 
         {/* TWO regions of equal rank, side by side: on the left what the event
-            IS — its details, or the search for an hour — and on the right who
+            IS - its details, or the search for an hour - and on the right who
             comes to it.
 
             The guest list used to sit INSIDE the details panel. Two things were
@@ -1211,11 +1211,11 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
             Out here it stays put whichever tab is open, and each strip rules
             only its own region.
 
-            The left region is a card on the canvas — the tabs and their content
-            are one object — while the guests stand on the canvas itself. */}
+            The left region is a card on the canvas - the tabs and their content
+            are one object - while the guests stand on the canvas itself. */}
         <div className={`${PX} pb-6 flex ${isMobile ? 'flex-col gap-6' : 'flex-row gap-12 items-start'}`}>
           <div className="min-w-0 flex-1 rounded-xl kb-form-card">
-            {/* Onglets — la primitive, pas une imitation : elle porte la sémantique
+            {/* Onglets - la primitive, pas une imitation : elle porte la sémantique
                 (tablist/tab, flèches), le débordement et le repère d'onglet actif.
                 Le conteneur cale le FILET sur le bord gauche des champs (24 px de
                 marge de carte + la colonne d'icône de 36 px) : c'est cette ligne
@@ -1241,7 +1241,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
             {tab === 'details' ? (
               <div className={`${isMobile ? 'px-4' : 'px-6'} py-6 space-y-2`}>
               {row(<MapPin size={18} />, <Input placeholder={t('add_location', { defaultValue: 'Ajouter un lieu' })} value={location} onChange={e => setLocation(e.target.value)} className="w-full" />)}
-              {/* The video meeting is a LINK, typed or pasted like any other —
+              {/* The video meeting is a LINK, typed or pasted like any other -
                   a call hosted anywhere is a call. When a module of this
                   instance hosts meetings, it offers to write the link for you;
                   it never replaces the field. */}
@@ -1249,7 +1249,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
                 <VideoMeeting url={url} title={title} onChange={setUrl} onDraft={onMeetingDraft} />
               ) : (
                 /* Nobody hosts meetings here: a link typed or pasted is still a
-                   call. One mechanism — the extension point above — and this
+                   call. One mechanism - the extension point above - and this
                    field when it is unclaimed; a second, private way to make a
                    room is how the quick card and this form drifted apart. */
                 <Input type="url" inputMode="url" autoComplete="off" spellCheck={false}
@@ -1276,7 +1276,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
                 </div>
               ))}
               {/* `@` names a person here, from whatever this instance can
-                  suggest — the shared mention point, so nothing names a module
+                  suggest - the shared mention point, so nothing names a module
                   and an instance with no provider simply sees nothing happen.
                   Enabled on the DESCRIPTION and nowhere else in this form: in
                   the guest field `@` is part of an address, and a title is a
@@ -1310,7 +1310,7 @@ function EventEditor({ mode, event, initialDate, initialEnd, initialDraft, calen
             )}
           </div>
 
-          {/* Who comes, and where they sit — two lists of the same rank, so two
+          {/* Who comes, and where they sit - two lists of the same rank, so two
               tabs rather than one stacked under the other. The rooms tab is
               absent when the organisation has no room to offer: an empty tab is
               a promise the instance cannot keep. The strip lines up with the

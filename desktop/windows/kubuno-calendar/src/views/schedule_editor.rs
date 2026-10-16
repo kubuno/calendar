@@ -1,5 +1,5 @@
 //! The appointment-schedule editor (web `AppointmentScheduleEditor.tsx`): a two-pane page to create or
-//! configure a bookable booking page — a settings pane (two steps: availability/window/calendar, then
+//! configure a bookable booking page - a settings pane (two steps: availability/window/calendar, then
 //! location/description/reminders) and a live week-availability preview. Wired to the appointment REST API.
 //!
 //! Faithful reductions for this first desktop increment (noted in the design note): the weekly availability
@@ -52,7 +52,7 @@ pub struct ScheduleEditor {
     #[bind]
     time_items: Rows,
 
-    // Weekly availability — one editable range per weekday (Mon=0..Sun=6).
+    // Weekly availability - one editable range per weekday (Mon=0..Sun=6).
     #[bind]
     day0_label: String,
     #[bind]

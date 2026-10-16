@@ -1,17 +1,17 @@
 import type { TFunction } from 'i18next'
-// Moon phases — 100% client-side computation (no API): position within the
+// Moon phases - 100% client-side computation (no API): position within the
 // synodic cycle since a reference new moon, plenty accurate for a calendar
 // (± a few hours over several decades).
 //
 // The icon is a drawn SVG (dark disc + lit part via an elliptical arc),
-// consistent with the app style — no emoji.
+// consistent with the app style - no emoji.
 
 /** Mean length of the synodic month (days). */
 const SYNODIC = 29.530588853
 /** Reference new moon: January 6, 2000, 18:14 UTC. */
 const NEW_MOON_EPOCH = Date.UTC(2000, 0, 6, 18, 14)
 
-/** Position within the cycle [0, 1) — 0 = new moon, 0.5 = full moon. */
+/** Position within the cycle [0, 1) - 0 = new moon, 0.5 = full moon. */
 export function moonPhase(date: Date): number {
   const days = (date.getTime() - NEW_MOON_EPOCH) / 86_400_000
   return (((days % SYNODIC) + SYNODIC) % SYNODIC) / SYNODIC
@@ -26,7 +26,7 @@ export type PrincipalPhase = 'new' | 'first-quarter' | 'full' | 'last-quarter'
 
 /**
  * Principal phase reached on THAT day (local time), if any: new moon, first
- * quarter, full moon or last quarter — like the markers on a paper calendar.
+ * quarter, full moon or last quarter - like the markers on a paper calendar.
  */
 export function principalPhaseOfDay(day: Date): PrincipalPhase | null {
   const start = new Date(day); start.setHours(0, 0, 0, 0)

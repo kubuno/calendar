@@ -93,7 +93,7 @@ impl CalendarService {
             .await?;
         if owned >= instance.max_calendars_per_user {
             return Err(CalendarError::Validation(format!(
-                "Nombre maximal d'agendas atteint ({}) — supprimez-en un ou contactez votre administration",
+                "Nombre maximal d'agendas atteint ({}) - supprimez-en un ou contactez votre administration",
                 instance.max_calendars_per_user
             )));
         }
@@ -103,7 +103,7 @@ impl CalendarService {
     /// Create a new calendar.
     ///
     /// The calendar is stamped with the zone of the person creating it, the
-    /// instance setting acting only as the fallback when that zone is unknown —
+    /// instance setting acting only as the fallback when that zone is unknown -
     /// see [`crate::services::timezone`] for where the creator's zone comes from
     /// and why nothing here trusts it as given.
     pub async fn create(
@@ -219,7 +219,7 @@ impl CalendarService {
         }
 
         // The FK cascade removes the calendar's events, but a cascade fires no
-        // application code — so the event delta would never learn those events
+        // application code - so the event delta would never learn those events
         // are gone. Record an event tombstone for each (owner-scoped, as the
         // event delta reads them) before the calendar goes.
         let doomed: Vec<(Uuid, Uuid)> = db

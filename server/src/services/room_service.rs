@@ -5,7 +5,7 @@
 //! It is invited like a person and it replies: it accepts when it is free, and
 //! it declines when it is not. That is the whole contract, and it is why the
 //! room lives in `calendar.attendees` (migration `000010`) rather than in a
-//! column on the event — a decline is a status a person already has.
+//! column on the event - a decline is a status a person already has.
 //!
 //! Declining rather than refusing the request is deliberate: the meeting is not
 //! the room's to cancel. An organiser who books a taken room keeps their
@@ -35,7 +35,7 @@ use crate::sync;
 /// A rule with no end repeats for ever, and "is this room free for ever?" has no
 /// answer worth waiting for. A year is what a room timetable is planned over,
 /// and the occurrence cap stops a daily rule from expanding into a list nobody
-/// reads. Past the horizon a clash is caught when the occurrence is edited —
+/// reads. Past the horizon a clash is caught when the occurrence is edited -
 /// the honest alternative to pretending we checked.
 const HORIZON_DAYS: i64 = 365;
 const MAX_OCCURRENCES: usize = 400;
@@ -55,7 +55,7 @@ pub struct Room {
     /// Composed by the core; what everybody outside the directory reads.
     pub generated_name: String,
     pub capacity:       i64,
-    /// The short name, the place and the equipment — kept SEPARATE from the
+    /// The short name, the place and the equipment - kept SEPARATE from the
     /// composed name because a list reads them as columns, not as one string:
     /// "Salle réunion 1 · Bâtiment Paris · Étage 2 · 10 places · vidéo". The
     /// composed name stays for everywhere a single label is needed.
@@ -70,7 +70,7 @@ pub struct Room {
     #[serde(default)]
     pub building:       Option<RoomBuilding>,
     /// The directory says this room is never handed back automatically. A rule
-    /// the calendar applies but does not own — only an administrator decides
+    /// the calendar applies but does not own - only an administrator decides
     /// which rooms are governed by it.
     #[serde(default)]
     pub release_exempt: bool,
@@ -142,7 +142,7 @@ impl RoomService {
     /// Does this account belong to a group whose meetings keep their room?
     ///
     /// `false` when the directory does not answer: a rule we cannot read must not
-    /// silently protect everybody — the room-level exemption and the size and
+    /// silently protect everybody - the room-level exemption and the size and
     /// duration limits still apply, and they are read from data we do hold.
     async fn in_exempt_group(
         http: &reqwest::Client,
@@ -208,7 +208,7 @@ impl RoomService {
         let until = windows.iter().map(|w| w.1).max().unwrap_or(event.ends_at);
 
         // Candidates: the room is on their guest list and has not declined them.
-        // The event being booked is excluded — a room does not clash with itself.
+        // The event being booked is excluded - a room does not clash with itself.
         // Placeholders ascend in text order (`until` before `from`), so they are
         // bound in that order.
         let candidates: Vec<Event> = db
@@ -245,8 +245,8 @@ impl RoomService {
 
     /// A meeting that does not exist yet, shaped as an `Event`.
     ///
-    /// Availability is decided by two things — the times occupied, and the room
-    /// already held — and both are computed from an `Event`. Rather than write a
+    /// Availability is decided by two things - the times occupied, and the room
+    /// already held - and both are computed from an `Event`. Rather than write a
     /// second expansion for drafts (which would drift from the first the day a
     /// recurrence rule gains a subtlety), a draft is given the shape of the
     /// thing it is about to become. Only the fields those computations read
@@ -395,7 +395,7 @@ impl RoomService {
     /// RELEASES its rooms and tries to book them again at the new hour; a room
     /// that is no longer free declines. Without it a room stays marked
     /// "accepted" for a slot it never agreed to, and two meetings quietly own
-    /// the same room — the one failure this feature exists to prevent.
+    /// the same room - the one failure this feature exists to prevent.
     ///
     /// Best effort by design: the meeting has already been saved, and a room
     /// that cannot be re-decided must not undo somebody's edit. Returns the
@@ -511,7 +511,7 @@ fn room_upsert_clause(backend: Backend) -> String {
 // ── Giving a room back ───────────────────────────────────────────────────────
 
 /// A meeting must not be emptied of its room at the last moment: somebody is
-/// already walking there. Both windows are fixed rather than configurable — a
+/// already walking there. Both windows are fixed rather than configurable - a
 /// deadline an administrator can shorten to nothing is a deadline that will one
 /// day free a room while its occupants sit in it.
 const RELEASE_MIN_NOTICE: i64 = 30; // minutes before the start, below which nothing is released
@@ -545,7 +545,7 @@ impl RoomService {
     ///
     /// The rule, and the guards around it, follow the behaviour this feature has
     /// elsewhere: **when every invitee but one has declined**, the room declines
-    /// too and is handed back — while the MEETING is left alone. Cancelling it is
+    /// too and is handed back - while the MEETING is left alone. Cancelling it is
     /// not the room's decision, and two people who cannot come do not speak for
     /// the organiser.
     ///
@@ -570,7 +570,7 @@ impl RoomService {
         };
 
         // Too late, or already under way. A recurring meeting is judged on the
-        // occurrence at hand — its own start — which is what `starts_at` holds
+        // occurrence at hand - its own start - which is what `starts_at` holds
         // for the row an RSVP answers.
         let notice = event.starts_at - Utc::now();
         if notice < Duration::minutes(RELEASE_MIN_NOTICE) {
@@ -581,7 +581,7 @@ impl RoomService {
         }
 
         // The people. Rooms answer too, but a room declining does not mean the
-        // meeting emptied — that is the very thing being decided here.
+        // meeting emptied - that is the very thing being decided here.
         let guests: Vec<(Option<String>, String, bool)> = db
             .fetch_all_as(
                 "SELECT email, status, is_organizer FROM calendar.attendees
@@ -603,7 +603,7 @@ impl RoomService {
         }
 
         // A population whose meetings keep their room, wherever they meet. Asked
-        // of the directory only once the meeting is otherwise releasable — it is
+        // of the directory only once the meeting is otherwise releasable - it is
         // one call per invitee, and the cheap refusals above spare it.
         let ids: Vec<(Uuid,)> = db
             .fetch_all_as(

@@ -19,13 +19,13 @@ pub struct CalendarUser {
 pub type CalendarUserExt = axum::Extension<CalendarUser>;
 
 /// Middleware : extrait X-Kubuno-User-Id, X-Kubuno-User-Role, X-Kubuno-User-Email.
-/// Ces headers sont injectés par le proxy du core — on leur fait confiance.
+/// Ces headers sont injectés par le proxy du core - on leur fait confiance.
 /// This module's id, used as the token audience.
 const MODULE_ID: &str = "calendar";
 
 /// Authenticate the caller from the signed `X-Kubuno-Auth` token the core mints
 /// with this module's internal secret (see `kubuno-modauth`), instead of
-/// trusting the plain `X-Kubuno-User-*` headers — which any process reaching this
+/// trusting the plain `X-Kubuno-User-*` headers - which any process reaching this
 /// module's loopback port could otherwise forge to impersonate any user.
 pub async fn require_auth(
     State(state): State<AppState>,
@@ -69,7 +69,7 @@ pub async fn require_internal_secret(
     let expected = state.settings.core.internal_secret.as_str();
     if expected.is_empty() {
         tracing::error!(
-            "calendar: core.internal_secret vide — route interne refusée. \
+            "calendar: core.internal_secret vide - route interne refusée. \
              Renseignez KUBUNO_INTERNAL_SECRET."
         );
         return Err(CalendarError::Unauthorized);

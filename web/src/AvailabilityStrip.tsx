@@ -36,7 +36,7 @@ import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 
 export function AvailabilityStrip({ ev, top, height, sMin, onClick, compact }: {
   ev: EventInstance; top: number; height: number; sMin: number; onClick: () => void
-  // compact: icon only — the overflowing label would pile up across the narrow
+  // compact: icon only - the overflowing label would pile up across the narrow
   // columns of the mobile week view.
   compact?: boolean
 }) {

@@ -89,7 +89,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
   const minOf = (iso: string) => { const d = toDate(iso); return d.getHours() * 60 + d.getMinutes() }
   const nowTop = (now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600) * PX_PER_HOUR
 
-  // Vertical resize (top/bottom handles → start/end) — per day.
+  // Vertical resize (top/bottom handles → start/end) - per day.
   const [resize, setResize] = useState<{ id: string; startMin: number; endMin: number } | null>(null)
   const resizingRef = useRef(false)
   const startResize = (ev: EventInstance, day: Date, edge: 'top' | 'bottom') => (e: React.PointerEvent) => {
@@ -318,7 +318,7 @@ export function WeekView({ date, events, calendars, onEventClick, onEventContext
                     </div>
                   )
                 })}
-                {/* Availability bands (appointment schedules) — read-only */}
+                {/* Availability bands (appointment schedules) - read-only */}
                 {apptEvs.map(ev => {
                   const start = toDate(ev.starts_at), end = toDate(ev.ends_at)
                   const sMin = start.getHours() * 60 + start.getMinutes()

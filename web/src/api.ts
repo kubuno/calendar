@@ -36,7 +36,7 @@ export interface UserBrief {
   username: string
   display_name: string | null
   avatar_url: string | null
-  /** Present only when the administrator lets the directory share addresses —
+  /** Present only when the administrator lets the directory share addresses -
    *  omitted, never blanked, so an absent address cannot be mistaken for one. */
   email?: string | null
 }
@@ -71,7 +71,7 @@ export interface EventInstance {
   title: string
   description: string | null
   location: string | null
-  /** The meeting link — a video call, a page — kept apart from the place. */
+  /** The meeting link - a video call, a page - kept apart from the place. */
   url: string | null
   starts_at: string
   ends_at: string
@@ -141,7 +141,7 @@ export interface Room {
 /** A room, with the answer it would give for a proposed slot. */
 export interface RoomOffer extends Room {
   free:     boolean
-  /** The meeting in the way — named, because "unavailable" is not actionable. */
+  /** The meeting in the way - named, because "unavailable" is not actionable. */
   held_by:  { title: string; starts_at: string; ends_at: string } | null
 }
 
@@ -165,7 +165,7 @@ export interface Attendee {
   event_id:     string
   user_id:      string | null
   /** Set when this attendee IS a room rather than a person. Exactly one of
-   *  `resource_id` and `email` is filled — a room has no mailbox. */
+   *  `resource_id` and `email` is filled - a room has no mailbox. */
   resource_id:  string | null
   email:        string | null
   display_name: string | null
@@ -179,7 +179,7 @@ export interface Attendee {
   responded_at: string | null
   comment:      string | null
   /** Set when a room was handed back automatically because the meeting emptied
-   *  out — as opposed to a room that refused a clash. */
+   *  out - as opposed to a room that refused a clash. */
   released_at:  string | null
 }
 
@@ -353,7 +353,7 @@ export function wmoInfo(code: number): { emoji: string; label: string } {
 /**
  * URL of an animated SVG weather icon (amCharts/ammap.com) for a WMO Open-Meteo code.
  * Files served from public/weather-icons/. Day/night variants for clear/partly-cloudy skies.
- * Icons: © amCharts — https://www.amcharts.com/free-animated-svg-weather-icons/
+ * Icons: © amCharts - https://www.amcharts.com/free-animated-svg-weather-icons/
  */
 export function weatherIconUrl(code: number, isDay = true): string {
   let name: string
@@ -380,7 +380,7 @@ export function weatherIconUrl(code: number, isDay = true): string {
 
 export const calendarApi = {
   // A calendar is born in the zone of whoever created it, and the browser is the
-  // only place that knows which one that is — the core stores an account
+  // only place that knows which one that is - the core stores an account
   // preference but exposes it to no module server. So the three routes that
   // create a calendar carry it. The server validates it and keeps the instance
   // setting for when it is missing or unusable; nothing here assumes it took.
@@ -451,7 +451,7 @@ export const calendarApi = {
     return data.users ?? []
   },
 
-  /** One person as the directory publishes them — for a contact card. Absent
+  /** One person as the directory publishes them - for a contact card. Absent
    *  fields are simply absent: a profile nobody filled in answers a name and a
    *  face, as it always did. */
   userCard: async (userId: string): Promise<DirectoryCard | null> => {
@@ -542,7 +542,7 @@ export const calendarApi = {
     return data
   },
 
-  /** Which rooms are free for a slot — asked BEFORE the meeting exists.
+  /** Which rooms are free for a slot - asked BEFORE the meeting exists.
    *  Someone composing an invitation picks the hour first and the room second;
    *  a list that cannot say which rooms are free asks them to choose blind. */
   roomAvailability: async (
@@ -579,7 +579,7 @@ export const calendarApi = {
 
   // ── Common-slot search ───────────────────────────────────────────────────────
   /** `hidden_user_ids` names the participants whose busy times the instance did
-   *  not let this account read — they are absent from the computation, not free. */
+   *  not let this account read - they are absent from the computation, not free. */
   findCommonSlots: async (dto: { from: string; until: string; user_ids: string[] }): Promise<{ slots: AvailableSlot[]; hidden_user_ids?: string[] }> => {
     const { data } = await apiClient.post('/calendar/availability', dto)
     return data
@@ -635,7 +635,7 @@ export interface AppointmentSchedule {
   email_reminders:   number[]
   created_at:        string
   updated_at:        string
-  /** Present on GET /:id — the schedule's availability rules. */
+  /** Present on GET /:id - the schedule's availability rules. */
   availability?:     AvailabilityRule[]
 }
 

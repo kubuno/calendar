@@ -1,5 +1,5 @@
 // Render each glyph of a clock label in a fixed cell so a proportional font
-// (DM Sans) lines up like monospace — every digit occupies the same width. The
+// (DM Sans) lines up like monospace - every digit occupies the same width. The
 // colon gets a narrower cell so the digits sit closer around it (e.g. "09:00").
 // Shared by every time label across the module (grids, panels, widgets, cards).
 export function MonoText({ children }: { children: string }) {

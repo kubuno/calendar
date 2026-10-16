@@ -39,7 +39,7 @@ export function deviceTimezone(): string {
   } catch { return 'UTC' }
 }
 
-/** Reads the preference out of whatever the account bag holds — it is untyped
+/** Reads the preference out of whatever the account bag holds - it is untyped
  *  JSON, so anything but a non-empty string means "not chosen". */
 function chosenTimezone(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
@@ -50,7 +50,7 @@ export function userTimezone(): string {
   return chosenTimezone(useAuthStore.getState().user?.preferences?.timezone) ?? deviceTimezone()
 }
 
-/** The reader's time zone, for components — re-renders when the account
+/** The reader's time zone, for components - re-renders when the account
  *  preference changes, which `userTimezone()` cannot do. */
 export function useUserTimezone(): string {
   const preferred = useAuthStore(s => s.user?.preferences?.timezone)
@@ -65,7 +65,7 @@ export function tzOffsetLabel(tz: string, at: Date = new Date()): string {
   } catch { return '' }
 }
 
-/** "(GMT+02:00) Europe/Paris" — the label used in the pickers. */
+/** "(GMT+02:00) Europe/Paris" - the label used in the pickers. */
 export function tzLabel(tz: string): string {
   const off = tzOffsetLabel(tz)
   return off ? `(${off}) ${tz.replace(/_/g, ' ')}` : tz.replace(/_/g, ' ')

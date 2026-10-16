@@ -3,7 +3,7 @@
 //! Kept apart from `attendees.rs` on purpose. That path is built around an
 //! address: it validates the e-mail, counts the guest list against the
 //! instance ceiling, and asks the directory whether the person is external. A
-//! room has no mailbox, does not count as a guest, and is never external — it
+//! room has no mailbox, does not count as a guest, and is never external - it
 //! answers to a different set of rules, and folding the two together would have
 //! meant a handler full of "unless it is a room".
 
@@ -25,11 +25,11 @@ pub struct InviteRoomDto {
     pub resource_id: Uuid,
 }
 
-/// `GET /rooms` — the rooms an organiser may pick from.
+/// `GET /rooms` - the rooms an organiser may pick from.
 ///
 /// The core's catalogue is an INTERNAL endpoint: it is proved with the instance
 /// secret, which a browser must never hold. This is the door that lets a signed-in
-/// person see the same list — the module reads the catalogue on their behalf and
+/// person see the same list - the module reads the catalogue on their behalf and
 /// passes on only what a booking needs. It stays read-only for the same reason
 /// the internal one is: what rooms exist is the administrator's decision.
 pub async fn list(
@@ -44,14 +44,14 @@ pub async fn list(
     .await
     .ok_or_else(|| {
         CalendarError::Validation(
-            "Le catalogue des salles est momentanément indisponible — réessayez".into(),
+            "Le catalogue des salles est momentanément indisponible - réessayez".into(),
         )
     })?;
 
     Ok(Json(serde_json::json!({ "rooms": rooms })))
 }
 
-/// `GET /rooms/availability?from&to[&rrule][&timezone][&event_id]` — which rooms
+/// `GET /rooms/availability?from&to[&rrule][&timezone][&event_id]` - which rooms
 /// are free for a slot, and what holds the others.
 ///
 /// Asked BEFORE the meeting exists. Someone composing an invitation picks the
@@ -88,7 +88,7 @@ pub async fn availability(
     .await
     .ok_or_else(|| {
         CalendarError::Validation(
-            "Le catalogue des salles est momentanément indisponible — réessayez".into(),
+            "Le catalogue des salles est momentanément indisponible - réessayez".into(),
         )
     })?;
 
@@ -125,12 +125,12 @@ pub async fn availability(
     Ok(Json(serde_json::json!({ "rooms": out })))
 }
 
-/// `POST /events/:id/rooms` — put a room on the guest list.
+/// `POST /events/:id/rooms` - put a room on the guest list.
 ///
 /// The answer says what the room replied. A taken room is added and **declines**
 /// rather than the request failing: the meeting is not the room's to cancel, and
 /// the organiser reads the refusal where they read everyone else's answer. The
-/// clashes come back with it so the console can say *why* — "held by the weekly
+/// clashes come back with it so the console can say *why* - "held by the weekly
 /// review, Tuesdays 10:00" is actionable, "unavailable" is not.
 pub async fn invite(
     State(state): State<AppState>,
@@ -149,7 +149,7 @@ pub async fn invite(
     .await
     .ok_or_else(|| {
         CalendarError::Validation(
-            "Cette salle est introuvable dans l'annuaire — elle a peut-être été retirée".into(),
+            "Cette salle est introuvable dans l'annuaire - elle a peut-être été retirée".into(),
         )
     })?;
 
@@ -168,7 +168,7 @@ pub async fn invite(
     ))
 }
 
-/// `DELETE /events/:id/rooms/:resource_id` — free the room.
+/// `DELETE /events/:id/rooms/:resource_id` - free the room.
 pub async fn remove(
     State(state): State<AppState>,
     Extension(user): Extension<CalendarUser>,
@@ -179,11 +179,11 @@ pub async fn remove(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `GET /ipc/room-stats?from=…&to=…` — what the rooms were used for.
+/// `GET /ipc/room-stats?from=…&to=…` - what the rooms were used for.
 ///
 /// Internal: the console asks through the core's relay, proving itself with the
 /// instance secret. The bookings are rows of this module's own schema, which the
-/// core does not read — so the module counts and answers with figures.
+/// core does not read - so the module counts and answers with figures.
 ///
 /// The window is required and bounded by the caller. There is no default: a
 /// dashboard that silently picks "this month" reports a different thing from the
@@ -192,7 +192,7 @@ pub async fn remove(
 /// `tz` is the zone the DAY and HOUR buckets are cut in. It matters more than it
 /// looks: bucketed in UTC, a nine o'clock meeting in Paris lands in the eight
 /// o'clock column and an early booking in Tokyo lands on the previous day. The
-/// instants are unchanged — only where the knife falls. Unknown or absent, the
+/// instants are unchanged - only where the knife falls. Unknown or absent, the
 /// zone is UTC, which is at least stated rather than guessed.
 #[derive(Debug, Deserialize)]
 pub struct StatsQuery {

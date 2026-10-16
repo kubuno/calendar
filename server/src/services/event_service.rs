@@ -55,7 +55,7 @@ impl EventService {
 
         // Events the user was invited to are shown even when their calendar was
         // never shared: an invitation is its own grant of visibility. This only
-        // applies to an unfiltered listing — filtering by a specific calendar
+        // applies to an unfiltered listing - filtering by a specific calendar
         // must not pull in meetings that live in someone else's.
         let include_invited = query.calendar_id.is_none();
 
@@ -126,7 +126,7 @@ impl EventService {
         }
 
         // Participation status of the requesting user on the events they were
-        // invited to — one lookup for the whole window.
+        // invited to - one lookup for the whole window.
         let event_ids: Vec<Uuid> = {
             let mut ids: Vec<Uuid> = instances.iter().map(|i| i.event_id).collect();
             ids.sort_unstable();
@@ -384,7 +384,7 @@ impl EventService {
             RecurrenceService::validate_rrule(rrule)?;
         }
 
-        // "This event only" on a series: detach the occurrence — exdate on the
+        // "This event only" on a series: detach the occurrence - exdate on the
         // master + a standalone copy (without rrule) carrying the changes.
         if matches!(scope, RecurrenceScope::This) && event.rrule.is_some() {
             if let Some(occ) = occurrence_dt {
@@ -616,7 +616,7 @@ impl EventService {
     }
 
     /// Hard-deletes an event and every occurrence-exception that cascades from
-    /// it, writing a tombstone for each first — the FK `ON DELETE CASCADE` runs
+    /// it, writing a tombstone for each first - the FK `ON DELETE CASCADE` runs
     /// no application code, so the delta feed would otherwise never learn the
     /// children are gone.
     async fn hard_delete_tree(db: &DbPool, id: Uuid) -> Result<()> {

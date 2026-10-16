@@ -101,7 +101,7 @@ pub async fn publish_invite(
 
     // Each guest answers through their OWN link: the token is the one minted for
     // them when they were invited, so the public page knows who is answering
-    // without asking anyone to sign in. No public URL configured, no links —
+    // without asking anyone to sign in. No public URL configured, no links -
     // the guest then answers from their calendar client, through the .ics.
     let base = state.instance().public_url.clone();
     let tokens: std::collections::HashMap<String, String> = if base.is_empty() {
@@ -191,7 +191,7 @@ async fn send_to_core(state: &AppState, payload: &serde_json::Value) {
 /// title it owns; the module that recognises the link acts on it, and every
 /// other one ignores it.
 ///
-/// `owner` is `None` when the event has let the meeting go — the call was taken
+/// `owner` is `None` when the event has let the meeting go - the call was taken
 /// off it, or the event was deleted. The meeting survives (its link may have
 /// been shared); it simply stops following a title that is no longer its own.
 pub async fn publish_meeting_link(

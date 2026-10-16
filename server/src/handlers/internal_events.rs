@@ -45,7 +45,7 @@ const MEETING_RENAMED: &str = "chat.meeting_renamed";
 /// A meeting attached to one of our events was renamed where it lives.
 #[derive(Deserialize)]
 struct MeetingRenamed {
-    /// `<module>:<id>` — ours to recognise, opaque to everyone else.
+    /// `<module>:<id>` - ours to recognise, opaque to everyone else.
     owner: String,
     title: String,
 }
@@ -69,7 +69,7 @@ async fn apply_rename(state: &AppState, body: Value) -> Result<()> {
         return Ok(());
     }
 
-    // `title` is NOT NULL, so `IS DISTINCT FROM` (unportable — MariaDB spells it
+    // `title` is NOT NULL, so `IS DISTINCT FROM` (unportable - MariaDB spells it
     // `<=>`) is just `<>`. The rename is a versioned write: bump the event only
     // when the title actually changes (so a no-op does not churn the delta). The
     // seq is taken inside the tx, so a rolled-back no-op does not consume it. The

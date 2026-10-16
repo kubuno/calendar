@@ -1,4 +1,4 @@
-//! `MiniMonth` — the sidebar's mini-month navigator (`web/src/CalendarSidebarBody.tsx` MiniCalendar): a
+//! `MiniMonth` - the sidebar's mini-month navigator (`web/src/CalendarSidebarBody.tsx` MiniCalendar): a
 //! month/year header with ‹ › arrows that walk the displayed month on their own, a narrow weekday row, and a
 //! grid of round day cells. Today is a filled accent circle, the main view's date a light accent disc with an
 //! accent ring, other-month days are dimmed, weekends are tertiary. Clicking a day moves the MAIN view's date.

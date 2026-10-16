@@ -5,13 +5,13 @@
 //! to be a `SEQUENCE` plus `BEFORE UPDATE` / `AFTER DELETE` triggers; here it is
 //! the portable [`kubuno_db::journal`] primitive, driven from Rust at every
 //! write site. This module holds the literal table / domain names those calls
-//! take — all `&'static str`, never request data — so the write sites read
+//! take - all `&'static str`, never request data - so the write sites read
 //! uniformly and a rename happens in one place.
 //!
 //! Three entities are versioned: **calendars**, **events** and **time_blocks**,
 //! each with its own tombstone table. Attendees carry no sequence of their own;
 //! they ride inline in the event delta and bump their parent event (the portable
-//! replacement for the old `att_bump_event` trigger) — see [`touch_event`].
+//! replacement for the old `att_bump_event` trigger) - see [`touch_event`].
 
 use uuid::Uuid;
 
@@ -53,7 +53,7 @@ pub async fn next_time_block_seq(tx: &mut kubuno_db::DbTx) -> Result<i64, sqlx::
     kubuno_db::journal::next_seq(tx, CHANGE_COUNTER, TIME_BLOCK_DOMAIN).await
 }
 
-/// Bumps an **event** to a fresh sequence — the portable replacement for the old
+/// Bumps an **event** to a fresh sequence - the portable replacement for the old
 /// `att_bump_event` trigger's no-op `UPDATE ... SET change_seq = change_seq`.
 /// Called after any write to an attendee of that event, so the event resurfaces
 /// in the next delta pull carrying its refreshed guest list.

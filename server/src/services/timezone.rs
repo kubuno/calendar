@@ -7,9 +7,9 @@
 //!
 //! ## Where the creator's zone comes from
 //!
-//! Nowhere on the server, today. The core stores no per-account time zone — its
+//! Nowhere on the server, today. The core stores no per-account time zone - its
 //! own `instance.timezone` setting is declared `global` for exactly that stated
-//! reason — and its internal directory projection (`/internal/directory/users`)
+//! reason - and its internal directory projection (`/internal/directory/users`)
 //! deliberately carries no personal field. The module's per-user settings hold a
 //! SECONDARY zone (a second hour column in the day and week views), never a
 //! primary one: every screen of this module already reads the primary zone from
@@ -48,7 +48,7 @@ pub fn is_iana_timezone(tz: &str) -> bool {
 /// that field is a browser stating where its user is, and a zone name this
 /// build's tz database has not heard of yet (the database gains entries every
 /// year) would otherwise cost that user the ability to create a calendar at all
-/// — a hard failure for a field they never typed. It is logged, so an operator
+/// - a hard failure for a field they never typed. It is logged, so an operator
 /// sees a stale database instead of nothing, and the value never reaches storage
 /// unchecked, which was the risk worth guarding against: this string is later
 /// read back as a `TZID` and used for date arithmetic.
@@ -62,7 +62,7 @@ pub fn resolve_new_calendar_timezone(requested: Option<&str>, instance_default: 
         }
         tracing::warn!(
             timezone = %tz,
-            "Fuseau horaire inconnu annoncé à la création d'un agenda — repli sur celui de l'instance"
+            "Fuseau horaire inconnu annoncé à la création d'un agenda - repli sur celui de l'instance"
         );
     }
 
@@ -73,7 +73,7 @@ pub fn resolve_new_calendar_timezone(requested: Option<&str>, instance_default: 
 
     tracing::warn!(
         timezone = %fallback,
-        "Fuseau horaire d'instance inutilisable — repli sur UTC"
+        "Fuseau horaire d'instance inutilisable - repli sur UTC"
     );
     LAST_RESORT.to_string()
 }
@@ -88,7 +88,7 @@ mod tests {
             resolve_new_calendar_timezone(Some("America/New_York"), "Europe/Paris"),
             "America/New_York"
         );
-        // Including when the two happen to agree — no special case there.
+        // Including when the two happen to agree - no special case there.
         assert_eq!(
             resolve_new_calendar_timezone(Some("Europe/Paris"), "Europe/Paris"),
             "Europe/Paris"

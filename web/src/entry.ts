@@ -109,7 +109,7 @@ export function register() {
     SidebarBody:       CalendarSidebarBody,
     collapsedBody: true,
     // Bottom nav (portrait) / left rail (landscape) rendered by the shell on
-    // mobile — one tab per calendar view, mirroring the desktop view switcher.
+    // mobile - one tab per calendar view, mirroring the desktop view switcher.
     mobileTabs: [
       { id: 'schedule', labelKey: 'calendar:view_schedule', Icon: List,       path: '/calendar/schedule' },
       { id: 'day',      labelKey: 'calendar:view_day',      Icon: Calendar1,  path: '/calendar/day' },
@@ -132,7 +132,7 @@ export function register() {
   SlotRegistry.register('topbar-actions', 'calendar', CalendarHeaderViews)
 
   // The settings page carries its own breadcrumb: no date navigation / view
-  // switcher. Only `/calendar/user-settings` exists as a route — the old
+  // switcher. Only `/calendar/user-settings` exists as a route - the old
   // `/calendar/settings` toolbar entry pointed at nothing and was removed.
   useToolbarStore.getState().register({
     moduleId:    'calendar-user-settings',
@@ -169,10 +169,10 @@ export function register() {
   })
 
   // Inter-module services: let other modules drive the calendar UI without any
-  // hard dependency — the assistant module opens the agenda on a given date,
+  // hard dependency - the assistant module opens the agenda on a given date,
   // chat asks the user to pick an event to insert into a conversation.
   ModuleServiceRegistry.publish('calendar', {
-    // () => Promise<KubunoDataEnvelope | null> — opens the event picker and
+    // () => Promise<KubunoDataEnvelope | null> - opens the event picker and
     // resolves with the chosen event's `calendar.event` envelope (null = cancelled).
     pickEvent,
 
@@ -202,7 +202,7 @@ export function register() {
       status?: string
     }) => {
       const { calendars } = await calendarApi.listCalendars()
-      // Only a calendar the user can write to (owner/write) is a valid target —
+      // Only a calendar the user can write to (owner/write) is a valid target -
       // a read-only shared calendar would 403. Prefer a writable DEFAULT, then
       // an owned one, then any writable calendar.
       const writable = calendars.filter(c => c.my_permission === 'owner' || c.my_permission === 'write' || c.my_permission == null)
@@ -245,7 +245,7 @@ export function register() {
 
   RouteRegistry.register('calendar',               CalendarApp)
   RouteRegistry.register('calendar/scheduling',    CalendarApp)
-  // Appointment-schedule editor — a full dedicated page (two panes), not a modal.
+  // Appointment-schedule editor - a full dedicated page (two panes), not a modal.
   // `new` creates; any other value edits that schedule id. 3 segments → never
   // collides with the `calendar/:view` param route below.
   RouteRegistry.register('calendar/booking/:id',   AppointmentSchedulePage)

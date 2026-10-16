@@ -136,7 +136,7 @@ export function WeatherSection() {
             </p>
           )}
         </div>
-        {/* The amCharts credit lives once, on the About page — not repeated here. */}
+        {/* The amCharts credit lives once, on the About page - not repeated here. */}
       </div>
     </Section>
   )

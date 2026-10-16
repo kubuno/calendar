@@ -81,7 +81,7 @@ pub async fn respond_poll(
     Json(dto): Json<PollRespondDto>,
 ) -> Result<Json<serde_json::Value>> {
     // A signed-in respondent answers as their own account: a client-supplied
-    // e-mail would let anyone vote — or overwrite a vote — in someone else's name.
+    // e-mail would let anyone vote - or overwrite a vote - in someone else's name.
     let email = user.email.clone();
     let responses = SchedulingService::respond_to_poll(
         id,

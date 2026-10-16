@@ -1,5 +1,5 @@
-//! `WeekdayPicker` — the « Répéter le » weekday toggles of the custom-recurrence dialog
-//! (`web/src/RecurrenceCustomDialog.tsx`: a row of seven 32px round buttons, Monday first — L M M J V S D).
+//! `WeekdayPicker` - the « Répéter le » weekday toggles of the custom-recurrence dialog
+//! (`web/src/RecurrenceCustomDialog.tsx`: a row of seven 32px round buttons, Monday first - L M M J V S D).
 //! An active day is filled with the primary colour and white text; an inactive one is `surface-2` with
 //! secondary text. At least one day stays selected, exactly as the web keeps `byday` non-empty.
 

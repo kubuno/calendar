@@ -103,7 +103,7 @@ pub fn color_of(s: &str, fallback: Color) -> Color {
     }
 }
 
-/// The theme tokens the month grid paints with — the web's, light and dark.
+/// The theme tokens the month grid paints with - the web's, light and dark.
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     pub dark: bool,
@@ -112,13 +112,13 @@ pub struct Palette {
     pub surface2: Color,
     pub surface3: Color,
     pub border: Color,
-    /// `--color-border-strong` (#bdc1c6) — used for the moon-marker outline.
+    /// `--color-border-strong` (#bdc1c6) - used for the moon-marker outline.
     pub border_strong: Color,
     pub primary: Color,
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_tertiary: Color,
-    /// `--color-danger` — the destructive accent (« Retirer », delete).
+    /// `--color-danger` - the destructive accent (« Retirer », delete).
     pub danger: Color,
 }
 

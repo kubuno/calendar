@@ -1,6 +1,6 @@
 // The core's share registries ship in @kubuno/sdk. The published types this
 // module compiles against do not expose them yet, while the HOST provides them
-// at runtime through the import map — so we reach them with a narrow cast.
+// at runtime through the import map - so we reach them with a narrow cast.
 // Replace this file with a direct import once @kubuno/sdk is published & bumped.
 import * as sdk from '@kubuno/sdk'
 

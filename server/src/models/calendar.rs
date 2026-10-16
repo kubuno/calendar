@@ -29,7 +29,7 @@ pub struct Calendar {
 
 #[derive(Debug, Deserialize, validator::Validate)]
 pub struct CreateCalendarDto {
-    /// Optional client-minted id (local-first sync replay) — honoured verbatim.
+    /// Optional client-minted id (local-first sync replay) - honoured verbatim.
     #[serde(default)]
     pub id: Option<Uuid>,
     #[validate(length(min = 1, max = 255))]
@@ -41,7 +41,7 @@ pub struct CreateCalendarDto {
     /// The creator's own time zone, as their client reports it. An IANA
     /// identifier; anything else falls back to the instance setting rather than
     /// being stored (see `services::timezone`). The length bound is the cheap
-    /// half of that check — it runs before anything looks the value up.
+    /// half of that check - it runs before anything looks the value up.
     #[validate(length(max = 64))]
     pub timezone:    Option<String>,
     pub is_public:   Option<bool>,

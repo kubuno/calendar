@@ -1,10 +1,10 @@
 /**
- * "Guest permissions" — what the organiser lets the invited do.
+ * "Guest permissions" - what the organiser lets the invited do.
  *
  * Three separate decisions, not one level of trust: they are not ordered, and
  * a gathering whose guests may bring others but may not see the list is a real
- * arrangement, not a mistake. Each is enforced by the server — modifying the
- * event, adding a guest, reading the list — so a box ticked here changes what
+ * arrangement, not a mistake. Each is enforced by the server - modifying the
+ * event, adding a guest, reading the list - so a box ticked here changes what
  * someone else can actually do, and an unticked one refuses them for real.
  *
  * The defaults are the ones the field has: guests may invite and may see each

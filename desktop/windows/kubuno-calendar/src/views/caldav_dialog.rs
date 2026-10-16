@@ -1,5 +1,5 @@
 //! The « Accès CalDAV » dialog (web `CalendarCalDavSettings.tsx`): the CalDAV connection details so the user
-//! can sync their calendars with Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. Display only — the
+//! can sync their calendars with Apple Calendar, Thunderbird, Android (DAVx5), Windows, etc. Display only - the
 //! main endpoint (server URL + username) and, per calendar, its CalDAV URL built from the calendar's token.
 
 use kubuno_desktop::prelude::*;

@@ -1,4 +1,4 @@
-// World clock — the list of extra time zones shown in the calendar sidebar.
+// World clock - the list of extra time zones shown in the calendar sidebar.
 //
 // A list has no representation in the declarative settings manifest (scalars
 // only), so it is stored next to the declared keys in the module's preference

@@ -1,6 +1,6 @@
-//! `YearGrid` — the Year view (`web/src/YearView.tsx`): a 4×3 grid of twelve mini-months. Each carries a month
+//! `YearGrid` - the Year view (`web/src/YearView.tsx`): a 4×3 grid of twelve mini-months. Each carries a month
 //! header (the name, in the accent colour for the current month, plus its event count), a narrow weekday row,
-//! and the days — today a filled accent disc, weekends dimmed, and up to three colour dots per day for the
+//! and the days - today a filled accent disc, weekends dimmed, and up to three colour dots per day for the
 //! events on it. Clicking a month header opens that Month; clicking a day opens that Day.
 
 use std::collections::BTreeMap;

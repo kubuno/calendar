@@ -250,7 +250,7 @@ impl WeatherService {
     }
 
     /// Best-effort air quality (European + US AQI, particulates). Any failure
-    /// yields `None` — the widget simply omits the air-quality panel.
+    /// yields `None` - the widget simply omits the air-quality panel.
     async fn fetch_air_quality(&self, lat: f64, lon: f64, timezone: &str) -> anyhow::Result<Option<AirQuality>> {
         let resp: AirQualityResp = self
             .client

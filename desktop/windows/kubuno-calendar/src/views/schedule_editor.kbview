@@ -1,5 +1,5 @@
 <!--
-  Appointment-schedule editor (web AppointmentScheduleEditor.tsx): a two-pane page — a settings pane on the left
+  Appointment-schedule editor (web AppointmentScheduleEditor.tsx): a two-pane page - a settings pane on the left
   (a title, then two steps: duration / weekly availability / scheduling window / booked settings / calendar,
   then location / description / reminders) and a live week-availability preview on the right.
 -->

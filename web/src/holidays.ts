@@ -2,7 +2,7 @@
 //
 // The calendar owns no holiday data and knows no country: it asks the core what
 // applies to the person looking at the screen (`/holidays/applicable`) and then
-// asks for the days in the visible range. That is the whole integration — the
+// asks for the days in the visible range. That is the whole integration - the
 // referential, its corrections and the per-unit adjustments all live in the
 // core, so nothing here has to be kept in step with them.
 //
@@ -19,7 +19,7 @@ import type { EventInstance } from './api'
 
 /** Prefix of the synthetic calendar ids. */
 export const HOLIDAY_CALENDAR_PREFIX = 'holidays:'
-/** Prefix of the synthetic event ids — a click must not open an editor. */
+/** Prefix of the synthetic event ids - a click must not open an editor. */
 export const HOLIDAY_EVENT_PREFIX = 'holiday:'
 
 /** Green, and the same green for every territory: a holiday is one kind of
@@ -40,7 +40,7 @@ export interface HolidayOccurrence {
 
 export interface ApplicableCalendars {
   codes:    string[]
-  /** `setting` — somebody posted it; `timezone` — deduced; `unknown` — neither. */
+  /** `setting` - somebody posted it; `timezone` - deduced; `unknown` - neither. */
   source:   'setting' | 'timezone' | 'unknown'
   timezone: string
   calendars: { code: string; name: string }[]
@@ -65,7 +65,7 @@ export const holidaysApi = {
  *
  * Sent explicitly rather than left to the server's resolution: the browser knows
  * which language this person is reading right now, while the account's stored
- * locale may simply never have been set — and an instance that was installed in
+ * locale may simply never have been set - and an instance that was installed in
  * English would otherwise answer "Christmas Day" to a French interface.
  */
 function locale(): string {
@@ -74,7 +74,7 @@ function locale(): string {
 
 export const holidayCalendarId = (code: string) => `${HOLIDAY_CALENDAR_PREFIX}${code}`
 
-/** `YYYY-MM-DD`, in local time — the feed speaks calendar days, not instants. */
+/** `YYYY-MM-DD`, in local time - the feed speaks calendar days, not instants. */
 function isoDay(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -100,7 +100,7 @@ function toEvent(occurrence: HolidayOccurrence): EventInstance {
     // What the day commemorates, when it was moved off a weekend. Written into
     // the description because that is where every view already looks for the
     // one line under a title.
-    description:  occurrence.observed_from ? `${occurrence.calendar_name} — ${occurrence.observed_from}` : occurrence.calendar_name,
+    description:  occurrence.observed_from ? `${occurrence.calendar_name} - ${occurrence.observed_from}` : occurrence.calendar_name,
     location: null, url: null,
     starts_at:    start.toISOString(),
     ends_at:      end.toISOString(),
@@ -110,7 +110,7 @@ function toEvent(occurrence: HolidayOccurrence): EventInstance {
     status:       'confirmed',
     visibility:   'public',
     // Free, not busy: a public holiday must never make somebody look booked in
-    // a free/busy lookup — it says the office is closed, not that they are in a
+    // a free/busy lookup - it says the office is closed, not that they are in a
     // meeting.
     busy:         false,
     ical_uid:     id,
@@ -120,7 +120,7 @@ function toEvent(occurrence: HolidayOccurrence): EventInstance {
   }
 }
 
-/** The territories that apply to the reader — cached, since they change rarely. */
+/** The territories that apply to the reader - cached, since they change rarely. */
 export function useApplicableHolidayCalendars(enabled: boolean) {
   return useQuery({
     queryKey: ['calendar-holidays-applicable'],

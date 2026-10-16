@@ -70,7 +70,7 @@ pub async fn rsvp_respond(
         return Err(CalendarError::Validation("Commentaire trop long".to_string()));
     }
 
-    // Locate the (unexpired) attendee first — the event id is needed to bump the
+    // Locate the (unexpired) attendee first - the event id is needed to bump the
     // event, and the guarded update has no portable `RETURNING`.
     let target: Option<(uuid::Uuid, uuid::Uuid)> = state
         .db
@@ -196,14 +196,14 @@ pub async fn rsvp_page(
     let end_str  = event.ends_at.format("%H:%M").to_string();
     let guest    = esc(attendee.display_name.as_deref()
         .or(attendee.email.as_deref())
-        .unwrap_or("—"));
+        .unwrap_or("-"));
     let current  = attendee.status.clone();
     let token_js = esc(&token);
 
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Invitation — {title}</title>
+<title>Invitation - {title}</title>
 <style>
   body {{ font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; margin: 0;
          display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
@@ -242,7 +242,7 @@ pub async fn rsvp_page(
         body: JSON.stringify({{ status: id }})
       }});
       if (r.ok) {{ mark(id); document.getElementById('msg').textContent = 'Réponse enregistrée, merci !'; }}
-      else document.getElementById('msg').textContent = 'Erreur — réessayez.';
+      else document.getElementById('msg').textContent = 'Erreur - réessayez.';
     }};
   }}
 </script>

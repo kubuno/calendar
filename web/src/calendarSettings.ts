@@ -9,7 +9,7 @@
 //
 // Two preferences have no scalar representation in the manifest (a list of days,
 // a list of timezones); they live in the same JSONB bag (`core.users.preferences
-// .calendar`) and are read straight from the auth store — see `useModulePrefs`.
+// .calendar`) and are read straight from the auth store - see `useModulePrefs`.
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDate as fmtIntl, api, useAuthStore } from '@kubuno/sdk'
@@ -20,7 +20,7 @@ export type NotificationsMode = 'off' | 'in_app' | 'desktop'
 /** Day the week starts on (0 = Sunday), JS getDay numbering. */
 export type WeekStart         = 0 | 1 | 6
 
-/** Where the user works on a given day — shown to people viewing their calendar. */
+/** Where the user works on a given day - shown to people viewing their calendar. */
 export type WorkLocation =
   | 'office' | 'home' | 'unspecified' | 'other_office' | 'elsewhere'
 
@@ -80,7 +80,7 @@ export function defaultWorkSchedule(): WorkSchedule {
   return { 1: day(), 2: day(), 3: day(), 4: day(), 5: day() }
 }
 
-/** Factory defaults — must mirror the `default =` of `module.toml`. Used until
+/** Factory defaults - must mirror the `default =` of `module.toml`. Used until
  *  the config query resolves so the first paint already looks right. */
 export const CALENDAR_SETTINGS_DEFAULTS: CalendarSettings = {
   dateFormat:        '',
@@ -244,7 +244,7 @@ export function timePattern(timeFormat: TimeFormat): Intl.DateTimeFormatOptions 
     : { hour: '2-digit', minute: '2-digit', hour12: false }
 }
 
-/** Same, but hour-focused — used for hour gutters. */
+/** Same, but hour-focused - used for hour gutters. */
 export function hourPattern(timeFormat: TimeFormat): Intl.DateTimeFormatOptions {
   return timeFormat === '12h'
     ? { hour: 'numeric', hour12: true }

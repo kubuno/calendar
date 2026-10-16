@@ -62,7 +62,7 @@ pub fn draw_event_pill(
 pub const MOON_LIT: u32 = 0xf6c453;
 
 /// A principal-phase moon marker (`moon.tsx` PrincipalMoonIcon): a disc in `fill` outlined in `stroke`, with
-/// the lit part in `MOON_LIT` — empty for new, right half for first quarter, full for full, left for last.
+/// the lit part in `MOON_LIT` - empty for new, right half for first quarter, full for full, left for last.
 pub fn draw_principal_moon(
     g: &kubuno_desktop::ui::graphics::Graphics<'_>,
     cx: f32,
@@ -95,7 +95,7 @@ pub fn draw_principal_moon(
 
 /// A moon disc for any phase (`phase` 0..1, 0 = new / 0.5 = full; `illum` the lit fraction): the dark base,
 /// the lit limb (right while waxing, left while waning) carved to a crescent or extended to a gibbous by the
-/// terminator ellipse, and the outline — the shape the sidebar's Moon widget shows (`web MoonIcon`).
+/// terminator ellipse, and the outline - the shape the sidebar's Moon widget shows (`web MoonIcon`).
 #[allow(clippy::too_many_arguments)]
 pub fn draw_moon(g: &kubuno_desktop::ui::graphics::Graphics<'_>, cx: f32, cy: f32, r: f32, phase: f64, illum: f64, fill: Color, stroke: Color) {
     let rect = Rect::new(cx - r, cy - r, cx + r, cy + r);
@@ -123,7 +123,7 @@ pub fn draw_moon(g: &kubuno_desktop::ui::graphics::Graphics<'_>, cx: f32, cy: f3
 }
 
 /// A timed-event block in the Day/Week grid (`WeekView.tsx` / `DayView.tsx`): the title on the first line
-/// (semibold) and, when the block is tall enough, the time range (and location) faded on a second line — not a
+/// (semibold) and, when the block is tall enough, the time range (and location) faded on a second line - not a
 /// time prefix. Carries the thin white inner ring and the web radius.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_timed_block(

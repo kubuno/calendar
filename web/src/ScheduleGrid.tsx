@@ -8,7 +8,7 @@
  * free. That is an answer, but it is not the one an organiser is holding in
  * their head: they are looking at a week, they know Thursday morning is the
  * only moment that works politically, and they want to see what stands in the
- * way of it. A list cannot show that. The grid can — the meeting is a block you
+ * way of it. A list cannot show that. The grid can - the meeting is a block you
  * move over everyone's calendars until it lands somewhere empty.
  *
  * ## What is drawn
@@ -20,7 +20,7 @@
  *   looks like an event would promise a title we do not have.
  * - The meeting being scheduled, as a movable block. Clicking anywhere in a
  *   column moves it there; dragging it does the same continuously. Its duration
- *   never changes here — the hour is what this tab is for.
+ *   never changes here - the hour is what this tab is for.
  *
  * Guests whose availability the instance will not disclose are counted and
  * named at the foot of the grid: an empty column must never be read as "free".
@@ -46,7 +46,7 @@ type Mode = 'day' | 'week'
  * Whose busy time is drawn.
  *
  * Two values, not three. The reference tab also offers "required guests only",
- * and rooms as rows of their own — neither is offered here, because neither
+ * and rooms as rows of their own - neither is offered here, because neither
  * exists yet in this product: an attendee is not marked required or optional,
  * and a room answers for one slot at a time rather than for a range. A menu
  * entry that changes nothing is worse than an absent one, so they stay out
@@ -73,7 +73,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
   start: Date
   end:   Date
   calendars: Calendar[]
-  /** The meeting being edited, if it exists yet — its guest list is what the
+  /** The meeting being edited, if it exists yet - its guest list is what the
    *  busy bands are computed from. A meeting still being composed has guests
    *  that are addresses, not accounts, and an address cannot be cross-referenced
    *  without asking the directory who it belongs to; until that lookup exists,
@@ -96,7 +96,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
   const durationMs = Math.max(15 * 60_000, end.getTime() - start.getTime())
 
   // Who the grid answers for. A room is an attendee too, but it has no calendar
-  // of its own here — it answers through the room list.
+  // of its own here - it answers through the room list.
   const attendeesQ = useQuery({
     enabled:  Boolean(eventId),
     queryKey: ['schedule-grid-attendees', eventId],
@@ -127,7 +127,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
   })
 
   // Free/busy for the guests. The endpoint answers with the ranges where
-  // EVERYONE is free, so the busy bands are its complement — which is exactly
+  // EVERYONE is free, so the busy bands are its complement - which is exactly
   // what an organiser needs to see, and it costs no new endpoint.
   const busyQ = useQuery({
     enabled:  scope !== 'none' && attendeeIds.length > 0 && Boolean(me?.id),
@@ -247,7 +247,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
     <div className="flex flex-col">
       {/* Toolbar */}
       {/* One row, always: the controls on the left, the view on the right. The
-          date label is what gives way when the card is narrow — it is the only
+          date label is what gives way when the card is narrow - it is the only
           thing here that can be read from the grid itself. */}
       <div className="flex items-center gap-2 px-6 py-3">
         <button type="button"
@@ -303,7 +303,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
       {/* The grid */}
       <div ref={bodyRef} className="overflow-y-auto px-6 pb-4" style={{ maxHeight: 460 }}>
         <div className="flex">
-          {/* Hour gutter — one column per zone the reader asked for. */}
+          {/* Hour gutter - one column per zone the reader asked for. */}
           <div className="shrink-0" style={{ width: secondary ? 108 : 58 }}>
             {hours.map(h => {
               const at = new Date(days[0]); at.setHours(h, 0, 0, 0)
@@ -336,7 +336,7 @@ export function ScheduleGrid({ start, end, calendars, eventId, onPick }: {
                 {hours.map(h => (
                   <div key={h} className="absolute inset-x-0 border-t border-border/70" style={{ top: h * HOUR_H }} />
                 ))}
-                {/* Guests' busy time — free/busy, not their events. */}
+                {/* Guests' busy time - free/busy, not their events. */}
                 {bands.map((b, i) => (
                   <div key={i} className="kb-sched-busy absolute inset-x-0"
                     style={{ top: (b.from / 60) * HOUR_H, height: Math.max(2, ((b.to - b.from) / 60) * HOUR_H) }} />

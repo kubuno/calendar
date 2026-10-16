@@ -1,7 +1,7 @@
-//! `CalDavList` — the per-calendar CalDAV URLs (`web/src/CalendarCalDavSettings.tsx`, the « URL par calendrier »
+//! `CalDavList` - the per-calendar CalDAV URLs (`web/src/CalendarCalDavSettings.tsx`, the « URL par calendrier »
 //! section): one card per calendar with a colour dot, its name, a « défaut » badge for the default calendar,
 //! and the calendar's CalDAV URL (`<origin>/api/v1/calendar/caldav/<username>/<token>/`) in a monospace pill.
-//! Display only — the token is read from the already-fetched calendars.
+//! Display only - the token is read from the already-fetched calendars.
 
 use kubuno_desktop::ui::graphics::{Brush, Font, FontStyle, StringAlignment, StringFormat, StringFormatFlags, StringTrimming};
 use kubuno_desktop::ui::{Canvas, Rect, Size};

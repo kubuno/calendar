@@ -41,12 +41,12 @@ export default function CalendarFilterPanel({ onClose }: { onClose: () => void }
 
   // ── Two-way sync with the shell search bar (platform rule) ──────────────────
   // The calendar's search has no text operators: the bar's query is plain free
-  // text matched against event titles and descriptions — exactly what the
+  // text matched against event titles and descriptions - exactly what the
   // « Objet » field does. So that field mirrors the bar: opening the panel
   // pre-fills it with the current query, and editing it rewrites the bar's text
   // live (running the search like typing does). The other fields (location,
   // excluded words, dates, scope) are state filters with no query-text
-  // representation — deliberately NOT serialized into the bar (no invented
+  // representation - deliberately NOT serialized into the bar (no invented
   // operators).
   const query    = useSearchStore(s => s.query)
   const setQuery = useSearchStore(s => s.setQuery)

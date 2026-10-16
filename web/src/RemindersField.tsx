@@ -1,5 +1,5 @@
 /**
- * The reminders of an event — used by both forms that can set them.
+ * The reminders of an event - used by both forms that can set them.
  *
  * Extracted so the small card and the full editor cannot drift: a reminder row
  * that looks one way in one of them and another way in the other is exactly the
@@ -38,7 +38,7 @@ export function RemindersSection({
 
   // No icon, no gutter of its own: this section is the CONTENT of a row, and
   // the row is drawn by the shared helper like every other one. Rolling its own
-  // put its fields six pixels left of all the others — a line you cannot unsee
+  // put its fields six pixels left of all the others - a line you cannot unsee
   // once it is pointed out.
   return (
     <div className="space-y-2">

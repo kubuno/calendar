@@ -1,7 +1,7 @@
 /**
  * Reading rich text as text.
  *
- * A description is stored as HTML — it can carry emphasis, a link, a mention of
+ * A description is stored as HTML - it can carry emphasis, a link, a mention of
  * someone. Everywhere else that description is consumed as WORDS: a clipboard,
  * a mail body, a search. Those places need the sentence, not the markup around
  * it, and a plain box handed the raw value shows its own source instead of what

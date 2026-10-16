@@ -1,22 +1,22 @@
 /**
- * The card of an event — the one card, whether the event exists yet or not.
+ * The card of an event - the one card, whether the event exists yet or not.
  *
  * ## Why one card and not two
  *
  * There used to be two: this one to create, and a separate detail window to
  * consult and to reach the editor from. They showed the same event, an inch
- * apart, and agreed on almost nothing — different surface, different rows, the
+ * apart, and agreed on almost nothing - different surface, different rows, the
  * video call dressed by the chat module here and a bare button there. Two
  * places to change every time the event gains a field, and two chances to
  * forget one. So there is one card now: empty for a new event, filled for an
- * existing one, and the things only an existing event can offer — delete, send
- * by e-mail, invite with a link, the reminders it already carries — appear when
+ * existing one, and the things only an existing event can offer - delete, send
+ * by e-mail, invite with a link, the reminders it already carries - appear when
  * there is an event to offer them for.
  *
  * ## The rows
  *
- * Each row below the title is a VERB until it is used — "Add guests", "Add a
- * location" — and becomes the field once clicked. A card that opened with eight
+ * Each row below the title is a VERB until it is used - "Add guests", "Add a
+ * location" - and becomes the field once clicked. A card that opened with eight
  * empty inputs would look like the form it exists to avoid. On an existing
  * event the same rows open already filled, so consulting and changing are the
  * same gesture rather than two modes.
@@ -26,7 +26,7 @@
  * The day itself, the recurrence rule, guests of an event that already exists
  * (they are invited live, not on save), rooms, colour and the free/busy flag.
  * "More options" hands everything typed here to the editor rather than starting
- * again — and, when a video room was created for a draft that is not saved yet,
+ * again - and, when a video room was created for a draft that is not saved yet,
  * it hands that over too.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -130,7 +130,7 @@ export function EventCard({
   const [visibility, setVisibility] = useState(event?.visibility || 'default')
   // The instance's labels. On an existing event they are read from the core; on
   // a new one they are simply held here until there is something to attach them
-  // to — see `labels.ts`.
+  // to - see `labels.ts`.
   const labelOptions = useLabelOptions()
   const eventLabels  = useEventLabels(event)
   const [labelIds, setLabelIds] = useState<string[]>([])
@@ -146,7 +146,7 @@ export function EventCard({
   const [askScope, setAskScope] = useState<null | 'save' | 'delete'>(null)
 
   // The same hole the full editor offers, filled by the same module. This card
-  // used to create the room itself through a second, private path — so the one
+  // used to create the room itself through a second, private path - so the one
   // that hosts meetings dressed the editor and not this, and the link it wrote
   // landed in the LOCATION field. One mechanism now, or the two forms drift
   // apart again the next time either is touched.
@@ -158,15 +158,15 @@ export function EventCard({
     ),
     [activeModules, loadedVersion],
   )
-  // What the provider is holding for this unsaved card — see `VideoMeetingDraft`.
+  // What the provider is holding for this unsaved card - see `VideoMeetingDraft`.
   const meetingDraft = useRef<VideoMeetingDraft | null>(null)
   const onMeetingDraft = useCallback((d: VideoMeetingDraft | null) => { meetingDraft.current = d }, [])
-  // Was this draft settled — saved, or handed on to the editor? Anything else
+  // Was this draft settled - saved, or handed on to the editor? Anything else
   // that makes this card go away is an abandonment.
   const settled = useRef(false)
   // The cleanup, on UNMOUNT rather than on a close handler. The card is closed
-  // from several places — its own dismissal, Escape caught by the page, the
-  // view swapping underneath it — and hooking each one is how a path gets
+  // from several places - its own dismissal, Escape caught by the page, the
+  // view swapping underneath it - and hooking each one is how a path gets
   // missed (it was: Escape went straight to the parent and the room stayed).
   // Disappearing is the one thing they all do.
   useEffect(() => () => { if (!settled.current) meetingDraft.current?.discard() }, [])
@@ -204,7 +204,7 @@ export function EventCard({
     }),
     onSuccess: async () => {
       // The labels are the core's, not the calendar's, so they are a second
-      // write — and a failure there must not lose the event that was just
+      // write - and a failure there must not lose the event that was just
       // saved. It is reported by the labels row going stale, not by refusing
       // the save.
       try { await saveEventLabels(event!, labelIds) } catch { /* l'évènement, lui, est enregistré */ }
@@ -215,7 +215,7 @@ export function EventCard({
   })
 
   const { mutate: remove, isPending: removing } = useMutation<unknown, Error, string>({
-    // `occurrence` = the start of THIS one — without it, this/following would
+    // `occurrence` = the start of THIS one - without it, this/following would
     // apply to the whole series backend-side.
     mutationFn: (scope: string) => calendarApi.deleteEvent(
       event!.event_id, scope, scope !== 'all' ? event!.starts_at : undefined),
@@ -259,7 +259,7 @@ export function EventCard({
   })()
   // A call hosted on this instance carries the event's own name: renaming one
   // renames the other. Said HERE, next to the title, because that is where the
-  // reader is about to type — a link discovered afterwards is a surprise.
+  // reader is about to type - a link discovered afterwards is a surprise.
   const titleIsShared = MEETING_LINK_RE.test(url.trim())
   const cal = calendars.find(c => c.id === calId)
   const ownerName = user?.display_name || user?.username || user?.email || null
@@ -355,7 +355,7 @@ export function EventCard({
         <div
           /* The same form surface as the full editor: this card is that form,
              cut down, and it must not read as a different kind of thing. The
-             class is the core's — it carries the canvas AND the fields' look,
+             class is the core's - it carries the canvas AND the fields' look,
              so the two stay in step without this file naming a colour. */
           className="kb-form-surface w-[380px] max-w-[92vw] rounded-xl border border-border p-3 shadow-xl"
           onMouseDown={e => e.stopPropagation()}
@@ -433,7 +433,7 @@ export function EventCard({
           ))}
 
           {/* Guests of an event that already exists are invited live, one by
-              one, with an answer each — that belongs to the editor's panel, not
+              one, with an answer each - that belongs to the editor's panel, not
               to a list this card would pretend to save. */}
           {!editing && row(<Users size={17} />, guests.length > 0, t('add_guests', { defaultValue: 'Ajouter des invités' }),
             openRow === 'guests', () => setOpenRow('guests'), (
@@ -474,7 +474,7 @@ export function EventCard({
           ))}
 
           {/* The video call. Whoever hosts meetings on this instance dresses the
-              row — its own mark in the gutter, its own card in the line — and
+              row - its own mark in the gutter, its own card in the line - and
               the plain link field stands in when nobody does. Identical to the
               full editor because it IS the editor's row, and it carries the
               join link, so no separate "Join" button is needed here. */}
@@ -505,7 +505,7 @@ export function EventCard({
 
           {/* The same description editor as the full form, and for a reason
               beyond consistency: a description is stored as rich text, so a
-              plain box shows its markup instead of the words — a description
+              plain box shows its markup instead of the words - a description
               written with a mention in it came back here as its own source. */}
           {row(<AlignLeft size={17} />, desc !== '', t('add_description', { defaultValue: 'Ajouter une description' }),
             openRow === 'description', () => setOpenRow('description'), (
@@ -527,7 +527,7 @@ export function EventCard({
           ))}
 
           {/* Reminders and visibility: shown on an existing event, because that
-              is what the card it replaces showed — and editable, because a card
+              is what the card it replaces showed - and editable, because a card
               that displays a setting it will not let you change is a dead end. */}
           {editing && row(<Bell size={17} />, reminders.length > 0, t('add_reminder', { defaultValue: 'Ajouter un rappel' }),
             openRow === 'reminders', () => setOpenRow('reminders'), (

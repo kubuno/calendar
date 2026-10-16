@@ -1,4 +1,4 @@
-//! `AvailabilityPreview` — the appointment-schedule editor's right pane (`AppointmentScheduleEditor.tsx`,
+//! `AvailabilityPreview` - the appointment-schedule editor's right pane (`AppointmentScheduleEditor.tsx`,
 //! `AvailabilityPreview`): a live 7-day week grid (07:00–20:00) showing the weekly availability ranges as
 //! tinted blocks, so the host sees their bookable windows while they edit. Display only.
 

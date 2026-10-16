@@ -2,7 +2,7 @@
  * Rich card rendering `calendar.event` envelopes inside CONSUMER modules
  * (chat, notes…). Registered on the `core.data-card` extension point from
  * `entry.ts`, so consumers resolve it dynamically and never import calendar's
- * code — when calendar is not installed they fall back to a generic JSON card.
+ * code - when calendar is not installed they fall back to a generic JSON card.
  */
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'

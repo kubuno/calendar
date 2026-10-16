@@ -1,5 +1,5 @@
-//! `AgendaList` — the Schedule / « Planning » view (`web/src/ScheduleView.tsx`): one row per day that has
-//! events over the visible month — a left date badge (weekday + the day number, a filled accent circle when
+//! `AgendaList` - the Schedule / « Planning » view (`web/src/ScheduleView.tsx`): one row per day that has
+//! events over the visible month - a left date badge (weekday + the day number, a filled accent circle when
 //! today) and, on the right, the day's events as filled rounded cards (all-day first, then timed by start).
 //! Empty days are skipped. Geometry and colours match the web. Read-only; the wheel scrolls the list.
 

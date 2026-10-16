@@ -6,7 +6,7 @@
 // open instead of stacking a second column beside it.
 //
 // The scalar preferences themselves are rendered from the module's declarative
-// manifest — see GeneralSettings / ModuleSettingsForm.
+// manifest - see GeneralSettings / ModuleSettingsForm.
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'

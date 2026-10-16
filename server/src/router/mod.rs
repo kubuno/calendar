@@ -18,7 +18,7 @@ pub fn build(state: AppState) -> Router {
     // Authenticated routes
     let authed = Router::new()
         // Calendriers
-        // Sync deltas (local-first) — before the :id catch-alls.
+        // Sync deltas (local-first) - before the :id catch-alls.
         .route("/calendars/delta",  get(delta::calendars_delta))
         .route("/events/delta",     get(delta::events_delta))
         .route("/time-blocks/delta", get(delta::time_blocks_delta))
@@ -43,7 +43,7 @@ pub fn build(state: AppState) -> Router {
         .route("/events/:id/attendees",          get(attendees::list).post(attendees::invite))
         .route("/events/:id/attendees/:aid",     patch(attendees::update_rsvp).delete(attendees::remove))
         // Salles. Chemin distinct des participants : une salle n'a pas d'adresse,
-        // ne compte pas dans le plafond d'invités, n'est jamais extérieure — et
+        // ne compte pas dans le plafond d'invités, n'est jamais extérieure - et
         // elle RÉPOND (elle refuse un créneau déjà pris) au lieu de faire échouer
         // la requête (cf. handlers::rooms).
         .route("/rooms",                         get(rooms::list))

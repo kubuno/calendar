@@ -1,8 +1,8 @@
-//! Code-behind of Kubuno Calendar's window (`calendar_window.kbview`) — Windows Forms' `Form1.cs`.
+//! Code-behind of Kubuno Calendar's window (`calendar_window.kbview`) - Windows Forms' `Form1.cs`.
 //!
 //! The window owns the shared model (the calendars, the events and the view state, `controls::model`) that the
 //! views paint, and turns the toolbar's navigation (Today, ‹ ›) and the view switcher (a dropdown, like the web
-//! `CalendarViewSwitcher`) into moves of that view state — the web app's `CalendarNav` (`CalendarApp.tsx`).
+//! `CalendarViewSwitcher`) into moves of that view state - the web app's `CalendarNav` (`CalendarApp.tsx`).
 //! This increment renders the Month grid, the Day/Week time grid and the Schedule (agenda) list from the
 //! offline sample; the server-coupled editing is a later increment.
 
@@ -136,7 +136,7 @@ impl CalendarWindow {
         self.moon.with(|v| v.set_model(m.clone()));
         self.year.with(|v| v.set_model(m.clone()));
         self.search_view.with(|v| v.set_model(m.clone()));
-        // Load the calendars once (for the editor's calendar picker and colours) — a one-off localhost GET.
+        // Load the calendars once (for the editor's calendar picker and colours) - a one-off localhost GET.
         if self.doc.is_some() {
             if let Ok(cals) = kubuno_calendar_desktop_common::live::fetch_calendars() {
                 self.model.borrow_mut().calendars = cals;
@@ -563,7 +563,7 @@ impl CalendarWindow {
         self.refresh();
     }
 
-    /// Compute the bound fields from the current view state (no control access — safe before load).
+    /// Compute the bound fields from the current view state (no control access - safe before load).
     fn sync_bindings(&mut self) {
         let m = self.model.borrow();
         self.period_title = capitalize(&m.view.title());

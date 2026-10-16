@@ -11,7 +11,7 @@ use crate::{
 pub struct TimeBlockService;
 
 /// `NaiveTime` has no `DbValue` variant, so a TIME column is written as an
-/// `HH:MM:SS` string — the spelling every engine accepts (PostgreSQL / MySQL
+/// `HH:MM:SS` string - the spelling every engine accepts (PostgreSQL / MySQL
 /// `TIME`, SQLite `TEXT`) and that sqlx decodes back into `NaiveTime`.
 fn time_str(t: chrono::NaiveTime) -> String {
     t.format("%H:%M:%S").to_string()
@@ -111,7 +111,7 @@ impl TimeBlockService {
     }
 
     pub async fn delete(id: Uuid, user_id: Uuid, db: &DbPool) -> Result<()> {
-        // The row is owner-scoped, so its owner is the acting user — the value
+        // The row is owner-scoped, so its owner is the acting user - the value
         // the time_block delta filters tombstones on.
         let mut tx = db.begin().await?;
         let seq = sync::next_time_block_seq(&mut tx).await?;

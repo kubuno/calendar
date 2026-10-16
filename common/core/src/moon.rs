@@ -1,4 +1,4 @@
-//! Moon phases — a 100% client-side synodic computation, ported from `web/src/moon.tsx` (no API). Position
+//! Moon phases - a 100% client-side synodic computation, ported from `web/src/moon.tsx` (no API). Position
 //! within the synodic cycle since a reference new moon; accurate to within a few hours over several decades,
 //! which is all a calendar needs.
 //!
@@ -18,7 +18,7 @@ fn new_moon_epoch_seconds() -> i64 {
     day * 86_400 + 18 * 3_600 + 14 * 60
 }
 
-/// Position within the cycle, in [0, 1) — 0 = new moon, 0.5 = full moon (`moonPhase`).
+/// Position within the cycle, in [0, 1) - 0 = new moon, 0.5 = full moon (`moonPhase`).
 pub fn moon_phase(epoch_seconds: i64) -> f64 {
     let days = (epoch_seconds - new_moon_epoch_seconds()) as f64 / 86_400.0;
     (((days % SYNODIC) + SYNODIC) % SYNODIC) / SYNODIC
@@ -29,7 +29,7 @@ pub fn moon_illumination(epoch_seconds: i64) -> f64 {
     (1.0 - (2.0 * std::f64::consts::PI * moon_phase(epoch_seconds)).cos()) / 2.0
 }
 
-/// A principal lunar phase — the markers a paper calendar prints.
+/// A principal lunar phase - the markers a paper calendar prints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrincipalPhase {
     New,
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn full_moon_marker_agrees_with_phase8() {
-        // The day that carries the « full moon » principal marker is a day whose phase is Full — the marker
+        // The day that carries the « full moon » principal marker is a day whose phase is Full - the marker
         // and the named phase must agree (self-consistent, no external almanac asserted).
         let full_day = (0..30)
             .map(|off| Date::new(2026, 10, 1).expect("d").add_days(off))

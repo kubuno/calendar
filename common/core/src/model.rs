@@ -60,7 +60,7 @@ pub struct EventInstance {
     pub guests_can_invite: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guests_can_see_guests: Option<bool>,
-    /// Any field the server adds that this model does not name yet — kept for a lossless round trip.
+    /// Any field the server adds that this model does not name yet - kept for a lossless round trip.
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -109,7 +109,7 @@ impl Calendar {
     }
 }
 
-/// A wall-clock date and time in some local zone (no zone attached) — the result of reading a stored instant
+/// A wall-clock date and time in some local zone (no zone attached) - the result of reading a stored instant
 /// in the viewer's zone, the way the web does with `Date.getHours()` etc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LocalDateTime {
@@ -134,7 +134,7 @@ impl LocalDateTime {
     }
 }
 
-/// A UTC instant, in whole seconds since the Unix epoch — what an ISO 8601 timestamp denotes.
+/// A UTC instant, in whole seconds since the Unix epoch - what an ISO 8601 timestamp denotes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Instant {
     pub epoch_seconds: i64,
@@ -202,7 +202,7 @@ impl Instant {
         Instant { epoch_seconds: local - offset_minutes as i64 * 60 }
     }
 
-    /// `YYYY-MM-DDTHH:MM:SSZ` — the UTC ISO 8601 form the server stores.
+    /// `YYYY-MM-DDTHH:MM:SSZ` - the UTC ISO 8601 form the server stores.
     pub fn iso_utc(self) -> String {
         let d = Date::from_days(self.epoch_seconds.div_euclid(86_400));
         let rem = self.epoch_seconds.rem_euclid(86_400);

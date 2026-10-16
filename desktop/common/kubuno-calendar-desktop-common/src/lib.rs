@@ -1,4 +1,4 @@
-//! # Kubuno Calendar — the portable app (`desktop/common`)
+//! # Kubuno Calendar - the portable app (`desktop/common`)
 //!
 //! The complete Kubuno Calendar desktop app that does not depend on an operating system: the launch options
 //! ([`app::Options`]), the calendar view state ([`state::CalendarView`]), the offline sample dataset

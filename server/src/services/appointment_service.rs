@@ -408,7 +408,7 @@ impl AppointmentService {
             _ => dto.first_name.clone(),
         };
         let base_title = if schedule.title.is_empty() { "Rendez-vous".to_string() } else { schedule.title.clone() };
-        let event_title = format!("{base_title} — {booker}");
+        let event_title = format!("{base_title} - {booker}");
         let location = match schedule.location_type.as_str() {
             "in_person" => schedule.location_details.clone(),
             "phone"     => Some(format!("Téléphone{}", schedule.location_details.as_deref().map(|d| format!(" : {d}")).unwrap_or_default())),

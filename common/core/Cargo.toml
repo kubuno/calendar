@@ -2,15 +2,15 @@
 name        = "kubuno-calendar-core"
 version     = "0.1.0"
 edition     = "2021"
-description = "Kubuno Calendar shared core (sans-IO): the platform-neutral calendar model and the pure algorithms ported from the web app — civil date and local wall-clock math, the month grid, the day/week overlap and all-day banner layout, RRULE parse/build/humanize, and the moon-phase computation. Used by the server-coupled desktop app and held together with the web and mobile clients by the conformance vectors of common/vectors."
+description = "Kubuno Calendar shared core (sans-IO): the platform-neutral calendar model and the pure algorithms ported from the web app - civil date and local wall-clock math, the month grid, the day/week overlap and all-day banner layout, RRULE parse/build/humanize, and the moon-phase computation. Used by the server-coupled desktop app and held together with the web and mobile clients by the conformance vectors of common/vectors."
 license     = "AGPL-3.0-or-later"
 repository  = "https://github.com/kubuno/calendar"
 
 # Sans-IO (vskubuno docs/SHARED-CORES.md §6.1): no network, database, file system, clock, async runtime, UI
 # or C library. Data in, data out; it builds for every target (wasm32 included). Recurrence EXPANSION into
 # occurrences is intentionally absent: the Kubuno Calendar server expands series over the requested window and
-# returns ready EventInstances (web api.ts `listEvents` → GET /calendar/events), so every client — web, desktop,
-# mobile — receives expanded instances. This crate therefore ports only the client-side pure logic the web has.
+# returns ready EventInstances (web api.ts `listEvents` → GET /calendar/events), so every client - web, desktop,
+# mobile - receives expanded instances. This crate therefore ports only the client-side pure logic the web has.
 [dependencies]
 serde      = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }

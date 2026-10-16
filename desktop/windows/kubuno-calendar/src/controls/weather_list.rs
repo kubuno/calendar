@@ -1,4 +1,4 @@
-//! `WeatherList` — the sidebar's « Météo » forecast rows (`web/src/CalendarSidebarBody.tsx`, the weather
+//! `WeatherList` - the sidebar's « Météo » forecast rows (`web/src/CalendarSidebarBody.tsx`, the weather
 //! section): one row per saved location with its name, today's condition and the high/low temperatures (and the
 //! precipitation probability when notable). Display only; adding a location is done from the « Ajouter un lieu »
 //! button next to it.
@@ -25,7 +25,7 @@ pub fn wmo_label(code: i32, fr: bool) -> &'static str {
         78..=82 => if fr { "Averses" } else { "Showers" },
         83..=86 => if fr { "Averses de neige" } else { "Snow showers" },
         87..=99 => if fr { "Orage" } else { "Thunderstorm" },
-        _ => "—",
+        _ => "-",
     }
 }
 

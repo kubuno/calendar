@@ -1,5 +1,5 @@
 //! Native Open / Save file dialogs (the common-dialog Win32 API), for importing and exporting `.ics` files.
-//! These are ordinary shell dialogs — no process is spawned — so they are allowed under the seccomp policy.
+//! These are ordinary shell dialogs - no process is spawned - so they are allowed under the seccomp policy.
 
 use std::path::PathBuf;
 

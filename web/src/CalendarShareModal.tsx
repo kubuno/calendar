@@ -211,7 +211,7 @@ export default function CalendarShareModal({ calendar, onClose }: {
           )}
         </div>
 
-        {/* Lien public .ics — masqué quand l'instance interdit la publication */}
+        {/* Lien public .ics - masqué quand l'instance interdit la publication */}
         {policy.allowPublicCalendars && (
         <div className="rounded-xl border border-border p-3 space-y-2">
           <div className="flex items-center gap-2">

@@ -236,7 +236,7 @@ function AvailabilityPreview({ weekly, color, t }: { weekly: Weekly; color: stri
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Header lives INSIDE the scroll container (sticky) so it shares the body's
-          content width — both minus the scrollbar — keeping columns aligned. */}
+          content width - both minus the scrollbar - keeping columns aligned. */}
       <div className="flex-1 overflow-y-auto">
         {/* Day headers */}
         <div className="grid sticky top-0 z-10 bg-white border-b border-border" style={{ gridTemplateColumns: '48px repeat(7,1fr)' }}>

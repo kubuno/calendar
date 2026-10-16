@@ -63,7 +63,7 @@ pub struct AppointmentBooking {
 
 // ── Composite responses ─────────────────────────────────────────────────────
 
-/// A schedule with its availability rules — the shape the editor loads / saves.
+/// A schedule with its availability rules - the shape the editor loads / saves.
 #[derive(Debug, Clone, Serialize)]
 pub struct ScheduleWithRules {
     #[serde(flatten)]

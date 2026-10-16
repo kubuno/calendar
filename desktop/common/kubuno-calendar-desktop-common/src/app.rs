@@ -108,10 +108,10 @@ pub fn run(platform: Platform, ui: &dyn UiHost) -> i32 {
 pub struct TextUi;
 
 impl TextUi {
-    /// A plain-text month grid driven by the shared core — proof the core lays the view out without a window.
+    /// A plain-text month grid driven by the shared core - proof the core lays the view out without a window.
     pub fn render_month(state: &CalendarView, events: &[EventInstance], offset_minutes: i32) -> Vec<String> {
         use kubuno_calendar_core::layout::{layout_banners, month_grid, timed_events_for_day};
-        let mut lines = vec![format!("Kubuno Calendar — {}", state.title())];
+        let mut lines = vec![format!("Kubuno Calendar - {}", state.title())];
         let grid = month_grid(state.current, state.week_starts_on);
         for week in grid.chunks(7) {
             let banners = layout_banners(events, week, offset_minutes);

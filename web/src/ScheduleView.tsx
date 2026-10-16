@@ -53,7 +53,7 @@ export function ScheduleView({ rangeStart, rangeEnd, events, calendars, overlayB
 
   // One entry per day carrying its events, overlay items and work location. A
   // multi-day / all-day event appears on EVERY day it spans (not just its start),
-  // and a working day shows its location — so days with only work are kept too.
+  // and a working day shows its location - so days with only work are kept too.
   const days = useMemo(() =>
     eachDayOfInterval(rangeStart, rangeEnd).map(day => {
       const d0 = startOfDay(day).getTime()
@@ -93,7 +93,7 @@ export function ScheduleView({ rangeStart, rangeEnd, events, calendars, overlayB
           return (
             <div key={day.toISOString()} ref={today ? todayRef : undefined}
               className="flex items-start gap-2 py-2 border-b border-border/60 last:border-b-0">
-              {/* Date badge — tap opens that day's view */}
+              {/* Date badge - tap opens that day's view */}
               <button onClick={() => onDayOpen(day)} className="w-12 shrink-0 flex flex-col items-center pt-0.5">
                 <span className="text-[10px] uppercase text-text-tertiary leading-none">
                   {formatDate(day, 'weekdayShort')}

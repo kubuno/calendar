@@ -4,7 +4,7 @@
 // settings from accounts without the settings privilege, so it cannot answer
 // "may I publish a calendar?" for an ordinary user. The module answers that
 // itself, on `/calendar/instance-policy`, with the handful of decisions its own
-// screens act on — the same ones the server already enforces, so the interface
+// screens act on - the same ones the server already enforces, so the interface
 // never offers an action the backend will refuse.
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -79,8 +79,8 @@ export function useInstancePolicy(): InstancePolicy {
 }
 
 /** True when the address plainly belongs to one of the instance's domains.
- *  An unknown domain is not proof of an outsider — the instance may simply not
- *  have declared its names — so callers use this to WARN, never to refuse; the
+ *  An unknown domain is not proof of an outsider - the instance may simply not
+ *  have declared its names - so callers use this to WARN, never to refuse; the
  *  refusal, when the policy asks for one, is the server's and is based on the
  *  directory as well. */
 export function isInternalAddress(email: string, domains: string[]): boolean {

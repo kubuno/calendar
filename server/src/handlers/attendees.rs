@@ -344,7 +344,7 @@ pub async fn invite(
             }
             None => {
                 return Err(CalendarError::Validation(
-                    "Impossible de vérifier si cette adresse appartient à l'instance — réessayez"
+                    "Impossible de vérifier si cette adresse appartient à l'instance - réessayez"
                         .to_string(),
                 ))
             }

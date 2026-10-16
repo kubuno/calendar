@@ -16,7 +16,7 @@ impl AvailabilityService {
     /// Under [`FreeBusyVisibility::Everyone`] the answer is "all of them": that is
     /// the instance saying availability is common knowledge. Under `SharedOnly`
     /// the answer is the caller plus everyone who actually shared a calendar with
-    /// them — the same permission the sidebar already honours, applied to a route
+    /// them - the same permission the sidebar already honours, applied to a route
     /// that used to read anyone's calendar without asking.
     pub async fn visible_users(
         requester: Uuid,
@@ -69,7 +69,7 @@ impl AvailabilityService {
             return Ok(vec![]);
         }
 
-        // Every "busy" event of the window — including recurring masters
+        // Every "busy" event of the window - including recurring masters
         // whose occurrences may fall inside it (earlier starts_at). `owner_id =
         // ANY(...)` becomes an `IN (...)` list; `until` was bound twice on
         // PostgreSQL and must carry its own placeholder each time here.

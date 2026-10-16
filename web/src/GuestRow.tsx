@@ -4,7 +4,7 @@
  * ## Three things a name has to carry
  *
  * Who they are (photo, name, the address when the name is not the address),
- * where their answer stands, and — the part that is easy to leave out — whether
+ * where their answer stands, and - the part that is easy to leave out - whether
  * we can say anything about their availability at all. A guest with no account
  * here is someone whose calendar this instance cannot read: the "Find a time"
  * grid will never draw a busy band for them, and a grid that stays empty
@@ -16,8 +16,8 @@
  * ## The actions appear on hover, and say what they do
  *
  * Two circular buttons: welcome-but-not-required, and remove. They are quiet
- * until the pointer is on the row — a list of names should read as a list of
- * names — and each carries its own label, because a person icon and a cross are
+ * until the pointer is on the row - a list of names should read as a list of
+ * names - and each carries its own label, because a person icon and a cross are
  * not self-evident.
  */
 import { useEffect, useRef, useState } from 'react'
@@ -34,7 +34,7 @@ import { calendarApi, type DirectoryCard } from './api'
  *
  * A generic point, filled by whoever has something to say: contacts today, an
  * HR module tomorrow. The key names no module, and an instance where nobody
- * fills it simply shows what the directory knows — which is the behaviour
+ * fills it simply shows what the directory knows - which is the behaviour
  * before this existed.
  */
 export const PERSON_DETAILS = 'person.details'
@@ -53,7 +53,7 @@ export interface PersonDetail {
   label?: string
 }
 
-/** A named address elsewhere — a site, a profile. Rendered as a link. */
+/** A named address elsewhere - a site, a profile. Rendered as a link. */
 export interface PersonLink {
   label: string
   url:   string
@@ -70,7 +70,7 @@ export interface PersonLink {
 export interface PersonAction {
   id:      string
   label:   string
-  /** `mail` | `chat` | `video` | `calendar` | `open` — the card picks a glyph. */
+  /** `mail` | `chat` | `video` | `calendar` | `open` - the card picks a glyph. */
   icon?:   string
   /** Shown as the wide primary button rather than a round one. */
   primary?: boolean
@@ -105,13 +105,13 @@ export interface GuestLike {
  * Which of these guests already have something else at that hour.
  *
  * Asked per person, over the event's own window, and only for guests with an
- * account: the others' calendars are not ours to read — that is what the
+ * account: the others' calendars are not ours to read - that is what the
  * asterisk says. One request each, debounced, because the hours move while the
  * form is being written and a list of five guests is five small questions, not
  * a report.
  *
  * A clash is NOT a refusal. It is the thing an organiser wants to know BEFORE
- * sending the invitation, and the reason the hour gets moved — so it is said on
+ * sending the invitation, and the reason the hour gets moved - so it is said on
  * the line, in amber, and nothing is blocked.
  */
 export function useGuestConflicts(
@@ -135,7 +135,7 @@ export function useGuestConflicts(
             from: from.toISOString(), until: to.toISOString(), user_ids: [uid],
           })
           // The window is free only when a returned slot covers it whole with
-          // nobody busy. Anything less — a partial slot, no slot at all — is a
+          // nobody busy. Anything less - a partial slot, no slot at all - is a
           // clash. ⚠️ An account the instance would not let us read comes back
           // in `hidden_user_ids`: absent from the computation, NOT free, so it
           // must not be reported as available.
@@ -158,7 +158,7 @@ export function useGuestConflicts(
  * The face of a guest, without asking anyone.
  *
  * The core serves an account's photo at a URL derived from its id, so a guest
- * who has an account has a face for free — no lookup, no waiting, and it works
+ * who has an account has a face for free - no lookup, no waiting, and it works
  * for the twenty names of a list at once. It is only when nothing is known that
  * the initial stands in.
  *
@@ -176,13 +176,13 @@ export function calendarUnknown(g: GuestLike): boolean {
 }
 
 /**
- * Write to this person — through the instance's own mailbox when it has one.
+ * Write to this person - through the instance's own mailbox when it has one.
  *
  * `mailto:` hands the reader to whatever the operating system opens, which on
  * an instance that HAS a mail module is the wrong answer: it leaves the product
  * to write a message the product could have written, and loses the signature,
  * the drafts and the sent copy. So the module is asked first, and `mailto:` is
- * what remains when nobody answers — which is the right behaviour for an
+ * what remains when nobody answers - which is the right behaviour for an
  * instance without one.
  *
  * Asked of the registry at the moment of the click, not at render: the module
@@ -235,7 +235,7 @@ export function GuestRow({ guest, conflict, onToggleOptional, onRemove, onShowAv
   // ⚠️ Revealed by React state and an INLINE opacity, not by
   // `opacity-0 group-hover:opacity-100`. A module's utilities live in a cascade
   // layer the host's own utilities outrank, so that pair behaves erratically
-  // here — the buttons stayed visible, measured. An inline style beats every
+  // here - the buttons stayed visible, measured. An inline style beats every
   // layer, which is the only property that makes this deterministic.
   const [hover, setHover] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -287,7 +287,7 @@ export function GuestRow({ guest, conflict, onToggleOptional, onRemove, onShowAv
   const round = (extra.actions ?? []).filter(a => !a.primary)
   const unknown = calendarUnknown(guest)
   // Shown on hover, kept for the keyboard, and kept for a guest already marked
-  // optional — a state you can see is a state you can undo.
+  // optional - a state you can see is a state you can undo.
   const reveal = hover || focused || card
   const actionStyle = (always: boolean) => ({
     opacity: always || reveal ? 1 : 0,
@@ -417,7 +417,7 @@ export function GuestRow({ guest, conflict, onToggleOptional, onRemove, onShowAv
 
             {/* What can be DONE, and only what really can. The wide button is
                 the obvious act; the round ones are what other modules brought.
-                An instance without chat simply has fewer buttons — no glyph is
+                An instance without chat simply has fewer buttons - no glyph is
                 drawn for something nobody can perform. */}
             <div className="mt-3 border-t border-border pt-3">
               <div className="flex items-center gap-2">

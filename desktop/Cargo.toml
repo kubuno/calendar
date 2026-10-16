@@ -1,4 +1,4 @@
-# Kubuno Calendar — the native desktop app. ONE Cargo workspace for every operating system, independent of the
+# Kubuno Calendar - the native desktop app. ONE Cargo workspace for every operating system, independent of the
 # module server's (../server/Cargo.toml):
 #
 #   common/   the complete app, portable: the launch options, the view state, the sample data and the platform

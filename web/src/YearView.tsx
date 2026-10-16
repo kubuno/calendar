@@ -35,7 +35,7 @@ import {
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { calendarGrid, isWeekend } from './calendarUtils'
 
-// ── Year view — mini-calendrier mensuel ───────────────────────────────────────
+// ── Year view - mini-calendrier mensuel ───────────────────────────────────────
 
 function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, onSelectDay }: {
   month: Date; events: EventInstance[]; overlayByDate: Map<string, CalendarOverlayItem[]>
@@ -46,7 +46,7 @@ function MiniMonth({ month, events, overlayByDate, onMonthClick, selectedDay, on
   const { t, i18n } = useTranslation('calendar')
   const settings = useCalendarSettings()
   const days = useMemo(() => calendarGrid(month, settings.weekStartsOn), [month, settings.weekStartsOn])
-  // Day letters (localized) — enough at the scale of a year card.
+  // Day letters (localized) - enough at the scale of a year card.
   const weekdayLetters = useMemo(() => {
     const base = startOfWeek(new Date(), settings.weekStartsOn )
     return Array.from({ length: 7 }, (_, i) => formatDate(addDays(base, i), 'weekdayNarrow'))
@@ -263,7 +263,7 @@ export function YearView({ year, events, overlayByDate, onMonthClick, onEventCli
   )
 }
 
-// ── Schedule ("Planning") view — vertical per-day event list ─────────────────
+// ── Schedule ("Planning") view - vertical per-day event list ─────────────────
 // The flagship mobile view (default tab of the shell's bottom nav), also served
 // at /calendar/schedule on desktop: the visible month's events grouped by day,
 // empty days skipped, Google-Agenda style.

@@ -19,7 +19,7 @@ const DAY_LABELS: Record<string, string> = {
  */
 export default function RecurrenceCustomDialog({ initialRrule, start, onSave, onClose }: {
   initialRrule: string | null
-  /** Event start — used as the reference (weekday, day of month…). */
+  /** Event start - used as the reference (weekday, day of month…). */
   start: Date
   onSave: (rrule: string) => void
   onClose: () => void

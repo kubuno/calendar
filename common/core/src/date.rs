@@ -21,7 +21,7 @@ pub struct Date {
 }
 
 impl Default for Date {
-    /// The Unix epoch (`1970-01-01`) — a valid placeholder, since month/day `0` would be illegal.
+    /// The Unix epoch (`1970-01-01`) - a valid placeholder, since month/day `0` would be illegal.
     fn default() -> Self {
         Date { year: 1970, month: 1, day: 1 }
     }
@@ -236,7 +236,7 @@ pub enum DateFormat {
     Month,
     /// « lun. » / « Mon ».
     WeekdayShort,
-    /// `dateLong` — « 12 octobre 2026 » / « October 12, 2026 » (the week-of title).
+    /// `dateLong` - « 12 octobre 2026 » / « October 12, 2026 » (the week-of title).
     DateLong,
     /// « mercredi 14 octobre 2026 » / « Wednesday, October 14, 2026 » (the Day view title).
     FullDate,

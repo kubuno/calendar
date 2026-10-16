@@ -50,7 +50,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
   overlayByDate: Map<string, CalendarOverlayItem[]>
 }) {
   const { t, i18n } = useTranslation('calendar')
-  // Mobile: ~55px-wide cells — compact chips (no time), no weather/moon markers,
+  // Mobile: ~55px-wide cells - compact chips (no time), no weather/moon markers,
   // and tapping a day OPENS it (day view) instead of creating an event there.
   const isMobile = useIsMobile()
   const settings = useCalendarSettings()
@@ -83,7 +83,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
 
   // Per-week banner layout: each week's banner events laid into rows. Each segment
   // is rendered as ONE element spanning its columns (in an overlay above the day
-  // cells), so the vertical cell borders never cut through it — the bar reads as a
+  // cells), so the vertical cell borders never cut through it - the bar reads as a
   // single continuous band. `rowsPerWeek` sizes the reserved band in each cell.
   const weekBanners = useMemo(() => {
     const segsPerWeek: Array<Array<{
@@ -138,7 +138,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      {/* Month title — visible ONLY in print (the toolbar, which carries the
+      {/* Month title - visible ONLY in print (the toolbar, which carries the
           title on screen, is hidden when printing). */}
       <div className="print-only mb-2 text-center text-xl font-bold text-black">
         {formatDate(month, 'monthYear')}
@@ -153,7 +153,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
         ))}
       </div>
 
-      {/* Day grid — dynamic row count (4, 5 or 6 weeks) to fill the whole height */}
+      {/* Day grid - dynamic row count (4, 5 or 6 weeks) to fill the whole height */}
       <div className="flex-1 grid overflow-hidden relative"
         style={{ gridTemplateColumns: monthCols, gridTemplateRows: `repeat(${weeks}, minmax(0, 1fr))` }}>
         {days.map((day, idx) => {
@@ -212,7 +212,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                 const bRows = weekBanners.rowsPerWeek[Math.floor(idx / perWeek)] ?? 0
                 return bRows > 0 ? <div className="mb-0.5" style={{ height: bRows * BANNER_ROW_H }} /> : null
               })()}
-              {/* Work-location zone — reserved uniformly across the week: the band
+              {/* Work-location zone - reserved uniformly across the week: the band
                   where the day has a location, an empty spacer of the same height
                   otherwise, so day content aligns across all cells of the week. */}
               {showWork && weekHasWork[Math.floor(idx / perWeek)] && (() => {
@@ -265,7 +265,7 @@ export function MonthView({ month, events, calendars, onDayClick, onDayOpen, onE
                     {isMobile ? `+${dayEvs.length - 3}` : t('more_events', { count: dayEvs.length - 4 })}
                   </div>
                 )}
-                {/* Items overlaid by other modules (generic extension point) —
+                {/* Items overlaid by other modules (generic extension point) -
                     same block style as events: solid (to do) or tinted +
                     colored text (done). */}
                 {(overlayByDate.get(toISODate(day)) ?? []).slice(0, 2).map(it => {

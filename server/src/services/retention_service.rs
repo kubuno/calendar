@@ -1,16 +1,16 @@
 //! Retention of past events.
 //!
 //! An administrator who sets a retention is asking the instance to stop keeping
-//! a history nobody reads — a data-minimisation decision, so it is applied by
+//! a history nobody reads - a data-minimisation decision, so it is applied by
 //! the server and not by whatever client happens to be open. The knob is
 //! `event_retention_days`; left at `0` (the default) this worker does nothing at
 //! all, and says nothing either.
 //!
 //! What is deliberately NOT purged:
-//!   * recurring series (`rrule IS NOT NULL`) — their `ends_at` describes the
+//!   * recurring series (`rrule IS NOT NULL`) - their `ends_at` describes the
 //!     first occurrence, not the end of the series, so age cannot be read from
 //!     it and a weekly meeting created years ago is still live;
-//!   * mirrored subscription calendars — their content is not the instance's to
+//!   * mirrored subscription calendars - their content is not the instance's to
 //!     keep or drop, and the next sync would bring it back anyway.
 
 use chrono::{DateTime, Duration, Utc};

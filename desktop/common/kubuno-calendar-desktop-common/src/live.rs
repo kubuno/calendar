@@ -1,5 +1,5 @@
 //! The live server path (`--doc <calendar-id>`): the app borrows access tokens from the Kubuno desktop shell's
-//! token broker (`kubuno_desktop_sync`) and talks to the account's core — it never holds a password or a
+//! token broker (`kubuno_desktop_sync`) and talks to the account's core - it never holds a password or a
 //! refresh token. Events are read with `GET /calendar/events` (the server expands recurring series over the
 //! window) and mutated with the calendar REST API, exactly as the web client does (`web/src/api.ts`).
 
@@ -35,7 +35,7 @@ pub fn urlencode(s: &str) -> String {
 fn account() -> Result<kubuno_desktop_sync::AccountRef, String> {
     kubuno_desktop_sync::current_account()
         .map_err(|e| format!("{e:?}"))?
-        .ok_or_else(|| "no account — is the Kubuno desktop shell running and signed in?".to_string())
+        .ok_or_else(|| "no account - is the Kubuno desktop shell running and signed in?".to_string())
 }
 
 /// One authenticated request to the account's core; returns `(status, body)`.
@@ -47,7 +47,7 @@ fn request(method: &str, path: &str, body: Option<Vec<u8>>) -> Result<(u16, Vec<
 }
 
 /// The events of `calendar_id` between `from` (inclusive) and `until` (exclusive), as the server's ready,
-/// expanded `EventInstance`s — the same shape the web receives.
+/// expanded `EventInstance`s - the same shape the web receives.
 pub fn fetch_events(calendar_id: &str, from: Date, until: Date) -> Result<Vec<EventInstance>, String> {
     let path = format!(
         "{CAL_PREFIX}/events?from={}T00:00:00Z&until={}T00:00:00Z&calendar_ids={}",
@@ -128,7 +128,7 @@ pub fn save_event(calendar_id: &str, w: &EventWrite) -> Result<(), String> {
     body.insert("all_day".into(), serde_json::Value::Bool(w.all_day));
     body.insert("location".into(), serde_json::Value::String(w.location.clone()));
     body.insert("description".into(), serde_json::Value::String(w.description.clone()));
-    // Colour: a chosen swatch, or "default" — on edit that means clearing any per-event colour.
+    // Colour: a chosen swatch, or "default" - on edit that means clearing any per-event colour.
     match &w.color {
         Some(c) => {
             body.insert("color".into(), serde_json::Value::String(c.clone()));
@@ -314,7 +314,7 @@ pub fn list_shares(calendar_id: &str) -> Result<Vec<(String, String)>, String> {
         .collect())
 }
 
-/// Make a calendar public (or private) — `PATCH /calendar/calendars/:id { is_public }` — for the public
+/// Make a calendar public (or private) - `PATCH /calendar/calendars/:id { is_public }` - for the public
 /// `.ics`/subscription feed. Returns the new `is_public`.
 pub fn set_calendar_public(calendar_id: &str, is_public: bool) -> Result<bool, String> {
     let dto = serde_json::json!({ "is_public": is_public });

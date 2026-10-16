@@ -1,4 +1,4 @@
-//! `ShareList` — the people a calendar is shared with (`web/src/CalendarShareModal.tsx`, the « Personnes ayant
+//! `ShareList` - the people a calendar is shared with (`web/src/CalendarShareModal.tsx`, the « Personnes ayant
 //! accès » section): one row per share with the person's name, their permission (read / write) and a « Retirer »
 //! action. Clicking « Retirer » raises `OnRemove` with that user's id; the dialog revokes the share and
 //! refreshes the list.
@@ -30,7 +30,7 @@ pub struct ShareList {
     #[event]
     #[category("Action")]
     pub remove: Event<RemoveShareArgs>,
-    /// `(user_id, display_name, permission)` — set by the dialog after each refresh.
+    /// `(user_id, display_name, permission)` - set by the dialog after each refresh.
     rows: Vec<(String, String, String)>,
     /// Whether the directory is still being queried (shows a discreet placeholder).
     loading: bool,

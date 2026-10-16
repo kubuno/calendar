@@ -5,14 +5,14 @@
  *
  * They are the same labels a file, a note or a task carries: owned by the
  * person, shared with whoever they choose, and browsable across modules from
- * one place. So nothing is stored here — the core holds both the labels and the
+ * one place. So nothing is stored here - the core holds both the labels and the
  * links, and this module only says which event is being labelled.
  *
  * ## An event that does not exist yet
  *
  * A link needs something to point at. While an event is being written it has no
  * id, so the labels chosen are held in the form and attached the moment the
- * event is saved — the same order the video room follows, and for the same
+ * event is saved - the same order the video room follows, and for the same
  * reason: nothing may be left pointing at something that was never created.
  */
 import { useQuery } from '@tanstack/react-query'
@@ -67,7 +67,7 @@ export function useLabelOptions() {
  * Taken from the core's own function rather than restated here: the context
  * menu has been attaching labels under that key since before this field
  * existed, and a second definition would quietly split one event's labels into
- * two piles. (It resolves to the occurrence, not the series — so a recurring
+ * two piles. (It resolves to the occurrence, not the series - so a recurring
  * event is labelled one occurrence at a time, which is what it already did.)
  */
 export function eventLabelKey(event: EventInstance): string {
@@ -90,7 +90,7 @@ export function useEventLabels(event?: EventInstance | null) {
  *
  * Replaces it wholesale, which is what the picker means: what is on screen IS
  * the set. The envelope travels with it so the core can show the event in its
- * own label browser — title, link, and enough of the event to draw a card —
+ * own label browser - title, link, and enough of the event to draw a card -
  * without having to ask this module anything.
  */
 export async function saveEventLabels(event: EventInstance, labelIds: string[]): Promise<void> {

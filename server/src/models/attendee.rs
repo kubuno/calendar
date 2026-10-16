@@ -9,7 +9,7 @@ pub struct Attendee {
     pub user_id:         Option<Uuid>,
     /// The room this attendee IS, when it is a room rather than a person
     /// (migration `000010`). Points at `core.resources`, which the core
-    /// publishes read-only on `/internal/directory/resources` — no foreign key,
+    /// publishes read-only on `/internal/directory/resources` - no foreign key,
     /// because the directory belongs to another component. A room carries no
     /// address, so exactly one of `email` and `resource_id` is set.
     pub resource_id:     Option<Uuid>,
@@ -24,7 +24,7 @@ pub struct Attendee {
     pub comment:         Option<String>,
     /// When this room was given back automatically because the meeting emptied
     /// out (migration `000011`). `NULL` for a room that refused a clash, and for
-    /// every person — a person is not released, they decline.
+    /// every person - a person is not released, they decline.
     pub released_at:     Option<DateTime<Utc>>,
     /// Welcome, not required (migration `000012`). Distinct from a refusal: an
     /// optional guest who stays away has declined nothing, and the organiser
@@ -44,7 +44,7 @@ pub struct InviteAttendeeDto {
     #[serde(default)]
     pub email:        String,
     /// An ACCOUNT of this instance, picked from the people list. The server
-    /// resolves it to an address over the internal channel — a directory that
+    /// resolves it to an address over the internal channel - a directory that
     /// keeps addresses private must still be usable to invite someone.
     pub user_id:      Option<uuid::Uuid>,
     pub display_name: Option<String>,
@@ -55,7 +55,7 @@ pub struct InviteAttendeeDto {
 }
 
 /// One guest supplied inline when an event is created (see `CreateEventDto`).
-/// The organizer never appears here — the server adds their own attendee row.
+/// The organizer never appears here - the server adds their own attendee row.
 #[derive(Debug, Clone, Deserialize, validator::Validate)]
 pub struct AttendeeInputDto {
     #[serde(default)]
@@ -82,7 +82,7 @@ pub struct RsvpDto {
 /// The form people actually paste: it is what every mail client copies, what an
 /// address book exports, and what a colleague sends you in a message. Stored
 /// verbatim it becomes an address nobody can write to and a name nobody can
-/// read — so it is understood HERE, where the address lands, rather than in each
+/// read - so it is understood HERE, where the address lands, rather than in each
 /// form. An import, a script or another client gets the same treatment as the
 /// guest field.
 ///

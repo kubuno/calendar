@@ -1,5 +1,5 @@
 //! Runs the calendar module's own migrations and its own services against a real
-//! server of **each** engine, from a single compiled binary — the proof that the
+//! server of **each** engine, from a single compiled binary - the proof that the
 //! engine is a run-time choice, not a build-time one, and that the recently
 //! ported primitives (the delta journal, the JSON array columns, and the
 //! TIME/DATE columns) behave identically on all of them.

@@ -60,7 +60,7 @@ impl RecurrenceService {
         let until_tz = rrule::Tz::UTC;
         // Start the search `duration` before `from`, so an occurrence that STARTED
         // before the window but still OVERLAPS it (multi-day / all-day recurring
-        // events, e.g. a monthly 27th→3rd event seen from the July grid) is kept —
+        // events, e.g. a monthly 27th→3rd event seen from the July grid) is kept -
         // matching the overlap semantics used for non-recurring events. Any
         // occurrence starting after `from - duration` necessarily ends after `from`.
         let from_dt  = (from - duration).with_timezone(&from_tz);

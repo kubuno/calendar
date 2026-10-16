@@ -26,7 +26,7 @@ pub struct ListQuery {
     /// Read for one purpose only: the very first listing of an account creates
     /// its default calendar, and that calendar is the one nearly everybody
     /// keeps. Without this the account's main calendar would be the single one
-    /// the new rule never reached — born in the instance's zone, which is the
+    /// the new rule never reached - born in the instance's zone, which is the
     /// whole problem. Absent or unusable, the instance setting still applies.
     #[serde(default)]
     pub tz: Option<String>,

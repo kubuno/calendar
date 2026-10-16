@@ -1,5 +1,5 @@
 /**
- * "Add guests" — a name you recognise, or an address you type.
+ * "Add guests" - a name you recognise, or an address you type.
  *
  * ## Why suggestions, and from two places
  *
@@ -7,7 +7,7 @@
  * mistake. Most of the people you invite are people you already know of: the
  * colleagues your instance's directory lists, and the contacts you keep
  * yourself. So the field offers both, and typing an address nobody knows still
- * works — that is how someone outside gets invited.
+ * works - that is how someone outside gets invited.
  *
  * The two sources are asked the same question and merged by address, so a
  * colleague who is also in your contacts appears once. The directory answers
@@ -17,8 +17,8 @@
  *
  * ## What it does not do
  *
- * It does not decide whether a guest may be invited. The instance's policy —
- * outside addresses, guest ceiling — is applied by the panel that owns the list
+ * It does not decide whether a guest may be invited. The instance's policy -
+ * outside addresses, guest ceiling - is applied by the panel that owns the list
  * and, for real, by the server.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -29,7 +29,7 @@ import { calendarApi } from './api'
 
 export interface GuestSuggestion {
   /** Empty when the person was picked from the directory and the instance
-   *  keeps addresses private — `user_id` then carries the invitation. */
+   *  keeps addresses private - `user_id` then carries the invitation. */
   email:        string
   user_id?:     string
   display_name?: string | null
@@ -49,7 +49,7 @@ const LIMIT = 6
 /**
  * How many letters are needed before asking anyone.
  *
- * Two, normally — one letter matches half the directory and the answer is
+ * Two, normally - one letter matches half the directory and the answer is
  * worthless. But an input that OPENS with `@` has already said what it wants:
  * it is reaching for someone, not typing an address. That is an intention
  * stated before the first letter, so the first letter is enough.
@@ -63,7 +63,7 @@ function queryOf(value: string): { q: string; mention: boolean } {
 /**
  * Does this read as an address at all?
  *
- * `@m` contains an `@` and is not an address — it is someone half-way through
+ * `@m` contains an `@` and is not an address - it is someone half-way through
  * naming a person. Anything that decides "this is an outside address" or
  * invites what was typed asks here rather than looking for the character.
  */
@@ -95,7 +95,7 @@ export function GuestField({ value, onChange, onPick, disabled, placeholder, exc
   onPick: (g: GuestSuggestion) => void
   disabled?: boolean
   placeholder?: string
-  /** Addresses already on the list — offering them again invites nobody. */
+  /** Addresses already on the list - offering them again invites nobody. */
   exclude: string[]
 }) {
   const { t } = useTranslation('calendar')
@@ -114,7 +114,7 @@ export function GuestField({ value, onChange, onPick, disabled, placeholder, exc
     const timer = setTimeout(async () => {
       const merged = new Map<string, GuestSuggestion>()
       const add = (g: GuestSuggestion) => {
-        // Keyed by address when there is one, by account otherwise — so a
+        // Keyed by address when there is one, by account otherwise - so a
         // colleague found in both the directory and your contacts appears once.
         const key = (g.email.trim().toLowerCase() || `id:${g.user_id}`)
         if (key === 'id:undefined' || taken.has(key) || merged.has(key)) return
@@ -124,7 +124,7 @@ export function GuestField({ value, onChange, onPick, disabled, placeholder, exc
       try {
         for (const u of await calendarApi.searchUsers(q)) {
           // No address in the answer is the normal case: most instances keep
-          // them private. The account IS the invitation then — the server
+          // them private. The account IS the invitation then - the server
           // resolves it, and the address never passes through here.
           add({
             email: u.email ?? '',
@@ -134,7 +134,7 @@ export function GuestField({ value, onChange, onPick, disabled, placeholder, exc
           })
         }
       } catch { /* a directory that is closed or silent simply suggests nothing */ }
-      // Whatever else this instance offers — contacts, today.
+      // Whatever else this instance offers - contacts, today.
       try {
         const providers = ExtensionRegistry.getAll<MentionLike>('mentions.provider')
         const lists = await Promise.all(providers.map(p =>

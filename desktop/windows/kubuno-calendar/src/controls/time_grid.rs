@@ -1,4 +1,4 @@
-//! `TimeGrid` — the Day and Week time grids (`web/src/DayView.tsx`, `WeekView.tsx`): a left hour gutter, a day
+//! `TimeGrid` - the Day and Week time grids (`web/src/DayView.tsx`, `WeekView.tsx`): a left hour gutter, a day
 //! header, an all-day banner row and a scrollable 24-hour grid (`PX_PER_HOUR` = 40) where timed events are
 //! positioned by their local minutes and laid side by side when they overlap (the core's `layout_day`). The
 //! « now » line is drawn in red on today's column. Geometry and colours match the web. Read-only in this

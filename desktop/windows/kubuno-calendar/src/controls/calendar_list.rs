@@ -1,4 +1,4 @@
-//! `CalendarList` — the sidebar's « Mes agendas » list (`web/src/CalendarSidebarBody.tsx`): one row per
+//! `CalendarList` - the sidebar's « Mes agendas » list (`web/src/CalendarSidebarBody.tsx`): one row per
 //! calendar, a checkbox tinted with the calendar's colour (filled with a tick when the calendar is visible,
 //! an outline when hidden) and the calendar name. Clicking a row toggles that calendar's events across the
 //! Month / Week / Day views (`State::toggle_calendar` → `hidden_calendars`).

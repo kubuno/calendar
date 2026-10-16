@@ -1,4 +1,4 @@
-//! `SearchResults` — the event search results list (`web/src/SearchResultsView.tsx`): the events whose title,
+//! `SearchResults` - the event search results list (`web/src/SearchResultsView.tsx`): the events whose title,
 //! description or location match the query, sorted by date, each a row with a colour dot, the title, and the
 //! day + time. Clicking a result opens that event's Day. The window fills `model.search_results` from a ±1-year
 //! fetch filtered by the query.

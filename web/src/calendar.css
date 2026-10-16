@@ -6,7 +6,7 @@
  * seconde source de vérité, qui cessera un jour de suivre la première. Le module
  * hérite donc, et un accent propre se réintroduit en rétablissant ce bloc. */
 
-/* Vue Année — panneau de détails du jour sélectionné (inspiré du pen peanav/DmZEEp).
+/* Vue Année - panneau de détails du jour sélectionné (inspiré du pen peanav/DmZEEp).
  * Le panneau apparaît en fondu/glissé, et chaque événement entre avec un léger
  * décalage (stagger via --i). La flèche glisse horizontalement (transition left). */
 @keyframes calDetailsIn {
